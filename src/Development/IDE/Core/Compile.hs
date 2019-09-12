@@ -30,7 +30,10 @@ import Development.IDE.Types.Location
 import           GHC hiding (parseModule, typecheckModule)
 import qualified Parser
 import           Lexer
-import ErrUtils
+import           ErrUtils
+-- For dumps
+import           HsDumpAst
+import           HscStats
 
 import qualified GHC
 import           Panic
@@ -390,6 +393,10 @@ parseFileContents preprocessor filename mbContents = do
                -- Ok, we got here. It's safe to continue.
                let (errs, parsed) = preprocessor rdr_module
                unless (null errs) $ throwE $ diagFromStrings "parser" errs
+               -- Support for '-ddump-parsed', '-ddump-parsed-ast', '-dsource-stats'.
+               liftIO $ ErrUtils.dumpIfSet_dyn dflags Opt_D_dump_parsed "Parser" $ ppr parsed
+               liftIO $ ErrUtils.dumpIfSet_dyn dflags Opt_D_dump_parsed_ast "Parser AST" $ showAstData NoBlankSrcSpan parsed
+               liftIO $ ErrUtils.dumpIfSet_dyn dflags Opt_D_source_stats "Source Statistics" $ ppSourceStats False parsed
                ms <- getModSummaryFromBuffer filename contents dflags parsed
                let pm =
                      ParsedModule {
