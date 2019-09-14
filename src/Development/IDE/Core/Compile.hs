@@ -96,13 +96,6 @@ typecheckModule packageState deps pm =
             tcm2 <- mkTcModuleResult tcm
             return (map unDeferTypeErrors warnings, tcm2)
 
-unDeferTypeErrors :: (WarnReason, FileDiagnostic) -> FileDiagnostic
-unDeferTypeErrors (Reason Opt_WarnDeferredTypeErrors, fd) = upgradeWarningToError fd
-unDeferTypeErrors (                                _, fd) = fd
-
-upgradeWarningToError :: FileDiagnostic -> FileDiagnostic
-upgradeWarningToError (nfp, fd) = (nfp, fd{_severity = Just DsError})
-
 -- | Compile a single type-checked module to a 'CoreModule' value, or
 -- provide errors.
 compileModule
@@ -136,16 +129,26 @@ compileModule packageState deps tmr =
             return (map snd warnings, core)
 
 demoteTypeErrorsToWarnings :: ParsedModule -> ParsedModule
-demoteTypeErrorsToWarnings = (update_pm_mod_summary . update_hspp_opts) demoteTEsToWarns
+demoteTypeErrorsToWarnings =
+  (update_pm_mod_summary . update_hspp_opts) demoteTEsToWarns where
 
-demoteTEsToWarns :: DynFlags -> DynFlags
-demoteTEsToWarns = (`wopt_set` Opt_WarnDeferredTypeErrors) . (`gopt_set` Opt_DeferTypeErrors)
+  demoteTEsToWarns :: DynFlags -> DynFlags
+  demoteTEsToWarns = (`wopt_set` Opt_WarnDeferredTypeErrors)
+                   . (`gopt_set` Opt_DeferTypeErrors)
 
-update_hspp_opts :: (DynFlags -> DynFlags) -> ModSummary -> ModSummary
-update_hspp_opts up ms = ms{ms_hspp_opts = up $ ms_hspp_opts ms}
+  update_hspp_opts :: (DynFlags -> DynFlags) -> ModSummary -> ModSummary
+  update_hspp_opts up ms = ms{ms_hspp_opts = up $ ms_hspp_opts ms}
 
-update_pm_mod_summary :: (ModSummary -> ModSummary) -> ParsedModule -> ParsedModule
-update_pm_mod_summary up pm = pm{pm_mod_summary = up $ pm_mod_summary pm}
+  update_pm_mod_summary :: (ModSummary -> ModSummary) -> ParsedModule -> ParsedModule
+  update_pm_mod_summary up pm =
+    pm{pm_mod_summary = up $ pm_mod_summary pm}
+
+unDeferTypeErrors :: (WarnReason, FileDiagnostic) -> FileDiagnostic
+unDeferTypeErrors (Reason Opt_WarnDeferredTypeErrors, fd) = upgradeWarningToError fd
+  where
+    upgradeWarningToError :: FileDiagnostic -> FileDiagnostic
+    upgradeWarningToError (nfp, fd) = (nfp, fd{_severity = Just DsError})
+unDeferTypeErrors (                                _, fd) = fd
 
 addRelativeImport :: ParsedModule -> DynFlags -> DynFlags
 addRelativeImport modu dflags = dflags
