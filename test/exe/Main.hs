@@ -82,7 +82,7 @@ diagnosticTests = testGroup "diagnostics"
       _ <- openDoc' "Testing.hs" "haskell" content
       expectDiagnostics
         [ ( "Testing.hs"
-          , [(DsError, (2, 14), "Couldn't match type '[Char]' with 'Int'")]
+          , [(DsWarning, (2, 14), "Couldn't match type '[Char]' with 'Int'")]
           )
         ]
   , testSession "remove required module" $ do
