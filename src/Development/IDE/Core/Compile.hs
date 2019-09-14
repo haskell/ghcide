@@ -145,9 +145,10 @@ demoteTypeErrorsToWarnings =
     pm{pm_mod_summary = up $ pm_mod_summary pm}
 
 unDefer :: (WarnReason, FileDiagnostic) -> FileDiagnostic
-unDefer (Reason Opt_WarnDeferredTypeErrors, fd) = upgradeWarningToError fd
-unDefer (Reason Opt_WarnTypedHoles        , fd) = upgradeWarningToError fd
-unDefer (                                _, fd) = fd
+unDefer (Reason Opt_WarnDeferredTypeErrors         , fd) = upgradeWarningToError fd
+unDefer (Reason Opt_WarnTypedHoles                 , fd) = upgradeWarningToError fd
+unDefer (Reason Opt_WarnDeferredOutOfScopeVariables, fd) = upgradeWarningToError fd
+unDefer ( _                                        , fd) = fd
 
 upgradeWarningToError :: FileDiagnostic -> FileDiagnostic
 upgradeWarningToError (nfp, fd) = (nfp, fd{_severity = Just DsError})
