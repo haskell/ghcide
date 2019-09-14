@@ -94,7 +94,7 @@ diagnosticTests = testGroup "diagnostics"
       _ <- openDoc' "Testing.hs" "haskell" content
       expectDiagnostics
         [ ( "Testing.hs"
-          , [(DsWarning, (2, 8), "Found hole: _ :: Int -> String")]
+          , [(DsError, (2, 8), "Found hole: _ :: Int -> String")]
           )
         ]
   , testSession "remove required module" $ do
