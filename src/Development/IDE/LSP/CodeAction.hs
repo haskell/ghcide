@@ -132,7 +132,8 @@ suggestAction contents Diagnostic{_range=_range@Range{..},..}
     | "Valid hole fits include" `T.isInfixOf` _message = let
       findSuggestedHoleFits :: T.Text -> [T.Text]
       findSuggestedHoleFits = extractFitNames . selectLinesWithFits . dropPreceding . T.lines
-      proposeHoleFit name = ("replace hole with " <> name, [TextEdit _range name])
+      proposeHoleFit name = ("replace hole `" <> holeName <>  "` with " <> name, [TextEdit _range name])
+      holeName = T.strip $ last $ T.splitOn ":" $ head . T.splitOn "::" $ head $ filter ("Found hole" `T.isInfixOf`) $ T.lines _message
       dropPreceding       = dropWhile (not . ("Valid hole fits include" `T.isInfixOf`))
       selectLinesWithFits = filter ("::" `T.isInfixOf`)
       extractFitNames     = map (T.strip . head . T.splitOn " :: ")
