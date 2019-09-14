@@ -102,10 +102,41 @@ suggestAction contents Diagnostic{_range=_range@Range{..},..}
 --     Could not find module ‘Data.Cha’
 --     Perhaps you meant Data.Char (from base-4.12.0.0)
     | "Could not find module" `T.isInfixOf` _message
-    , "Perhaps you meant"     `T.isInfixOf` _message
-      = map proposeModule $ nubOrd $ findSuggestedModules _message where
+    , "Perhaps you meant"     `T.isInfixOf` _message = let
       findSuggestedModules = map (head . T.words) . drop 2 . T.lines
       proposeModule mod = ("replace with " <> mod, [TextEdit _range mod])
+      in map proposeModule $ nubOrd $ findSuggestedModules _message
+
+--  ...Development/IDE/LSP/CodeAction.hs:103:9: warning:
+--   * Found hole: _ :: Int -> String
+--   * In the expression: _
+--     In the expression: _ a
+--     In an equation for ‘foo’: foo a = _ a
+--   * Relevant bindings include
+--       a :: Int
+--         (bound at ...Development/IDE/LSP/CodeAction.hs:103:5)
+--       foo :: Int -> String
+--         (bound at ...Development/IDE/LSP/CodeAction.hs:103:1)
+--     Valid hole fits include
+--       foo :: Int -> String
+--         (bound at ...Development/IDE/LSP/CodeAction.hs:103:1)
+--       show :: forall a. Show a => a -> String
+--         with show @Int
+--         (imported from ‘Prelude’ at ...Development/IDE/LSP/CodeAction.hs:7:8-37
+--          (and originally defined in ‘GHC.Show’))
+--       mempty :: forall a. Monoid a => a
+--         with mempty @(Int -> String)
+--         (imported from ‘Prelude’ at ...Development/IDE/LSP/CodeAction.hs:7:8-37
+--          (and originally defined in ‘GHC.Base’)) (lsp-ui)
+
+    | "Valid hole fits include" `T.isInfixOf` _message = let
+      findSuggestedHoleFits :: T.Text -> [T.Text]
+      findSuggestedHoleFits = extractFitNames . selectLinesWithFits . dropPreceding . T.lines
+      proposeHoleFit name = ("replace hole with " <> name, [TextEdit _range name])
+      dropPreceding       = dropWhile (not . ("Valid hole fits include" `T.isInfixOf`))
+      selectLinesWithFits = filter ("::" `T.isInfixOf`)
+      extractFitNames     = map (T.strip . head . T.splitOn " :: ")
+      in map proposeHoleFit $ nubOrd $ findSuggestedHoleFits _message
 
 suggestAction _ _ = []
 
