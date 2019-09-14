@@ -232,6 +232,7 @@ codeActionTests = testGroup "code actions"
   , typeWildCardActionTests
   , removeImportTests
   , importRenameActionTests
+  , fillTypedHoleTests
   ]
 
 renameActionTests :: TestTree
@@ -452,6 +453,71 @@ importRenameActionTests = testGroup "import rename actions"
             , "import Data." <> modname
             ]
       liftIO $ expectedContentAfterAction @=? contentAfterAction
+
+fillTypedHoleTests :: TestTree
+fillTypedHoleTests = let
+
+  sourceCode :: T.Text -> T.Text -> T.Text -> T.Text
+  sourceCode a b c = T.unlines
+    [ "module Testing where"
+      , ""
+      , "globalConvert :: Int -> String"
+      , "globalConvert = undefined"
+      , ""
+      , "globalInt :: Int"
+      , "globalInt = 3"
+      , ""
+      , "bar :: Int -> Int -> String"
+      , "bar n parameterInt = " <> a <> " (n + " <> b <> " + " <> c <> ")  where"
+      , "  localConvert = (flip replicate) 'x'"
+
+    ]
+
+  check :: T.Text -> T.Text -> T.Text -> T.Text -> T.Text -> T.Text -> T.Text -> TestTree
+  check actionTitle
+        oldA oldB oldC
+        newA newB newC =  testSession (T.unpack actionTitle) $ do
+    let originalCode = sourceCode oldA oldB oldC
+    let expectedCode = sourceCode newA newB newC
+    doc <- openDoc' "Testing.hs" "haskell" originalCode
+    _ <- waitForDiagnostics
+    actionsOrCommands <- getCodeActions doc (Range (Position 9 0) (Position 9 maxBound))
+    let chosenAction = pickActionWithTitle actionTitle actionsOrCommands
+    executeCodeAction chosenAction
+    modifiedCode <- documentContents doc
+    liftIO $ expectedCode @=? modifiedCode
+
+  pickActionWithTitle title actions = head
+    [ action
+    | CACodeAction action@CodeAction{ _title = actionTitle } <- actions
+    , title == actionTitle ]
+
+  in
+  testGroup "fill typed holes"
+  [ check "replace hole `_` with show"
+          "_"    "n" "n"
+          "show" "n" "n"
+
+  , check "replace hole `_` with globalConvert"
+          "_"             "n" "n"
+          "globalConvert" "n" "n"
+
+  , check "replace hole `_convertme` with localConvert"
+          "_convertme"   "n" "n"
+          "localConvert" "n" "n"
+
+  , check "replace hole `_b` with globalInt"
+          "_a" "_b"        "_c"
+          "_a" "globalInt" "_c"
+
+  , check "replace hole `_c` with globalInt"
+          "_a" "_b"        "_c"
+          "_a" "_b" "globalInt"
+
+  , check "replace hole `_c` with n"
+          "_a" "_b" "_c"
+          "_a" "_b"  "n"
+  ]
 
 ----------------------------------------------------------------------
 -- Utils
