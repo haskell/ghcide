@@ -85,6 +85,18 @@ diagnosticTests = testGroup "diagnostics"
           , [(DsError, (2, 14), "Couldn't match type '[Char]' with 'Int'")]
           )
         ]
+  , testSession "typed hole" $ do
+      let content = T.unlines
+            [ "module Testing where"
+            , "foo :: Int -> String"
+            , "foo a = _ a"
+            ]
+      _ <- openDoc' "Testing.hs" "haskell" content
+      expectDiagnostics
+        [ ( "Testing.hs"
+          , [(DsError, (2, 8), "Found hole: _ :: Int -> String")]
+          )
+        ]
   , testSession "remove required module" $ do
       let contentA = T.unlines [ "module ModuleA where" ]
       docA <- openDoc' "ModuleA.hs" "haskell" contentA
