@@ -68,8 +68,8 @@ diagnosticTests = testGroup "diagnostics"
       _ <- openDoc' "Testing.hs" "haskell" content
       expectDiagnostics
         [ ( "Testing.hs"
-          , [ (DsError, (2, 14), "Variable not in scope: ab")
-            , (DsError, (4, 10), "Variable not in scope: cd")
+          , [ (DsWarning, (2, 14), "Variable not in scope: ab")
+            , (DsWarning, (4, 10), "Variable not in scope: cd")
             ]
           )
         ]
