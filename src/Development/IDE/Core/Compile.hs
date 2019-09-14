@@ -94,7 +94,7 @@ typecheckModule packageState deps pm =
             (warnings, tcm) <- withWarnings "typecheck" $ \tweak ->
                 GHC.typecheckModule $ demoteTypeErrorsToWarnings pm{pm_mod_summary = tweak $ pm_mod_summary pm}
             tcm2 <- mkTcModuleResult tcm
-            return (map unDeferTypeErrors warnings, tcm2)
+            return (map unDefer warnings, tcm2)
 
 -- | Compile a single type-checked module to a 'CoreModule' value, or
 -- provide errors.
@@ -143,12 +143,13 @@ demoteTypeErrorsToWarnings =
   update_pm_mod_summary up pm =
     pm{pm_mod_summary = up $ pm_mod_summary pm}
 
-unDeferTypeErrors :: (WarnReason, FileDiagnostic) -> FileDiagnostic
-unDeferTypeErrors (Reason Opt_WarnDeferredTypeErrors, fd) = upgradeWarningToError fd
-  where
-    upgradeWarningToError :: FileDiagnostic -> FileDiagnostic
-    upgradeWarningToError (nfp, fd) = (nfp, fd{_severity = Just DsError})
-unDeferTypeErrors (                                _, fd) = fd
+unDefer :: (WarnReason, FileDiagnostic) -> FileDiagnostic
+unDefer (Reason Opt_WarnDeferredTypeErrors, fd) = upgradeWarningToError fd
+unDefer (Reason Opt_WarnTypedHoles        , fd) = upgradeWarningToError fd
+unDefer (                                _, fd) = fd
+
+upgradeWarningToError :: FileDiagnostic -> FileDiagnostic
+upgradeWarningToError (nfp, fd) = (nfp, fd{_severity = Just DsError})
 
 addRelativeImport :: ParsedModule -> DynFlags -> DynFlags
 addRelativeImport modu dflags = dflags
