@@ -133,8 +133,7 @@ demoteTypeErrorsToWarnings =
   (update_pm_mod_summary . update_hspp_opts) demoteTEsToWarns where
 
   demoteTEsToWarns :: DynFlags -> DynFlags
-  demoteTEsToWarns = (`wopt_set` Opt_WarnDeferredTypeErrors)
-                   . (`gopt_set` Opt_DeferTypeErrors)
+  demoteTEsToWarns = (`gopt_set` Opt_DeferTypeErrors)
 
   update_hspp_opts :: (DynFlags -> DynFlags) -> ModSummary -> ModSummary
   update_hspp_opts up ms = ms{ms_hspp_opts = up $ ms_hspp_opts ms}
