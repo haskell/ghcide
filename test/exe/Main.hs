@@ -15,6 +15,8 @@ import Language.Haskell.LSP.Types
 import Language.Haskell.LSP.Types.Capabilities
 import System.Environment.Blank (setEnv)
 import System.IO.Extra
+import System.Info
+import Data.Version
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -493,7 +495,7 @@ fillTypedHoleTests = let
     , title == actionTitle ]
 
   in
-  testGroup "fill typed holes"
+  testGroup "fill typed holes" $
   [ check "replace hole `_` with show"
           "_"    "n" "n"
           "show" "n" "n"
@@ -502,10 +504,6 @@ fillTypedHoleTests = let
           "_"             "n" "n"
           "globalConvert" "n" "n"
 
-  , check "replace hole `_convertme` with localConvert"
-          "_convertme"   "n" "n"
-          "localConvert" "n" "n"
-
   , check "replace hole `_b` with globalInt"
           "_a" "_b"        "_c"
           "_a" "globalInt" "_c"
@@ -513,10 +511,14 @@ fillTypedHoleTests = let
   , check "replace hole `_c` with globalInt"
           "_a" "_b"        "_c"
           "_a" "_b" "globalInt"
+  ] <> if versionBranch compilerVersion < [8,6] then [] else
+  [ check "replace hole `_convertme` with localConvert"
+          "_convertme"   "n" "n"
+          "localConvert" "n" "n"
 
-  , check "replace hole `_c` with n"
+  , check "replace hole `_c` with parameterInt"
           "_a" "_b" "_c"
-          "_a" "_b"  "n"
+          "_a" "_b"  "parameterInt"
   ]
 
 ----------------------------------------------------------------------

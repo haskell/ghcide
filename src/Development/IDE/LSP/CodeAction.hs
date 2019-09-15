@@ -22,6 +22,8 @@ import Data.Char
 import Data.Maybe
 import Data.List.Extra
 import qualified Data.Text as T
+import Data.Version
+import System.Info
 
 -- | Generate code actions.
 codeAction
@@ -129,17 +131,21 @@ suggestAction contents Diagnostic{_range=_range@Range{..},..}
 --         (imported from ‘Prelude’ at ...Development/IDE/LSP/CodeAction.hs:7:8-37
 --          (and originally defined in ‘GHC.Base’)) (lsp-ui)
 
-    | "Valid hole fits include" `T.isInfixOf` _message = let
+    | topOfHoleFitsMarker `T.isInfixOf` _message = let
       findSuggestedHoleFits :: T.Text -> [T.Text]
       findSuggestedHoleFits = extractFitNames . selectLinesWithFits . dropPreceding . T.lines
       proposeHoleFit name = ("replace hole `" <> holeName <>  "` with " <> name, [TextEdit _range name])
       holeName = T.strip $ last $ T.splitOn ":" $ head . T.splitOn "::" $ head $ filter ("Found hole" `T.isInfixOf`) $ T.lines _message
-      dropPreceding       = dropWhile (not . ("Valid hole fits include" `T.isInfixOf`))
+      dropPreceding       = dropWhile (not . (topOfHoleFitsMarker `T.isInfixOf`))
       selectLinesWithFits = filter ("::" `T.isInfixOf`)
       extractFitNames     = map (T.strip . head . T.splitOn " :: ")
       in map proposeHoleFit $ nubOrd $ findSuggestedHoleFits _message
 
 suggestAction _ _ = []
+
+topOfHoleFitsMarker = if versionBranch compilerVersion >= [8,6]
+                      then "Valid hole fits include"
+                      else "Valid substitutions include"
 
 mkRenameEdit :: Maybe T.Text -> Range -> T.Text -> TextEdit
 mkRenameEdit contents range name =
