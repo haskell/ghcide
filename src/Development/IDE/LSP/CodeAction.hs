@@ -2,6 +2,8 @@
 -- SPDX-License-Identifier: Apache-2.0
 
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE CPP #-}
+#include "ghc-api-version.h"
 
 -- | Go to the definition of a variable.
 module Development.IDE.LSP.CodeAction
@@ -22,8 +24,6 @@ import Data.Char
 import Data.Maybe
 import Data.List.Extra
 import qualified Data.Text as T
-import Data.Version
-import System.Info
 
 -- | Generate code actions.
 codeAction
@@ -143,9 +143,12 @@ suggestAction contents Diagnostic{_range=_range@Range{..},..}
 
 suggestAction _ _ = []
 
-topOfHoleFitsMarker = if versionBranch compilerVersion >= [8,6]
-                      then "Valid hole fits include"
-                      else "Valid substitutions include"
+topOfHoleFitsMarker =
+#if MIN_GHC_API_VERSION(8,6,0)
+  "Valid hole fits include"
+#else
+  "Valid substitutions include"
+#endif
 
 mkRenameEdit :: Maybe T.Text -> Range -> T.Text -> TextEdit
 mkRenameEdit contents range name =
