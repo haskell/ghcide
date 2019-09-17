@@ -45,7 +45,11 @@ data IdeOptions = IdeOptions
   , optNewColonConvention :: Bool
     -- ^ whether to use new colon convention
   , optDefer :: Bool
-    -- ^ whether to defer type errors, typed holes and out of scope variables.
+    -- ^ Whether to defer type errors, typed holes and out of scope
+    --   variables. Deferral allows the IDE to continue to provide
+    --   features such as diagnostics and go-to-definition, in
+    --   situations in which they would become unavailable because of
+    --   the presence of type errors, holes or unbound variables.
   }
 
 newtype IdeReportProgress = IdeReportProgress Bool
