@@ -216,7 +216,7 @@ type IdeRule k v =
 --   mappings from @(FilePath, k)@ to @RuleResult k@.
 data IdeState = IdeState
     {shakeDb :: ShakeDatabase
-    ,shakeAbort :: Var (IO ()) -- close whoever was running last
+    ,shakeAbort :: MVar (IO ()) -- close whoever was running last
     ,shakeClose :: IO ()
     ,shakeExtras :: ShakeExtras
     ,shakeProfileDir :: Maybe FilePath
@@ -298,7 +298,7 @@ shakeOpen eventer logger shakeProfileDir (IdeReportProgress reportProgress) opts
                 , shakeProgress = if reportProgress then lspShakeProgress eventer else const (pure ())
                 }
             rules
-    shakeAbort <- newVar $ return ()
+    shakeAbort <- newMVar $ return ()
     shakeDb <- shakeDb
     return IdeState{..}
 
@@ -336,7 +336,7 @@ shakeProfile :: IdeState -> FilePath -> IO ()
 shakeProfile IdeState{..} = shakeProfileDatabase shakeDb
 
 shakeShut :: IdeState -> IO ()
-shakeShut IdeState{..} = withVar shakeAbort $ \stop -> do
+shakeShut IdeState{..} = withMVar shakeAbort $ \stop -> do
     -- Shake gets unhappy if you try to close when there is a running
     -- request so we first abort that.
     stop
@@ -344,13 +344,18 @@ shakeShut IdeState{..} = withVar shakeAbort $ \stop -> do
 
 -- | Spawn immediately. If you are already inside a call to shakeRun that will be aborted with an exception.
 shakeRun :: IdeState -> [Action a] -> IO (IO [a])
--- FIXME: If there is already a shakeRun queued up and waiting to send me a kill, I should probably
---        not even start, which would make issues with async exceptions less problematic.
-shakeRun IdeState{shakeExtras=ShakeExtras{..}, ..} acts = modifyVar shakeAbort $ \stop -> do
-    (stopTime,_) <- duration stop
-    logDebug logger $ T.pack $ "Starting shakeRun (aborting the previous one took " ++ showDuration stopTime ++ ")"
-    bar <- newBarrier
-    start <- offsetTime
+shakeRun IdeState{shakeExtras=ShakeExtras{..}, ..} acts = mask $ \restore -> do
+    stop <- takeMVar shakeAbort
+    (start, bar) <- restore
+        (do (stopTime,_) <- duration stop
+            logDebug logger $ T.pack $ "Starting shakeRun (aborting the previous one took " ++ showDuration stopTime ++ ")"
+            bar <- newBarrier
+            start <- offsetTime
+            pure (start, bar))
+        `onException` putMVar shakeAbort stop
+    -- It is crucial to be masked here, otherwise we can get killed
+    -- between spawning the new thread and updating shakeAbort.
+    -- See https://github.com/digital-asset/ghcide/issues/79
     thread <- forkFinally (shakeRunDatabaseProfile shakeProfileDir shakeDb acts) $ \res -> do
         runTime <- start
         let res' = case res of
@@ -360,7 +365,8 @@ shakeRun IdeState{shakeExtras=ShakeExtras{..}, ..} acts = modifyVar shakeAbort $
             "Finishing shakeRun (took " ++ showDuration runTime ++ ", " ++ res' ++ ")"
         signalBarrier bar res
     -- important: we send an async exception to the thread, then wait for it to die, before continuing
-    return (do killThread thread; void $ waitBarrier bar, either throwIO return =<< waitBarrier bar)
+    putMVar shakeAbort (killThread thread >> void (waitBarrier bar))
+    pure $ either throwIO return =<< waitBarrier bar
 
 getDiagnostics :: IdeState -> IO [FileDiagnostic]
 getDiagnostics IdeState{shakeExtras = ShakeExtras{diagnostics}} = do
