@@ -7,6 +7,7 @@
 module Development.IDE.Types.Options
   ( IdeOptions(..)
   , IdeReportProgress(..)
+  , IdeDefer(..)
   , clientSupportsProgress
   , IdePkgLocationOptions(..)
   , defaultIdeOptions
@@ -44,7 +45,7 @@ data IdeOptions = IdeOptions
     -- ^ the ```language to use
   , optNewColonConvention :: Bool
     -- ^ whether to use new colon convention
-  , optDefer :: Bool
+  , optDefer :: IdeDefer
     -- ^ Whether to defer type errors, typed holes and out of scope
     --   variables. Deferral allows the IDE to continue to provide
     --   features such as diagnostics and go-to-definition, in
@@ -53,6 +54,7 @@ data IdeOptions = IdeOptions
   }
 
 newtype IdeReportProgress = IdeReportProgress Bool
+newtype IdeDefer          = IdeDefer          Bool
 
 clientSupportsProgress :: LSP.ClientCapabilities -> IdeReportProgress
 clientSupportsProgress caps = IdeReportProgress $ fromMaybe False $
@@ -69,7 +71,7 @@ defaultIdeOptions session = IdeOptions
     ,optReportProgress = IdeReportProgress False
     ,optLanguageSyntax = "haskell"
     ,optNewColonConvention = False
-    ,optDefer = True
+    ,optDefer = IdeDefer True
     }
 
 

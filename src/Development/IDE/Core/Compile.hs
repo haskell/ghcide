@@ -82,12 +82,12 @@ computePackageDeps env pkg = do
 
 -- | Typecheck a single module using the supplied dependencies and packages.
 typecheckModule
-    :: Bool
+    :: IdeDefer
     -> HscEnv
     -> [TcModuleResult]
     -> ParsedModule
     -> IO ([FileDiagnostic], Maybe TcModuleResult)
-typecheckModule defer packageState deps pm =
+typecheckModule (IdeDefer defer) packageState deps pm =
     let demoteIfDefer = if defer then demoteTypeErrorsToWarnings else id
     in
     fmap (either (, Nothing) (second Just)) $
