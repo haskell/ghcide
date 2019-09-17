@@ -44,6 +44,8 @@ data IdeOptions = IdeOptions
     -- ^ the ```language to use
   , optNewColonConvention :: Bool
     -- ^ whether to use new colon convention
+  , optDefer :: Bool
+    -- ^ whether to defer type errors, typed holes and out of scope variables.
   }
 
 newtype IdeReportProgress = IdeReportProgress Bool
@@ -63,6 +65,7 @@ defaultIdeOptions session = IdeOptions
     ,optReportProgress = IdeReportProgress False
     ,optLanguageSyntax = "haskell"
     ,optNewColonConvention = False
+    ,optDefer = True
     }
 
 
