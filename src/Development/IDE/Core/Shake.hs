@@ -342,31 +342,41 @@ shakeShut IdeState{..} = withMVar shakeAbort $ \stop -> do
     stop
     shakeClose
 
+-- | This is a variant of withMVar where the first argument is run unmasked and if it throws
+-- an exception, the previous value is restored while the second argument is executed masked.
+withMVar' :: MVar a -> (a -> IO b) -> (b -> IO (a, c)) -> IO c
+withMVar' var unmasked masked = mask $ \restore -> do
+    a <- takeMVar var
+    b <- restore (unmasked a) `onException` putMVar var a
+    (a', c) <- masked b
+    putMVar var a'
+    pure c
+
 -- | Spawn immediately. If you are already inside a call to shakeRun that will be aborted with an exception.
 shakeRun :: IdeState -> [Action a] -> IO (IO [a])
-shakeRun IdeState{shakeExtras=ShakeExtras{..}, ..} acts = mask $ \restore -> do
-    stop <- takeMVar shakeAbort
-    (start, bar) <- restore
-        (do (stopTime,_) <- duration stop
-            logDebug logger $ T.pack $ "Starting shakeRun (aborting the previous one took " ++ showDuration stopTime ++ ")"
-            bar <- newBarrier
-            start <- offsetTime
-            pure (start, bar))
-        `onException` putMVar shakeAbort stop
-    -- It is crucial to be masked here, otherwise we can get killed
-    -- between spawning the new thread and updating shakeAbort.
-    -- See https://github.com/digital-asset/ghcide/issues/79
-    thread <- forkFinally (shakeRunDatabaseProfile shakeProfileDir shakeDb acts) $ \res -> do
-        runTime <- start
-        let res' = case res of
-                Left e -> "exception: " <> displayException e
-                Right _ -> "completed"
-        logDebug logger $ T.pack $
-            "Finishing shakeRun (took " ++ showDuration runTime ++ ", " ++ res' ++ ")"
-        signalBarrier bar res
-    -- important: we send an async exception to the thread, then wait for it to die, before continuing
-    putMVar shakeAbort (killThread thread >> void (waitBarrier bar))
-    pure $ either throwIO return =<< waitBarrier bar
+shakeRun IdeState{shakeExtras=ShakeExtras{..}, ..} acts =
+    withMVar'
+        shakeAbort
+        (\stop -> do
+              (stopTime,_) <- duration stop
+              logDebug logger $ T.pack $ "Starting shakeRun (aborting the previous one took " ++ showDuration stopTime ++ ")"
+              bar <- newBarrier
+              start <- offsetTime
+              pure (start, bar))
+        -- It is crucial to be masked here, otherwise we can get killed
+        -- between spawning the new thread and updating shakeAbort.
+        -- See https://github.com/digital-asset/ghcide/issues/79
+        (\(start, bar) -> do
+              thread <- forkFinally (shakeRunDatabaseProfile shakeProfileDir shakeDb acts) $ \res -> do
+                  runTime <- start
+                  let res' = case res of
+                          Left e -> "exception: " <> displayException e
+                          Right _ -> "completed"
+                  logDebug logger $ T.pack $
+                      "Finishing shakeRun (took " ++ showDuration runTime ++ ", " ++ res' ++ ")"
+                  signalBarrier bar res
+              -- important: we send an async exception to the thread, then wait for it to die, before continuing
+              pure (killThread thread >> void (waitBarrier bar), either throwIO return =<< waitBarrier bar))
 
 getDiagnostics :: IdeState -> IO [FileDiagnostic]
 getDiagnostics IdeState{shakeExtras = ShakeExtras{diagnostics}} = do
