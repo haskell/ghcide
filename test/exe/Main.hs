@@ -564,7 +564,7 @@ addSigActionTests = let
   before def     = T.unlines [head,      def]
   after  def sig = T.unlines [head, sig, def]
 
-  test def sig = testSession (T.unpack def) $ do
+  def >:: sig = testSession (T.unpack def) $ do
     let originalCode = before def
     let expectedCode = after  def sig
     doc <- openDoc' "Sigs.hs" "haskell" originalCode
@@ -576,12 +576,12 @@ addSigActionTests = let
     liftIO $ expectedCode @=? modifiedCode
   in
   testGroup "add signature"
-  [ test "abc = True"             "abc :: Bool"
-  , test "foo a b = a + b"        "foo :: Num a => a -> a -> a"
-  , test "bar a b = show $ a + b" "bar :: (Show a, Num a) => a -> a -> String"
-  , test "(!!!) a b = a > b"      "(!!!) :: Ord a => a -> a -> Bool"
-  , test "a >>>> b = a + b"       "(>>>>) :: Num a => a -> a -> a"
-  , test "a `haha` b = a b"       "haha :: (t1 -> t2) -> t1 -> t2"
+  [ "abc = True"             >:: "abc :: Bool"
+  , "foo a b = a + b"        >:: "foo :: Num a => a -> a -> a"
+  , "bar a b = show $ a + b" >:: "bar :: (Show a, Num a) => a -> a -> String"
+  , "(!!!) a b = a > b"      >:: "(!!!) :: Ord a => a -> a -> Bool"
+  , "a >>>> b = a + b"       >:: "(>>>>) :: Num a => a -> a -> a"
+  , "a `haha` b = a b"       >:: "haha :: (t1 -> t2) -> t1 -> t2"
   ]
 
 ----------------------------------------------------------------------
