@@ -35,6 +35,7 @@ import Development.IDE.LSP.LanguageServer
 import System.Directory.Extra as IO
 import System.Environment
 import System.IO
+import System.Exit
 import Development.Shake hiding (Env)
 import qualified Data.Set as Set
 
@@ -47,12 +48,17 @@ import HIE.Bios
 getLibdir :: IO FilePath
 getLibdir = fromMaybe GHC.Paths.libdir <$> lookupEnv "NIX_GHC_LIBDIR"
 
+ghcideVersion :: String
+ghcideVersion = "ghcide version: ??? (GHC: " <> showVersion compilerVersion <> ")"
+
 main :: IO ()
 main = do
     -- WARNING: If you write to stdout before runLanguageServer
     --          then the language server will not work
-    hPutStrLn stderr $ "Starting ghcide (GHC v" ++ showVersion compilerVersion ++ ")"
     Arguments{..} <- getArguments
+
+    if argsVersion then putStrLn ghcideVersion >> exitSuccess
+    else hPutStrLn stderr {- see WARNING above -} ghcideVersion
 
     -- lock to avoid overlapping output on stdout
     lock <- newLock
