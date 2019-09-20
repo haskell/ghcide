@@ -36,6 +36,7 @@ import System.Directory.Extra as IO
 import System.Environment
 import System.IO
 import System.Exit
+import Paths_ghcide
 import Development.Shake hiding (Env)
 import qualified Data.Set as Set
 
@@ -49,7 +50,8 @@ getLibdir :: IO FilePath
 getLibdir = fromMaybe GHC.Paths.libdir <$> lookupEnv "NIX_GHC_LIBDIR"
 
 ghcideVersion :: String
-ghcideVersion = "ghcide version: ??? (GHC: " <> showVersion compilerVersion <> ")"
+ghcideVersion = "ghcide version: " <> showVersion version
+             <> " (GHC: "          <> showVersion compilerVersion <> ")"
 
 main :: IO ()
 main = do
