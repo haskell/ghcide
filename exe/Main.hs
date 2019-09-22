@@ -1,6 +1,7 @@
 -- Copyright (c) 2019 The DAML Authors. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
 {-# OPTIONS_GHC -Wno-dodgy-imports #-} -- GHC no longer exports def in GHC 8.6 and above
+{-# LANGUAGE CPP #-} -- To get precise GHC version
 
 module Main(main) where
 
@@ -29,7 +30,6 @@ import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import Language.Haskell.LSP.Messages
 import Linker
-import System.Info
 import Data.Version
 import Development.IDE.LSP.LanguageServer
 import System.Directory.Extra as IO
@@ -51,7 +51,7 @@ getLibdir = fromMaybe GHC.Paths.libdir <$> lookupEnv "NIX_GHC_LIBDIR"
 
 ghcideVersion :: String
 ghcideVersion = "ghcide version: " <> showVersion version
-             <> " (GHC: "          <> showVersion compilerVersion <> ")"
+             <> " (GHC: "          <> VERSION_ghc <> ")"
 
 main :: IO ()
 main = do
