@@ -91,7 +91,7 @@ main = do
         files <- nubOrd <$> expandFiles (argFiles ++ ["." | null argFiles])
         putStrLn $ "Found " ++ show (length files) ++ " files"
 
-        putStrLn $ "\nStep 2/6: Looking for hie.yaml files that control setup"
+        putStrLn "\nStep 2/6: Looking for hie.yaml files that control setup"
         cradles <- mapM findCradle files
         let ucradles = nubOrd cradles
         let n = length ucradles
