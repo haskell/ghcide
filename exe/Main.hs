@@ -39,7 +39,7 @@ import System.Exit
 import Paths_ghcide
 import Development.Shake hiding (Env)
 import qualified Data.Set as Set
-import qualified Data.Map as Map
+import qualified Data.Map.Strict as Map
 
 import GHC hiding (def)
 import qualified GHC.Paths
