@@ -167,9 +167,7 @@ loadSession dir = do
         res <- findCradle v
         -- Sometimes we get C: and sometimes we get c:, try and normalise that
         -- e.g. see https://github.com/digital-asset/ghcide/issues/126
-        case res of
-            Nothing -> return Nothing
-            Just res -> Just <$> canonicalizePath res
+        return $ normalise <$> res
     session <- memoIO $ \file -> do
         c <- maybe (loadImplicitCradle $ addTrailingPathSeparator dir) loadCradle file
         cradleToSession c
@@ -186,7 +184,7 @@ loadSession dir = do
 memoIO :: Ord a => (a -> IO b) -> IO (a -> IO b)
 memoIO op = do
     ref <- newVar Map.empty
-    return $ \k -> join $ uninterruptibleMask_ $ modifyVar ref $ \mp ->
+    return $ \k -> join $ mask_ $ modifyVar ref $ \mp ->
         case Map.lookup k mp of
             Nothing -> do
                 res <- onceFork $ op k
