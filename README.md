@@ -69,7 +69,12 @@ Once you have got `ghcide` working outside the editor, the next step is to pick 
 
 ### Using with VS Code
 
-Install the VS code extension (see https://code.visualstudio.com/docs/setup/mac for details on adding `code` to your `$PATH`):
+You can install it from the [VSCode
+marketplace](https://marketplace.visualstudio.com/items?itemName=DigitalAssetHoldingsLLC.ghcide).
+
+Alternatively, you can also build it in from this repository (see
+https://code.visualstudio.com/docs/setup/mac for details on adding
+`code` to your `$PATH`):
 
 1. `cd extension/`
 2. `npm ci`
