@@ -586,24 +586,36 @@ addSigActionTests = let
   , "a `haha` b = a b"       >:: "haha :: (t1 -> t2) -> t1 -> t2"
   ]
 
-
 findDefinitionTests :: TestTree
 findDefinitionTests = let
 
   dfound n = "definitions found: " <> show n
 
-  yyy getDefs pos targetRange title = testSession title $ do
+  tst (get, check) pos targetRange title = testSession title $ do
     doc <- openDoc' "Testing.hs" "haskell" source
-    defs <- getDefs doc pos
+    found <- get doc pos
+    check found targetRange
+
+  checkDefs defs expected = do
     let ndef = length defs
     if ndef /= 1
       then liftIO $ dfound 1 @=? dfound (length defs)
       else do
            let [Location{_range = foundRange}] = defs
-           liftIO $ targetRange @=? foundRange
+           liftIO $ expected @=? foundRange
 
-  source = T.unlines sourceLines
-  sourceLines =
+  checkHover hover expected = do
+    case hover of
+      Nothing -> liftIO $ "hover found" @=? "no hover found"
+      Just Hover{_contents = (HoverContents MarkupContent{_value = v})} ->
+        liftIO $ adjust expected @=? Position l c where
+          found = T.splitOn ":" $ head $ T.splitOn "**" $ last $ T.splitOn "Testing.hs:" v
+          [l,c] =  map (read . T.unpack) $ found
+          -- looks like hovers use 1-based numbering while definitions use 0-based
+          adjust Range{_start = Position{_line = l, _character = c}} =
+            Position{_line = l + 1, _character = c + 1}
+
+  source = T.unlines
     -- 0123456789 123456789 123456789 123456789
     [ "{-# OPTIONS_GHC -Wmissing-signatures #-}" --  0
     , "module Testing where"                     --  1
@@ -620,8 +632,9 @@ findDefinitionTests = let
     , "bbb = DataConstructor \"\" 0"             -- 11
     , "ccc :: (String, Int)"                     -- 12
     , "ccc = (fff bbb, ggg aaa)"                 -- 13
-    , "ddd :: (a -> b) -> a -> b"                -- 14
-    , "ddd vv ww = vv ww"                        -- 15
+    , "ddd :: Num a => a -> a -> a"              -- 14
+    , "ddd vv ww = vv +! ww"                     -- 15
+    , "a +! b = a - b"
     -- 0123456789 123456789 123456789 123456789
     ]
 
@@ -630,6 +643,7 @@ findDefinitionTests = let
   fff    = mkRange   3  4    3  7
   aaa    = mkRange   6  0    6  3
   vv     = mkRange  15  4   15  6
+  op     = mkRange  16  2   16  4
 
   fffL3  = _start fff
   fffL7  = Position  7  4
@@ -639,20 +653,36 @@ findDefinitionTests = let
   dcL11  = Position 11 11
   tcL5   = Position  5 11
   vvL15  = Position 15 12
+  opL15  = Position 15 15
 
-  td = getTypeDefinitions
-  d  = getDefinitions
+  t = undefined -- getTypeDefinitions always times out
+  d = (getDefinitions, checkDefs)
+  h = (getHover, checkHover)
   in
-  testGroup "find definition" --  $ [scan] ++
-    [ yyy  d fffL3  fff    "field in record definition"
-    ,(yyy  d fffL7  fff    "field in record construction") `xfail` "not implemented yet"
-    , yyy  d fffL13 fff    "field name used as accessor"   -- 120
-    , yyy  d aaaL13 aaa    "top-level name"                -- 120
-    ,(yyy  d dcL6   tcDC   "record data constructor")      `xfail` "not implemented yet"
-    , yyy  d dcL11  tcDC   "plain  data constructor"       -- 121
-    , yyy  d tcL5   tcData "type constructor"              -- 147
-    , yyy  d vvL15  vv     "plain parameter"
+  testGroup "get"
+  [ testGroup "definition"
+    [ tst d fffL3  fff    "field in record definition"
+    ,(tst d fffL7  fff    "field in record construction") `xfail` "known broken"
+    , tst d fffL13 fff    "field name used as accessor"   -- 120
+    , tst d aaaL13 aaa    "top-level name"                -- 120
+    ,(tst d dcL6   tcDC   "record data constructor")      `xfail` "known broken"
+    , tst d dcL11  tcDC   "plain  data constructor"       -- 121
+    , tst d tcL5   tcData "type constructor"              -- 147
+    , tst d vvL15  vv     "plain parameter"
+    , tst d opL15  op     "top-level operator"
     ]
+  , testGroup "hover"
+    [ tst h fffL3  fff    "field in record definition"
+    ,(tst h fffL7  fff    "field in record construction") `xfail` "known broken"
+    , tst h fffL13 fff    "field name used as accessor"   -- 120
+    , tst h aaaL13 aaa    "top-level name"                -- 120
+    ,(tst h dcL6   tcDC   "record data constructor")      `xfail` "known broken"
+    , tst h dcL11  tcDC   "plain  data constructor"       -- 121
+    ,(tst h tcL5   tcData "type constructor")             `xfail` "known broken"
+    , tst h vvL15  vv     "plain parameter"
+    , tst h opL15  op     "top-level operator"
+    ]
+  ]
 
 xfail = flip expectFailBecause
 
