@@ -19,6 +19,7 @@ import System.Environment.Blank (setEnv)
 import System.IO.Extra
 import Test.Tasty
 import Test.Tasty.HUnit
+import Test.Tasty.ExpectedFailure
 
 
 main :: IO ()
@@ -30,8 +31,8 @@ main = defaultMain $ testGroup "HIE"
       void (message :: Session ProgressDoneNotification)
   , diagnosticTests
   , codeActionTests
+  , findDefinitionTests
   ]
-
 
 diagnosticTests :: TestTree
 diagnosticTests = testGroup "diagnostics"
@@ -585,6 +586,76 @@ addSigActionTests = let
   , "a `haha` b = a b"       >:: "haha :: (t1 -> t2) -> t1 -> t2"
   ]
 
+
+findDefinitionTests :: TestTree
+findDefinitionTests = let
+
+  dfound n = "definitions found: " <> show n
+
+  yyy getDefs pos targetRange title = testSession title $ do
+    doc <- openDoc' "Testing.hs" "haskell" source
+    defs <- getDefs doc pos
+    let ndef = length defs
+    if ndef /= 1
+      then liftIO $ dfound 1 @=? dfound (length defs)
+      else do
+           let [Location{_range = foundRange}] = defs
+           liftIO $ targetRange @=? foundRange
+
+  source = T.unlines sourceLines
+  sourceLines =
+    -- 0123456789 123456789 123456789 123456789
+    [ "{-# OPTIONS_GHC -Wmissing-signatures #-}" --  0
+    , "module Testing where"                     --  1
+    , "data TypeConstructor = DataConstructor"   --  2
+    , "  { fff :: String"                        --  3
+    , "  , ggg :: Int }"                         --  4
+    , "aaa :: TypeConstructor"                   --  5
+    , "aaa = DataConstructor"                    --  6
+    , "  { fff = \"\""                           --  7
+    , "  , ggg = 0"                              --  8
+    , "  }"                                      --  9
+    -- 0123456789 123456789 123456789 123456789
+    , "bbb :: TypeConstructor"                   -- 10
+    , "bbb = DataConstructor \"\" 0"             -- 11
+    , "ccc :: (String, Int)"                     -- 12
+    , "ccc = (fff bbb, ggg aaa)"                 -- 13
+    , "ddd :: (a -> b) -> a -> b"                -- 14
+    , "ddd vv ww = vv ww"                        -- 15
+    -- 0123456789 123456789 123456789 123456789
+    ]
+
+  tcData = mkRange   2  0    4 16
+  tcDC   = mkRange   2 23    4 16
+  fff    = mkRange   3  4    3  7
+  aaa    = mkRange   6  0    6  3
+  vv     = mkRange  15  4   15  6
+
+  fffL3  = _start fff
+  fffL7  = Position  7  4
+  fffL13 = Position 13  7
+  aaaL13 = Position 13 20
+  dcL6   = Position  6 11
+  dcL11  = Position 11 11
+  tcL5   = Position  5 11
+  vvL15  = Position 15 12
+
+  td = getTypeDefinitions
+  d  = getDefinitions
+  in
+  testGroup "find definition" --  $ [scan] ++
+    [ yyy  d fffL3  fff    "field in record definition"
+    ,(yyy  d fffL7  fff    "field in record construction") `xfail` "not implemented yet"
+    , yyy  d fffL13 fff    "field name used as accessor"   -- 120
+    , yyy  d aaaL13 aaa    "top-level name"                -- 120
+    ,(yyy  d dcL6   tcDC   "record data constructor")      `xfail` "not implemented yet"
+    , yyy  d dcL11  tcDC   "plain  data constructor"       -- 121
+    , yyy  d tcL5   tcData "type constructor"              -- 147
+    , yyy  d vvL15  vv     "plain parameter"
+    ]
+
+xfail = flip expectFailBecause
+
 ----------------------------------------------------------------------
 -- Utils
 
@@ -605,6 +676,9 @@ pickActionWithTitle title actions = head
   [ action
   | CACodeAction action@CodeAction{ _title = actionTitle } <- actions
   , title == actionTitle ]
+
+mkRange :: Int -> Int -> Int -> Int -> Range
+mkRange a b c d = Range (Position a b) (Position c d)
 
 run :: Session a -> IO a
 run s = withTempDir $ \dir -> do
