@@ -42,7 +42,6 @@ library
         hashable,
         haskell-lsp-types,
         haskell-lsp >= 0.15,
-        mtl,
         network-uri,
         prettyprinter-ansi-terminal,
         prettyprinter-ansi-terminal,
