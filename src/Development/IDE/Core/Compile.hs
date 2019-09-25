@@ -41,6 +41,7 @@ import           StringBuffer                   as SB
 import           TidyPgm
 
 import Control.Monad.Extra
+import Control.Monad.Except
 import Control.Monad.Trans.Except
 import           Data.Function
 import           Data.Ord
@@ -249,7 +250,7 @@ getModSummaryFromBuffer
     -> GHC.ParsedSource
     -> ExceptT [FileDiagnostic] m ModSummary
 getModSummaryFromBuffer fp contents dflags parsed = do
-  (modName, imports) <- except $ getImportsParsed dflags parsed
+  (modName, imports) <- liftEither $ getImportsParsed dflags parsed
 
   let modLoc = ModLocation
           { ml_hs_file  = Just fp
