@@ -113,10 +113,10 @@ diagnosticTests = testGroup "diagnostics"
         expectedDs aMessage =
           [ ("A.hs", [(DsError, (2,4), aMessage)])
           , ("B.hs", [(DsError, (3,4), bMessage)])]
-        deferralTest title binding message = testSession title $ do
+        deferralTest title binding msg = testSession title $ do
           _ <- openDoc' "A.hs" "haskell" $ sourceA binding
           _ <- openDoc' "B.hs" "haskell"   sourceB
-          expectDiagnostics $ expectedDs message
+          expectDiagnostics $ expectedDs msg
     in
     [ deferralTest "type error"          "True"    "Couldn't match expected type"
     , deferralTest "typed hole"          "_"       "Found hole"
@@ -561,14 +561,14 @@ fillTypedHoleTests = let
 
 addSigActionTests :: TestTree
 addSigActionTests = let
-  head = T.unlines [ "{-# OPTIONS_GHC -Wmissing-signatures #-}"
+  header = T.unlines [ "{-# OPTIONS_GHC -Wmissing-signatures #-}"
                      , "module Sigs where"]
-  before def     = T.unlines [head,      def]
-  after  def sig = T.unlines [head, sig, def]
+  before  def     = T.unlines [header,      def]
+  after'  def sig = T.unlines [header, sig, def]
 
   def >:: sig = testSession (T.unpack def) $ do
     let originalCode = before def
-    let expectedCode = after  def sig
+    let expectedCode = after'  def sig
     doc <- openDoc' "Sigs.hs" "haskell" originalCode
     _ <- waitForDiagnostics
     actionsOrCommands <- getCodeActions doc (Range (Position 3 1) (Position 3 maxBound))
@@ -589,17 +589,17 @@ addSigActionTests = let
 findDefinitionTests :: TestTree
 findDefinitionTests = let
 
-  dfound n = "definitions found: " <> show n
-
   tst (get, check) pos targetRange title = testSession title $ do
     doc <- openDoc' "Testing.hs" "haskell" source
     found <- get doc pos
     check found targetRange
 
   checkDefs defs expected = do
+
     let ndef = length defs
     if ndef /= 1
-      then liftIO $ dfound 1 @=? dfound (length defs)
+      then let dfound n = "definitions found: " <> show n in
+           liftIO $ dfound 1 @=? dfound (length defs)
       else do
            let [Location{_range = foundRange}] = defs
            liftIO $ expected @=? foundRange
@@ -655,7 +655,7 @@ findDefinitionTests = let
   vvL15  = Position 15 12
   opL15  = Position 15 15
 
-  t = undefined -- getTypeDefinitions always times out
+  --t = (getTypeDefinitions, checkTDefs) -- getTypeDefinitions always times out
   d = (getDefinitions, checkDefs)
   h = (getHover, checkHover)
   in
@@ -663,7 +663,7 @@ findDefinitionTests = let
   [ testGroup "definition"
     [ tst d fffL3  fff    "field in record definition"
     ,(tst d fffL7  fff    "field in record construction") `xfail` "known broken"
-    , tst d fffL13 fff    "field name used as accessor"   -- 120
+    , tst d fffL13 fff    "field name used as accessor"   -- 120 in Calculate.hs
     , tst d aaaL13 aaa    "top-level name"                -- 120
     ,(tst d dcL6   tcDC   "record data constructor")      `xfail` "known broken"
     , tst d dcL11  tcDC   "plain  data constructor"       -- 121
@@ -684,6 +684,7 @@ findDefinitionTests = let
     ]
   ]
 
+xfail :: TestTree -> String -> TestTree
 xfail = flip expectFailBecause
 
 ----------------------------------------------------------------------
