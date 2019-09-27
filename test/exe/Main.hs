@@ -634,17 +634,23 @@ findDefinitionTests = let
     , "ccc = (fff bbb, ggg aaa)"                 -- 13
     , "ddd :: Num a => a -> a -> a"              -- 14
     , "ddd vv ww = vv +! ww"                     -- 15
-    , "a +! b = a - b"
+    , "a +! b = a - b"                           -- 16
+    , "hhh (Just a) (><) = a >< a"               -- 17
+    , "iii a b = a `b` a"                        -- 18
     -- 0123456789 123456789 123456789 123456789
     ]
 
+  -- definition locations
   tcData = mkRange   2  0    4 16
   tcDC   = mkRange   2 23    4 16
   fff    = mkRange   3  4    3  7
   aaa    = mkRange   6  0    6  3
   vv     = mkRange  15  4   15  6
   op     = mkRange  16  2   16  4
-
+  opp    = mkRange  17 13   17 15
+  apmp   = mkRange  17 10   17 11
+  bp     = mkRange  18  6   18  7
+  -- search locations
   fffL3  = _start fff
   fffL7  = Position  7  4
   fffL13 = Position 13  7
@@ -654,6 +660,9 @@ findDefinitionTests = let
   tcL5   = Position  5 11
   vvL15  = Position 15 12
   opL15  = Position 15 15
+  opL17  = Position 17 21
+  aL17   = Position 17 20
+  b'L18  = Position 18 13
 
   --t = (getTypeDefinitions, checkTDefs) -- getTypeDefinitions always times out
   d = (getDefinitions, checkDefs)
@@ -669,7 +678,10 @@ findDefinitionTests = let
     , tst d dcL11  tcDC   "plain  data constructor"       -- 121
     , tst d tcL5   tcData "type constructor"              -- 147
     , tst d vvL15  vv     "plain parameter"
+    , tst d aL17   apmp   "pattern match name"
     , tst d opL15  op     "top-level operator"
+    ,(tst d opL17  opp    "parameter operator")           `xfail` "known broken"
+    , tst d b'L18  bp     "name in backticks"
     ]
   , testGroup "hover"
     [ tst h fffL3  fff    "field in record definition"
@@ -680,7 +692,10 @@ findDefinitionTests = let
     , tst h dcL11  tcDC   "plain  data constructor"       -- 121
     ,(tst h tcL5   tcData "type constructor")             `xfail` "known broken"
     , tst h vvL15  vv     "plain parameter"
+    , tst h aL17   apmp   "pattern match name"
     , tst h opL15  op     "top-level operator"
+    ,(tst d opL17  opp    "parameter operator")           `xfail` "known broken"
+    , tst h b'L18  bp     "name in backticks"
     ]
   ]
 
