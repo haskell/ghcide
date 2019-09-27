@@ -610,7 +610,7 @@ findDefinitionTests = let
       Just Hover{_contents = (HoverContents MarkupContent{_value = v})} ->
         liftIO $ adjust expected @=? Position l c where
           found = T.splitOn ":" $ head $ T.splitOn "**" $ last $ T.splitOn "Testing.hs:" v
-          [l,c] =  map (read . T.unpack) $ found
+          [l,c] =  map (read . T.unpack) found
           -- looks like hovers use 1-based numbering while definitions use 0-based
           adjust Range{_start = Position{_line = l, _character = c}} =
             Position{_line = l + 1, _character = c + 1}
@@ -671,30 +671,30 @@ findDefinitionTests = let
   testGroup "get"
   [ testGroup "definition"
     [ tst d fffL3  fff    "field in record definition"
-    ,(tst d fffL7  fff    "field in record construction") `xfail` "known broken"
+    , tst d fffL7  fff    "field in record construction" `xfail` "known broken"
     , tst d fffL13 fff    "field name used as accessor"   -- 120 in Calculate.hs
     , tst d aaaL13 aaa    "top-level name"                -- 120
-    ,(tst d dcL6   tcDC   "record data constructor")      `xfail` "known broken"
+    , tst d dcL6   tcDC   "record data constructor"      `xfail` "known broken"
     , tst d dcL11  tcDC   "plain  data constructor"       -- 121
     , tst d tcL5   tcData "type constructor"              -- 147
     , tst d vvL15  vv     "plain parameter"
     , tst d aL17   apmp   "pattern match name"
     , tst d opL15  op     "top-level operator"
-    ,(tst d opL17  opp    "parameter operator")           `xfail` "known broken"
+    , tst d opL17  opp    "parameter operator"           `xfail` "known broken"
     , tst d b'L18  bp     "name in backticks"
     ]
   , testGroup "hover"
     [ tst h fffL3  fff    "field in record definition"
-    ,(tst h fffL7  fff    "field in record construction") `xfail` "known broken"
+    , tst h fffL7  fff    "field in record construction" `xfail` "known broken"
     , tst h fffL13 fff    "field name used as accessor"   -- 120
     , tst h aaaL13 aaa    "top-level name"                -- 120
-    ,(tst h dcL6   tcDC   "record data constructor")      `xfail` "known broken"
+    , tst h dcL6   tcDC   "record data constructor"      `xfail` "known broken"
     , tst h dcL11  tcDC   "plain  data constructor"       -- 121
-    ,(tst h tcL5   tcData "type constructor")             `xfail` "known broken"
+    , tst h tcL5   tcData "type constructor"             `xfail` "known broken"
     , tst h vvL15  vv     "plain parameter"
     , tst h aL17   apmp   "pattern match name"
     , tst h opL15  op     "top-level operator"
-    ,(tst d opL17  opp    "parameter operator")           `xfail` "known broken"
+    , tst d opL17  opp    "parameter operator"           `xfail` "known broken"
     , tst h b'L18  bp     "name in backticks"
     ]
   ]
