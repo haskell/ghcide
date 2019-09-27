@@ -599,14 +599,14 @@ findDefinitionTests = let
     let ndef = length defs
     if ndef /= 1
       then let dfound n = "definitions found: " <> show n in
-           liftIO $ dfound 1 @=? dfound (length defs)
+           liftIO $ dfound (1 :: Int) @=? dfound (length defs)
       else do
            let [Location{_range = foundRange}] = defs
            liftIO $ expected @=? foundRange
 
   checkHover hover expected = do
     case hover of
-      Nothing -> liftIO $ "hover found" @=? "no hover found"
+      Nothing -> liftIO $ "hover found" @=? ("no hover found" :: T.Text)
       Just Hover{_contents = (HoverContents MarkupContent{_value = v})} ->
         liftIO $ adjust expected @=? Position l c where
           found = T.splitOn ":" $ head $ T.splitOn "**" $ last $ T.splitOn "Testing.hs:" v
