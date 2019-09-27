@@ -679,7 +679,7 @@ findDefinitionTests = let
     , tst d tcL5   tcData "type constructor"              -- 147
     , tst d vvL15  vv     "plain parameter"
     , tst d aL17   apmp   "pattern match name"
-    , tst d opL15  op     "top-level operator"
+    , tst d opL15  op     "top-level operator"            -- 123
     , tst d opL17  opp    "parameter operator"           `xfail` "known broken"
     , tst d b'L18  bp     "name in backticks"
     ]
@@ -693,7 +693,7 @@ findDefinitionTests = let
     , tst h tcL5   tcData "type constructor"             `xfail` "known broken"
     , tst h vvL15  vv     "plain parameter"
     , tst h aL17   apmp   "pattern match name"
-    , tst h opL15  op     "top-level operator"
+    , tst h opL15  op     "top-level operator"           -- 123
     , tst d opL17  opp    "parameter operator"           `xfail` "known broken"
     , tst h b'L18  bp     "name in backticks"
     ]
