@@ -614,6 +614,7 @@ findDefinitionTests = let
           -- looks like hovers use 1-based numbering while definitions use 0-based
           adjust Range{_start = Position{_line = l, _character = c}} =
             Position{_line = l + 1, _character = c + 1}
+      _ -> error "test not expecting this kind of hover info"
 
   source = T.unlines
     -- 0123456789 123456789 123456789 123456789
