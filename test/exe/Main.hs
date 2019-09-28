@@ -648,7 +648,7 @@ findDefinitionTests = let
   aaa    = mkRange   6  0    6  3
   vv     = mkRange  15  4   15  6
   op     = mkRange  16  2   16  4
-  opp    = mkRange  17 13   17 15
+  opp    = mkRange  17 13   17 17
   apmp   = mkRange  17 10   17 11
   bp     = mkRange  18  6   18  7
   -- search locations
@@ -661,7 +661,7 @@ findDefinitionTests = let
   tcL5   = Position  5 11
   vvL15  = Position 15 12
   opL15  = Position 15 15
-  opL17  = Position 17 21
+  opL17  = Position 17 22
   aL17   = Position 17 20
   b'L18  = Position 18 13
 
@@ -681,7 +681,7 @@ findDefinitionTests = let
     , tst d vvL15  vv     "plain parameter"
     , tst d aL17   apmp   "pattern match name"
     , tst d opL15  op     "top-level operator"            -- 123
-    , tst d opL17  opp    "parameter operator"           `xfail` "known broken"
+    , tst d opL17  opp    "parameter operator"
     , tst d b'L18  bp     "name in backticks"
     ]
   , testGroup "hover"
@@ -695,7 +695,7 @@ findDefinitionTests = let
     , tst h vvL15  vv     "plain parameter"
     , tst h aL17   apmp   "pattern match name"
     , tst h opL15  op     "top-level operator"           -- 123
-    , tst d opL17  opp    "parameter operator"           `xfail` "known broken"
+    , tst d opL17  opp    "parameter operator"
     , tst h b'L18  bp     "name in backticks"
     ]
   ]
