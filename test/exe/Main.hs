@@ -37,7 +37,7 @@ main = defaultMain $ testGroup "HIE"
 
 diagnosticTests :: TestTree
 diagnosticTests = testGroup "diagnostics"
-  [ testSession "fix syntax error" $ do
+  [ testSessionWait "fix syntax error" $ do
       let content = T.unlines [ "module Testing wher" ]
       doc <- openDoc' "Testing.hs" "haskell" content
       expectDiagnostics [("Testing.hs", [(DsError, (0, 15), "parse error")])]
@@ -48,7 +48,7 @@ diagnosticTests = testGroup "diagnostics"
             }
       changeDoc doc [change]
       expectDiagnostics [("Testing.hs", [])]
-  , testSession "introduce syntax error" $ do
+  , testSessionWait "introduce syntax error" $ do
       let content = T.unlines [ "module Testing where" ]
       doc <- openDoc' "Testing.hs" "haskell" content
       void (message :: Session ProgressStartNotification)
@@ -59,7 +59,7 @@ diagnosticTests = testGroup "diagnostics"
             }
       changeDoc doc [change]
       expectDiagnostics [("Testing.hs", [(DsError, (0, 15), "parse error")])]
-  , testSession "variable not in scope" $ do
+  , testSessionWait "variable not in scope" $ do
       let content = T.unlines
             [ "module Testing where"
             , "foo :: Int -> Int -> Int"
@@ -75,7 +75,7 @@ diagnosticTests = testGroup "diagnostics"
             ]
           )
         ]
-  , testSession "type error" $ do
+  , testSessionWait "type error" $ do
       let content = T.unlines
             [ "module Testing where"
             , "foo :: Int -> String -> Int"
@@ -87,7 +87,7 @@ diagnosticTests = testGroup "diagnostics"
           , [(DsError, (2, 14), "Couldn't match type '[Char]' with 'Int'")]
           )
         ]
-  , testSession "typed hole" $ do
+  , testSessionWait "typed hole" $ do
       let content = T.unlines
             [ "module Testing where"
             , "foo :: Int -> String"
@@ -114,7 +114,7 @@ diagnosticTests = testGroup "diagnostics"
         expectedDs aMessage =
           [ ("A.hs", [(DsError, (2,4), aMessage)])
           , ("B.hs", [(DsError, (3,4), bMessage)])]
-        deferralTest title binding msg = testSession title $ do
+        deferralTest title binding msg = testSessionWait title $ do
           _ <- openDoc' "A.hs" "haskell" $ sourceA binding
           _ <- openDoc' "B.hs" "haskell"   sourceB
           expectDiagnostics $ expectedDs msg
@@ -125,7 +125,7 @@ diagnosticTests = testGroup "diagnostics"
     , deferralTest "message shows error" "True"    "A.hs:3:5: error:"
     ]
 
-  , testSession "remove required module" $ do
+  , testSessionWait "remove required module" $ do
       let contentA = T.unlines [ "module ModuleA where" ]
       docA <- openDoc' "ModuleA.hs" "haskell" contentA
       let contentB = T.unlines
@@ -140,7 +140,7 @@ diagnosticTests = testGroup "diagnostics"
             }
       changeDoc docA [change]
       expectDiagnostics [("ModuleB.hs", [(DsError, (1, 0), "Could not find module")])]
-  , testSession "add missing module" $ do
+  , testSessionWait "add missing module" $ do
       let contentB = T.unlines
             [ "module ModuleB where"
             , "import ModuleA"
@@ -150,7 +150,7 @@ diagnosticTests = testGroup "diagnostics"
       let contentA = T.unlines [ "module ModuleA where" ]
       _ <- openDoc' "ModuleA.hs" "haskell" contentA
       expectDiagnostics [("ModuleB.hs", [])]
-  , testSession "cyclic module dependency" $ do
+  , testSessionWait "cyclic module dependency" $ do
       let contentA = T.unlines
             [ "module ModuleA where"
             , "import ModuleB"
@@ -169,7 +169,7 @@ diagnosticTests = testGroup "diagnostics"
           , [(DsError, (1, 7), "Cyclic module dependency between ModuleA, ModuleB")]
           )
         ]
-  , testSession "cyclic module dependency with hs-boot" $ do
+  , testSessionWait "cyclic module dependency with hs-boot" $ do
       let contentA = T.unlines
             [ "module ModuleA where"
             , "import {-# SOURCE #-} ModuleB"
@@ -185,7 +185,7 @@ diagnosticTests = testGroup "diagnostics"
       _ <- openDoc' "ModuleB.hs" "haskell" contentB
       _ <- openDoc' "ModuleB.hs-boot" "haskell" contentBboot
       expectDiagnostics []
-  , testSession "correct reference used with hs-boot" $ do
+  , testSessionWait "correct reference used with hs-boot" $ do
       let contentB = T.unlines
             [ "module ModuleB where"
             , "import {-# SOURCE #-} ModuleA"
@@ -210,7 +210,7 @@ diagnosticTests = testGroup "diagnostics"
       _ <- openDoc' "ModuleA.hs-boot" "haskell" contentAboot
       _ <- openDoc' "ModuleC.hs" "haskell" contentC
       expectDiagnostics []
-  , testSession "redundant import" $ do
+  , testSessionWait "redundant import" $ do
       let contentA = T.unlines ["module ModuleA where"]
       let contentB = T.unlines
             [ "{-# OPTIONS_GHC -Wunused-imports #-}"
@@ -224,7 +224,7 @@ diagnosticTests = testGroup "diagnostics"
           , [(DsWarning, (2, 0), "The import of 'ModuleA' is redundant")]
           )
         ]
-  , testSession "package imports" $ do
+  , testSessionWait "package imports" $ do
       let thisDataListContent = T.unlines
             [ "module Data.List where"
             , "x = 123"
@@ -248,7 +248,7 @@ diagnosticTests = testGroup "diagnostics"
             ]
           )
         ]
-  , testSession "unqualified warnings" $ do
+  , testSessionWait "unqualified warnings" $ do
       let fooContent = T.unlines
             [ "{-# OPTIONS_GHC -Wredundant-constraints #-}"
             , "module Foo where"
@@ -709,8 +709,10 @@ xfail = flip expectFailBecause
 
 
 testSession :: String -> Session () -> TestTree
-testSession name =
-  testCase name . run .
+testSession name = testCase name . run
+
+testSessionWait :: String -> Session () -> TestTree
+testSessionWait name = testSession name .
       -- Check that any diagnostics produced were already consumed by the test case.
       --
       -- If in future we add test cases where we don't care about checking the diagnostics,
