@@ -3,12 +3,15 @@ packages:
 - .
 
 extra-deps:
+- github: alanz/haskell-lsp
+  commit: 37a94601b9ebcec6dc05a968a97435ad8007757f
+  subdirs:
+    - .
+    - haskell-lsp-types
 - rope-utf16-splay-0.3.1.0
 - shake-0.18.3
 - filepattern-0.1.1
 - js-dgtable-0.5.2
-- haskell-lsp-0.16.0.0
-- haskell-lsp-types-0.16.0.0
 - lsp-test-0.7.0.0
 - hie-bios-0.2.1
 nix:

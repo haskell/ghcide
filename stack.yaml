@@ -2,8 +2,11 @@ resolver: nightly-2019-09-16
 packages:
 - .
 extra-deps:
-- haskell-lsp-0.16.0.0
-- haskell-lsp-types-0.16.0.0
+- github: alanz/haskell-lsp
+  commit: 37a94601b9ebcec6dc05a968a97435ad8007757f
+  subdirs:
+    - .
+    - haskell-lsp-types
 - lsp-test-0.7.0.0
 - hie-bios-0.2.1
 nix:

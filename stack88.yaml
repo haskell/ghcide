@@ -2,7 +2,13 @@ resolver: nightly-2019-10-10
 packages:
 - .
 extra-deps:
-- haskell-lsp-0.16.0.0
+- github: alanz/haskell-lsp
+  commit: 37a94601b9ebcec6dc05a968a97435ad8007757f
+  subdirs:
+    - .
+    - haskell-lsp-types
+- prettyprinter-1.3.0
+- prettyprinter-ansi-terminal-1.1.1.2
 - hslogger-1.3.0.0
 - lsp-test-0.7.0.0
 - network-bsd-2.8.1.0
