@@ -4,15 +4,16 @@ packages:
 
 extra-deps:
 - github: alanz/haskell-lsp
-  commit: 37a94601b9ebcec6dc05a968a97435ad8007757f
+  commit: 226b572bdc5cea93602deab25ba657fd09b61875
   subdirs:
     - .
     - haskell-lsp-types
+- github: cocreature/lsp-test
+  commit: a68b0187aef3347b7ad07496c1f3ba36a40f69bd
 - rope-utf16-splay-0.3.1.0
 - shake-0.18.3
 - filepattern-0.1.1
 - js-dgtable-0.5.2
-- lsp-test-0.7.0.0
 - hie-bios-0.2.1
 nix:
   packages: [zlib]
