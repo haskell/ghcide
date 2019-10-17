@@ -46,6 +46,9 @@ import Control.Monad.Trans.Except
 import           Data.Function
 import           Data.Ord
 import qualified Data.Text as T
+import qualified Data.Text.IO as T
+import System.IO
+import System.Time.Extra
 import           Data.IORef
 import           Data.List.Extra
 import           Data.Maybe
@@ -107,14 +110,23 @@ compileModule
     -> TcModuleResult
     -> IO ([FileDiagnostic], Maybe CoreModule)
 compileModule packageState deps tmr =
-    fmap (either (, Nothing) (second Just)) $
-    runGhcEnv packageState $
+   fmap (either (, Nothing) (second Just)) $ do
+    timer <- liftIO offsetTime
+    runGhcEnv packageState $ do
+        time <- liftIO timer
+        liftIO $ T.hPutStrLn stderr $ T.pack $ "Entering GHC env: " <> show time
         catchSrcErrors "compile" $ do
+            timer <- liftIO offsetTime
             setupEnv (deps ++ [tmr])
+            time <- liftIO timer
+            liftIO $ T.hPutStrLn stderr $ T.pack $ "setupEnv: " <> show time
 
             let tm = tmrModule tmr
             session <- getSession
+            timer <- liftIO offsetTime
             (warnings,desugar) <- withWarnings "compile" $ \tweak -> do
+                time <- liftIO timer
+                liftIO $ T.hPutStrLn stderr $ T.pack $ "withWarnings: " <> show time
                 let pm = tm_parsed_module tm
                 let pm' = pm{pm_mod_summary = tweak $ pm_mod_summary pm}
                 let tm' = tm{tm_parsed_module  = pm'}
