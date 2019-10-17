@@ -3,12 +3,12 @@ packages:
 - .
 extra-deps:
 - github: alanz/haskell-lsp
-  commit: 226b572bdc5cea93602deab25ba657fd09b61875
+  commit: fefcae8b44aaf7658e0f90d5530832efe0b32053
   subdirs:
     - .
     - haskell-lsp-types
 - github: cocreature/lsp-test
-  commit: a68b0187aef3347b7ad07496c1f3ba36a40f69bd
+  commit: 40da0529edb687864acf2716dff310d38b0641c6
 - hie-bios-0.2.0
 - ghc-lib-parser-8.8.1
 - ghc-lib-8.8.1
