@@ -130,10 +130,17 @@ compileModule packageState deps tmr =
                 let pm = tm_parsed_module tm
                 let pm' = pm{pm_mod_summary = tweak $ pm_mod_summary pm}
                 let tm' = tm{tm_parsed_module  = pm'}
-                GHC.dm_core_module <$> GHC.desugarModule tm'
+                timer <- liftIO offsetTime
+                r <- GHC.dm_core_module <$> GHC.desugarModule tm'
+                time <- liftIO timer
+                liftIO $ T.hPutStrLn stderr $ T.pack $ "desugarModule: " <> show time
+                pure r
 
             -- give variables unique OccNames
+            timer <- liftIO offsetTime
             (tidy, details) <- liftIO $ tidyProgram session desugar
+            time <- liftIO timer
+            liftIO $ T.hPutStrLn stderr $ T.pack $ "tidyProgram: " <> show time
 
             let core = CoreModule
                          (cg_module tidy)
