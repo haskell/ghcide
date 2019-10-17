@@ -30,7 +30,7 @@ export function activate(context: ExtensionContext) {
 	};
 	client = new LanguageClient(
 		'haskell',
-		'Haskell IDE Core',
+		'ghcide',
 		{ args: args, command: cPath, options: {cwd: workspace.rootPath }}, clientOptions, true);
     client.registerProposedFeatures();
 	
