@@ -215,8 +215,9 @@ setupEnv tmsIn = do
             foldl'
                 (\fc (im, ifr) -> GHC.extendInstalledModuleEnv fc im ifr) prevFinderCache
                 $ zip ims ifrs
-    newFinderCacheVar <- liftIO $ newIORef $! newFinderCache
-    modifySession $ \s -> s { hsc_FC = newFinderCacheVar }
+    liftIO $ writeIORef (hsc_FC session) newFinderCache
+    -- newFinderCacheVar <- liftIO $ newIORef $! newFinderCache
+    -- modifySession $ \s -> s { hsc_FC = prevFinderCache }
 
     -- load dependent modules, which must be in topological order.
     mapM_ loadModuleHome tms
