@@ -21,9 +21,9 @@ import           GhcPlugins                     as GHC hiding (fst3, (<>))
 import qualified Language.Haskell.LSP.Types.Capabilities as LSP
 
 data IdeOptions = IdeOptions
-  { optPreprocessor :: GHC.ParsedSource -> ([(GHC.SrcSpan, String)], GHC.ParsedSource)
+  { optPreprocessor :: GHC.ParsedSource -> ([(GHC.SrcSpan, String)], [(GHC.SrcSpan, String)], GHC.ParsedSource)
     -- ^ Preprocessor to run over all parsed source trees, generating a list of warnings
-    --   along with a new parse tree.
+    --   and a list of errors, along with a new parse tree.
   , optGhcSession :: IO (FilePath -> Action HscEnvEq)
     -- ^ Setup a GHC session for a given file, e.g. @Foo.hs@.
     --   The 'IO' will be called once, then the resulting function will be applied once per file.
@@ -62,7 +62,7 @@ clientSupportsProgress caps = IdeReportProgress $ fromMaybe False $
 
 defaultIdeOptions :: IO (FilePath -> Action HscEnvEq) -> IdeOptions
 defaultIdeOptions session = IdeOptions
-    {optPreprocessor = (,) []
+    {optPreprocessor = (,,) [] []
     ,optGhcSession = session
     ,optExtensions = ["hs", "lhs"]
     ,optPkgLocationOpts = defaultIdePkgLocationOptions
