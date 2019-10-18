@@ -701,10 +701,10 @@ findDefinitionAndHoverTests = let
   checkDefs :: [Location] -> [Expect] -> Session ()
   checkDefs defs expectations = traverse_ check expectations where
 
-    check (Rng expectedRange) = do
+    check (ExpectRange expectedRange) = do
       assertNDefinitionsFound 1 defs
       assertRangeCorrect (head defs) expectedRange
-    check DexternFail = liftIO $ assertBool "Expecting to fail to find in external file" False
+    check ExpectExternFail = liftIO $ assertBool "Expecting to fail to find in external file" False
     check _ = pure () -- all other expectations not relevant to getDefinition
 
   assertNDefinitionsFound n defs = let ndef = length defs in liftIO $ assertBool
@@ -723,9 +723,9 @@ findDefinitionAndHoverTests = let
         Just Hover{_contents = (HoverContents MarkupContent{_value = msg})
                   ,_range    = rangeInHover } ->
           case expected of
-            Rng  expectedRange -> checkHoverRange expectedRange rangeInHover msg
-            Hrng expectedRange -> checkHoverRange expectedRange rangeInHover msg
-            Htxt snippets -> liftIO $ traverse_ (`assertFoundIn` msg) snippets
+            ExpectRange  expectedRange -> checkHoverRange expectedRange rangeInHover msg
+            ExpectHoverRange expectedRange -> checkHoverRange expectedRange rangeInHover msg
+            ExpectHoverText snippets -> liftIO $ traverse_ (`assertFoundIn` msg) snippets
             _ -> pure () -- all other expectations not relevant to hover
         _ -> error "test not expecting this kind of hover info"
 
@@ -791,20 +791,20 @@ findDefinitionAndHoverTests = let
     ]
 
   -- search locations            expectations on results
-  fffL4  = _start fffR     ;  fffR = mkRange 4  4    4  7 ; fff  = [Rng fffR]
+  fffL4  = _start fffR     ;  fffR = mkRange 4  4    4  7 ; fff  = [ExpectRange fffR]
   fffL8  = Position  8  4  ;
   fffL14 = Position 14  7  ;
   aaaL14 = Position 14 20  ;  aaa    = [mkR   7  0    7  3]
   dcL7   = Position  7 11  ;  tcDC   = [mkR   3 23    5 16]
   dcL12  = Position 12 11  ;
-  xtcL5  = Position  5 11  ;  xtc    = [DexternFail]
+  xtcL5  = Position  5 11  ;  xtc    = [ExpectExternFail]
   tcL6   = Position  6 11  ;  tcData = [mkR   3  0    5 16]
   vvL16  = Position 16 12  ;  vv     = [mkR  16  4   16  6]
   opL16  = Position 16 15  ;  op     = [mkR  17  2   17  4]
   opL18  = Position 18 22  ;  opp    = [mkR  18 13   18 17]
   aL18   = Position 18 20  ;  apmp   = [mkR  18 10   18 11]
   b'L19  = Position 19 13  ;  bp     = [mkR  19  6   19  7]
-  xvL20  = Position 20  8  ;  xvMsg  = [Htxt ["Data.Text.pack", ":: String -> Text"], DexternFail]
+  xvL20  = Position 20  8  ;  xvMsg  = [ExpectHoverText ["Data.Text.pack", ":: String -> Text"], ExpectExternFail]
 
   in
   mkFindTests
@@ -833,15 +833,15 @@ xfail :: TestTree -> String -> TestTree
 xfail = flip expectFailBecause
 
 data Expect
-  =  Rng Range -- Both gotoDef and hover should report this range
---  | Drng Range -- Only gotoDef should report this range
-  | Hrng Range -- Only hover should report this range
-  | Htxt [T.Text] -- the hover message must contain these snippets
-  | DexternFail -- definition lookup in other file expected to fail
---  | Dextern -- TODO: as above, but expected to succeed: need some more info in here, once we have some working examples
+  = ExpectRange Range -- Both gotoDef and hover should report this range
+--  | ExpectDefRange Range -- Only gotoDef should report this range
+  | ExpectHoverRange Range -- Only hover should report this range
+  | ExpectHoverText [T.Text] -- the hover message must contain these snippets
+  | ExpectExternFail -- definition lookup in other file expected to fail
+--  | ExpectExtern -- TODO: as above, but expected to succeed: need some more info in here, once we have some working examples
 
 mkR :: Int -> Int -> Int -> Int -> Expect
-mkR = ((.).(.).(.).(.)) Rng mkRange
+mkR = ((.).(.).(.).(.)) ExpectRange mkRange
 ----------------------------------------------------------------------
 -- Utils
 
