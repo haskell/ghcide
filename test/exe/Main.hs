@@ -840,7 +840,7 @@ data Expect
 --  | ExpectExtern -- TODO: as above, but expected to succeed: need some more info in here, once we have some working examples
 
 mkR :: Int -> Int -> Int -> Int -> Expect
-mkR = ((.).(.).(.).(.)) ExpectRange mkRange
+mkR startLine startColumn endLine endColumn = ExpectRange $ mkRange startLine startColumn endLine endColumn
 ----------------------------------------------------------------------
 -- Utils
 
