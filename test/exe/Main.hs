@@ -740,9 +740,11 @@ findDefinitionAndHoverTests = let
       adjust Position{_line = l, _character = c} =
         Position{_line = l + 1, _character = c + 1}
     in
-    case lineCol of
-      [_,_] -> liftIO $ (adjust $ _start expectedRange) @=? Position l c where [l,c] = map (read . T.unpack) lineCol
-      _     -> liftIO $ ("[...]" <> sourceFileName <> ":<LINE>:<COL>**[...]", Just expectedRange) @=? (msg, rangeInHover)
+    case map (read . T.unpack) lineCol of
+      [l,c] -> liftIO $ (adjust $ _start expectedRange) @=? Position l c
+      _     -> liftIO $ assertFailure $
+        "expected: " <> show ("[...]" <> sourceFileName <> ":<LINE>:<COL>**[...]", Just expectedRange) <>
+        "\n but got: " <> show (msg, rangeInHover)
 
   assertFoundIn :: T.Text -> T.Text -> Assertion
   assertFoundIn part whole = assertBool
