@@ -704,12 +704,11 @@ findDefinitionAndHoverTests = let
     check (ExpectRange expectedRange) = do
       assertNDefinitionsFound 1 defs
       assertRangeCorrect (head defs) expectedRange
-    check ExpectExternFail = liftIO $ assertBool "Expecting to fail to find in external file" False
+    check ExpectExternFail = liftIO $ assertFailure "Expecting to fail to find in external file"
     check _ = pure () -- all other expectations not relevant to getDefinition
 
-  assertNDefinitionsFound n defs = let ndef = length defs in liftIO $ assertBool
-    ("Found " <> show ndef <> " definitions but expected " <> show n)
-    (ndef == n)
+  assertNDefinitionsFound :: Int -> [a] -> Session ()
+  assertNDefinitionsFound n defs = liftIO $ assertEqual "number of definitions" n (length defs)
 
   assertRangeCorrect Location{_range = foundRange} expectedRange =
     liftIO $ expectedRange @=? foundRange
@@ -719,7 +718,7 @@ findDefinitionAndHoverTests = let
 
     check expected =
       case hover of
-        Nothing -> liftIO $ "hover found" @=? ("no hover found" :: T.Text)
+        Nothing -> liftIO $ assertFailure "no hover found"
         Just Hover{_contents = (HoverContents MarkupContent{_value = msg})
                   ,_range    = rangeInHover } ->
           case expected of
@@ -727,7 +726,7 @@ findDefinitionAndHoverTests = let
             ExpectHoverRange expectedRange -> checkHoverRange expectedRange rangeInHover msg
             ExpectHoverText snippets -> liftIO $ traverse_ (`assertFoundIn` msg) snippets
             _ -> pure () -- all other expectations not relevant to hover
-        _ -> error "test not expecting this kind of hover info"
+        _ -> liftIO $ assertFailure $ "test not expecting this kind of hover info" <> show hover
 
   extractLineColFromHoverMsg :: T.Text -> [T.Text]
   extractLineColFromHoverMsg = T.splitOn ":" . head . T.splitOn "**" . last . T.splitOn (sourceFileName <> ":")
