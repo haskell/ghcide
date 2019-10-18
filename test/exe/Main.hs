@@ -731,6 +731,7 @@ findDefinitionAndHoverTests = let
   extractLineColFromHoverMsg :: T.Text -> [T.Text]
   extractLineColFromHoverMsg = T.splitOn ":" . head . T.splitOn "**" . last . T.splitOn (sourceFileName <> ":")
 
+  checkHoverRange :: Range -> Maybe Range -> T.Text -> Session ()
   checkHoverRange expectedRange rangeInHover msg =
     let
       lineCol = extractLineColFromHoverMsg msg
