@@ -1,4 +1,4 @@
-{-# OPTIONS_GHC -Wmissing-signatures #-}
+
 module Testing ( module Testing )where
 import Data.Text (Text, pack)
 data TypeConstructor = DataConstructor
