@@ -12,8 +12,8 @@ import Control.Monad
 import Control.Monad.IO.Class (liftIO)
 import Data.Char (toLower)
 import Data.Foldable
-import qualified Data.Text    as T
-import qualified Data.Text.IO as T
+import Development.IDE.GHC.Util
+import qualified Data.Text as T
 import Development.IDE.Test
 import Development.IDE.Test.Runfiles
 import Language.Haskell.LSP.Test
@@ -865,5 +865,5 @@ run s = withTempDir $ \dir -> do
 
 openTestDataDoc :: FilePath -> Session TextDocumentIdentifier
 openTestDataDoc path = do
-  source <- liftIO $ T.readFile $ "test/data" </> path
+  source <- liftIO $ readFileUtf8 $ "test/data" </> path
   openDoc' path "haskell" source

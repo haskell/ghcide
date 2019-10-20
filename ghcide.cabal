@@ -173,6 +173,7 @@ test-suite ghcide-tests
         ghcide:ghcide
     build-depends:
         base,
+        bytestring,
         containers,
         directory,
         extra,
@@ -185,6 +186,7 @@ test-suite ghcide-tests
         -- which works for now.
         ghc,
         --------------------------------------------------------------
+        ghcide,
         haskell-lsp-types,
         lens,
         lsp-test >= 0.8,
