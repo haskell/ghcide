@@ -154,7 +154,12 @@ showEvent lock e = withLock lock $ print e
 
 cradleToSession :: Cradle -> IO HscEnvEq
 cradleToSession cradle = do
-    opts <- either throwIO return =<< getCompilerOptions "" cradle
+    result <- getCompilerOptions "" cradle
+    opts <- case result of
+        CradleSuccess x -> return x
+        CradleFail e -> throwIO e
+        CradleNone -> error "Not only did it not work, but there's no error either"
+
     libdir <- getLibdir
     env <- runGhc (Just libdir) $ do
         _targets <- initSession opts
