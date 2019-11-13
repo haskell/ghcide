@@ -28,7 +28,10 @@ import qualified GHC.LanguageExtensions.Type as GHC
 import Development.IDE.Types.Options
 import Development.IDE.Types.Location
 
+#if MIN_GHC_API_VERSION(8,6,0)
 import           DynamicLoading (initializePlugins)
+#endif
+
 import           GHC hiding (parseModule, typecheckModule)
 import qualified Parser
 import           Lexer
@@ -96,12 +99,17 @@ typecheckModule (IdeDefer defer) packageState deps pm =
     runGhcEnv packageState $
         catchSrcErrors "typecheck" $ do
             setupEnv deps
+#if MIN_GHC_API_VERSION(8,6,0)
             session <- getSession
             let modSummary = pm_mod_summary pm
             dflags <- liftIO $ initializePlugins session (ms_hspp_opts modSummary)
             let modSummary' = modSummary{ms_hspp_opts = dflags}
             (warnings, tcm) <- withWarnings "typecheck" $ \tweak ->
                 GHC.typecheckModule $ demoteIfDefer pm{pm_mod_summary = tweak modSummary'}
+#else
+            (warnings, tcm) <- withWarnings "typecheck" $ \tweak ->
+                GHC.typecheckModule $ demoteIfDefer pm{pm_mod_summary = tweak $ pm_mod_summary pm}
+#endif
             tcm2 <- mkTcModuleResult tcm
             return (map unDefer warnings, tcm2)
 
