@@ -120,15 +120,12 @@ initPlugins modSummary = do
 -- provide errors.
 compileModule
     :: HscEnv
-    -> [TcModuleResult]
     -> TcModuleResult
     -> IO ([FileDiagnostic], Maybe CoreModule)
-compileModule packageState deps tmr =
+compileModule packageState tmr =
     fmap (either (, Nothing) (second Just)) $
     runGhcEnv packageState $
         catchSrcErrors "compile" $ do
-            setupEnv (deps ++ [tmr])
-
             let tm = tmrModule tmr
             session <- getSession
             (warnings,desugar) <- withWarnings "compile" $ \tweak -> do

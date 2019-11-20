@@ -289,11 +289,10 @@ typeCheckRule =
 
 generateCore :: NormalizedFilePath -> Action (IdeResult CoreModule)
 generateCore file = do
-    deps <- use_ GetDependencies file
-    (tm:tms) <- uses_ TypeCheck (file:transitiveModuleDeps deps)
+    tm <- use_ TypeCheck file
     setPriority priorityGenerateCore
     packageState <- hscEnv <$> use_ GhcSession file
-    liftIO $ compileModule packageState tms tm
+    liftIO $ compileModule packageState tm
 
 generateCoreRule :: Rules ()
 generateCoreRule =
