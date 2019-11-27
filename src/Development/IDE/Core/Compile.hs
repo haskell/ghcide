@@ -191,7 +191,11 @@ mkTcModuleResult
 mkTcModuleResult tcm = do
     session <- getSession
     (iface, _) <- liftIO $ mkIfaceTc session Nothing Sf_None details tcGblEnv
-    let mod_info = HomeModInfo iface details Nothing
+    let summary = pm_mod_summary . tm_parsed_module $ tcm
+        -- This is a fake Linkable with an empty list as the last argument.
+        -- As we're not generating code, it is probably fine.
+        linkable = LM (ms_hs_date summary) (ms_mod summary) []
+        mod_info = HomeModInfo iface details (Just linkable)
     return $ TcModuleResult tcm mod_info
   where
     (tcGblEnv, details) = tm_internals_ tcm
