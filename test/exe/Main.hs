@@ -41,6 +41,7 @@ main = defaultMain $ testGroup "HIE"
   , codeActionTests
   , findDefinitionAndHoverTests
   , pluginTests
+  , linkerTests
   ]
 
 initializeResponseTests :: TestTree
@@ -831,6 +832,40 @@ pluginTests = testSessionWait "plugins" $ do
     [ ( "Testing.hs",
         [(DsError, (8, 14), "Variable not in scope: c")]
       )
+    ]
+
+linkerTests :: TestTree
+linkerTests =
+  testGroup
+    "linker"
+    [ -- Test for https://github.com/digital-asset/ghcide/pull/212
+      testSessionWait "expectJust getLinkDeps" $ do
+        let sourceA =
+              T.unlines
+                [ "{-# LANGUAGE TemplateHaskell #-}",
+                  "module A where",
+                  "import Language.Haskell.TH",
+                  "a :: Integer",
+                  "a = $(litE $ IntegerL 3)"
+                ]
+            sourceB =
+              T.unlines
+                [ "{-# LANGUAGE TemplateHaskell #-}",
+                  "module B where",
+                  "import A",
+                  "import Language.Haskell.TH",
+                  "b :: Integer",
+                  "b = $(litE $ IntegerL $ a)"
+                ]
+        _ <- openDoc' "A.hs" "haskell" sourceA
+        _ <- openDoc' "B.hs" "haskell" sourceB
+        expectDiagnostics
+          [ ( "B.hs",
+              -- For some reason, we get an error failing to find symbol
+              -- A_a_closure after the fix. Probably a separate issue.
+              [(DsError, (0, 0), "GHCi couldn't find the following symbol")]
+            )
+          ]
     ]
 
 xfail :: TestTree -> String -> TestTree
