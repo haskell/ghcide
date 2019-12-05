@@ -24,7 +24,7 @@ import           GHC.Generics                             (Generic)
 
 import           GHC
 import Module (InstalledUnitId)
-import HscTypes (HomeModInfo)
+import HscTypes (HomeModInfo, CompiledByteCode, SptEntry)
 import Development.IDE.GHC.Compat
 
 import           Development.IDE.Spans.Type
@@ -65,7 +65,16 @@ type instance RuleResult TypeCheck = TcModuleResult
 type instance RuleResult GetSpanInfo = [SpanInfo]
 
 -- | Convert to Core, requires TypeCheck*
-type instance RuleResult GenerateCore = CoreModule
+type instance RuleResult GenerateCore = (CoreModule, CompiledByteCode, [SptEntry])
+
+instance Show CompiledByteCode where
+    show _ = "<compiled byte code>"
+instance NFData CompiledByteCode where
+    rnf x = seq x ()
+instance Show SptEntry where
+    show _ = "<spt entry>"
+instance NFData SptEntry where
+    rnf x = seq x ()
 
 -- | A GHC session that we reuse.
 type instance RuleResult GhcSession = HscEnvEq

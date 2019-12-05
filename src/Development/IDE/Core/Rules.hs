@@ -94,7 +94,7 @@ defineNoFile f = define $ \k file -> do
 
 
 -- | Generate the GHC Core for the supplied file and its dependencies.
-getGhcCore :: NormalizedFilePath -> Action (Maybe [CoreModule])
+getGhcCore :: NormalizedFilePath -> Action (Maybe [(CoreModule, CompiledByteCode, [SptEntry])])
 getGhcCore file = runMaybeT $ do
     files <- transitiveModuleDeps <$> useE GetDependencies file
     pms   <- usesE GetParsedModule $ files ++ [file]
@@ -282,12 +282,13 @@ typeCheckRule =
         pm <- use_ GetParsedModule file
         deps <- use_ GetDependencies file
         tms <- uses_ TypeCheck (transitiveModuleDeps deps)
+        cores <- uses_ GenerateCore (transitiveModuleDeps deps)
         setPriority priorityTypeCheck
         packageState <- hscEnv <$> use_ GhcSession file
         IdeOptions{ optDefer = defer} <- getIdeOptions
-        liftIO $ typecheckModule defer packageState tms pm
+        liftIO $ typecheckModule defer packageState tms pm cores
 
-generateCore :: NormalizedFilePath -> Action (IdeResult CoreModule)
+generateCore :: NormalizedFilePath -> Action (IdeResult (CoreModule, CompiledByteCode, [SptEntry]))
 generateCore file = do
     deps <- use_ GetDependencies file
     (tm:tms) <- uses_ TypeCheck (file:transitiveModuleDeps deps)
