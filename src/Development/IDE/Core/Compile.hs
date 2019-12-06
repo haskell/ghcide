@@ -92,9 +92,8 @@ typecheckModule
     -> HscEnv
     -> [TcModuleResult]
     -> ParsedModule
-    -> [(CoreModule, CompiledByteCode, [SptEntry])]
     -> IO ([FileDiagnostic], Maybe TcModuleResult)
-typecheckModule (IdeDefer defer) packageState deps pm compiledDeps =
+typecheckModule (IdeDefer defer) packageState deps pm =
     let demoteIfDefer = if defer then demoteTypeErrorsToWarnings else id
     in
     fmap (either (, Nothing) (second Just)) $
@@ -105,7 +104,7 @@ typecheckModule (IdeDefer defer) packageState deps pm compiledDeps =
             modSummary' <- initPlugins modSummary
             (warnings, tcm) <- withWarnings "typecheck" $ \tweak ->
                 GHC.typecheckModule $ demoteIfDefer pm{pm_mod_summary = tweak modSummary'}
-            tcm2 <- mkTcModuleResult tcm compiledDeps
+            tcm2 <- mkTcModuleResult tcm
             return (map unDefer warnings, tcm2)
 
 initPlugins :: GhcMonad m => ModSummary -> m ModSummary
@@ -124,7 +123,7 @@ compileModule
     :: HscEnv
     -> [TcModuleResult]
     -> TcModuleResult
-    -> IO ([FileDiagnostic], Maybe (CoreModule, CompiledByteCode, [SptEntry]))
+    -> IO ([FileDiagnostic], Maybe (CoreModule, TcModuleResult))
 compileModule packageState deps tmr =
     fmap (either (, Nothing) (second Just)) $
     runGhcEnv packageState $
@@ -151,8 +150,13 @@ compileModule packageState deps tmr =
             (_, bytecode, spt_entry)
               <- liftIO $ hscInteractive session tidy
                             (GHC.pm_mod_summary (GHC.tm_parsed_module tm))
+            
+            let summary = pm_mod_summary . tm_parsed_module $ tm
+                linkable = LM (ms_hs_date summary) (ms_mod summary) [BCOs bytecode spt_entry]
+                HomeModInfo iface details Nothing = tmrModInfo tmr
+                tmr' = tmr { tmrModInfo = HomeModInfo iface details (Just linkable) }
 
-            return (map snd warnings, (core, bytecode, spt_entry))
+            return (map snd warnings, (core, tmr'))
 
 demoteTypeErrorsToWarnings :: ParsedModule -> ParsedModule
 demoteTypeErrorsToWarnings =
@@ -193,15 +197,11 @@ addRelativeImport fp modu dflags = dflags
 mkTcModuleResult
     :: GhcMonad m
     => TypecheckedModule
-    -> [(CoreModule, CompiledByteCode, [SptEntry])]
     -> m TcModuleResult
-mkTcModuleResult tcm compiledDeps = do
+mkTcModuleResult tcm = do
     session <- getSession
     (iface, _) <- liftIO $ mkIfaceTc session Nothing Sf_None details tcGblEnv
-    let lkd = map (\(_,cbc,spt) -> BCOs cbc spt) compiledDeps
-        summary = pm_mod_summary . tm_parsed_module $ tcm
-        linkable = LM (ms_hs_date summary) (ms_mod summary) lkd
-        mod_info = HomeModInfo iface details (Just linkable)
+    let mod_info = HomeModInfo iface details Nothing
     return $ TcModuleResult tcm mod_info
   where
     (tcGblEnv, details) = tm_internals_ tcm
