@@ -283,15 +283,21 @@ typeCheckRule =
     define $ \TypeCheck file -> do
         pm <- use_ GetParsedModule file
         deps <- use_ GetDependencies file
-        let df = ms_hspp_opts (pm_mod_summary pm)
-            uses_th_qq = xopt LangExt.TemplateHaskell df || xopt LangExt.QuasiQuotes df
-        tms <- if uses_th_qq
+        packageState <- hscEnv <$> use_ GhcSession file
+        -- Figure out whether we need TemplateHaskell or QuasiQuotes support
+        let global_uses_th_qq = uses_th_qq $ hsc_dflags packageState
+            graph_needs_th_qq = needsTemplateHaskellOrQQ $ hsc_mod_graph packageState
+            file_uses_th_qq = uses_th_qq $ ms_hspp_opts (pm_mod_summary pm)
+            any_uses_th_qq = global_uses_th_qq || graph_needs_th_qq || file_uses_th_qq
+        tms <- if any_uses_th_qq
+                  -- If we use TH or QQ, we must obtain the bytecode
                   then map snd <$> uses_ GenerateCore (transitiveModuleDeps deps)
                   else uses_ TypeCheck (transitiveModuleDeps deps)
         setPriority priorityTypeCheck
-        packageState <- hscEnv <$> use_ GhcSession file
         IdeOptions{ optDefer = defer} <- getIdeOptions
         liftIO $ typecheckModule defer packageState tms pm
+    where
+        uses_th_qq dflags = xopt LangExt.TemplateHaskell dflags || xopt LangExt.QuasiQuotes dflags
 
 generateCore :: NormalizedFilePath -> Action (IdeResult (CoreModule, TcModuleResult))
 generateCore file = do
