@@ -55,10 +55,12 @@ import           Development.Shake                        hiding (Diagnostic)
 import Development.IDE.Core.RuleTypes
 
 import           GHC hiding (parseModule, typecheckModule)
+import qualified GHC.LanguageExtensions as LangExt
 import Development.IDE.GHC.Compat
 import           UniqSupply
 import NameCache
 import HscTypes
+import DynFlags (xopt)
 import GHC.Generics(Generic)
 
 import qualified Development.IDE.Spans.AtPoint as AtPoint
@@ -281,7 +283,11 @@ typeCheckRule =
     define $ \TypeCheck file -> do
         pm <- use_ GetParsedModule file
         deps <- use_ GetDependencies file
-        tms <- map snd <$> uses_ GenerateCore (transitiveModuleDeps deps)
+        let df = ms_hspp_opts (pm_mod_summary pm)
+            uses_th_qq = xopt LangExt.TemplateHaskell df || xopt LangExt.QuasiQuotes df
+        tms <- if uses_th_qq
+                  then map snd <$> uses_ GenerateCore (transitiveModuleDeps deps)
+                  else uses_ TypeCheck (transitiveModuleDeps deps)
         setPriority priorityTypeCheck
         packageState <- hscEnv <$> use_ GhcSession file
         IdeOptions{ optDefer = defer} <- getIdeOptions

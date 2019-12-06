@@ -24,7 +24,7 @@ import           GHC.Generics                             (Generic)
 
 import           GHC
 import Module (InstalledUnitId)
-import HscTypes (HomeModInfo, CompiledByteCode, SptEntry)
+import HscTypes (HomeModInfo)
 import Development.IDE.GHC.Compat
 
 import           Development.IDE.Spans.Type
