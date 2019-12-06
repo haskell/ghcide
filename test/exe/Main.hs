@@ -839,7 +839,7 @@ thTests =
   testGroup
     "TemplateHaskell"
     [ -- Test for https://github.com/digital-asset/ghcide/pull/212
-      testSession "load" $ do
+      testSessionWait "load" $ do
         let sourceA =
               T.unlines
                 [ "{-# LANGUAGE PackageImports #-}",
@@ -857,12 +857,11 @@ thTests =
                   "import A",
                   "import \"template-haskell\" Language.Haskell.TH",
                   "b :: Integer",
-                  "b = $(litE $ IntegerL $ a)"
+                  "b = $(litE $ IntegerL $ a) + n"
                 ]
         _ <- openDoc' "A.hs" "haskell" sourceA
         _ <- openDoc' "B.hs" "haskell" sourceB
-        _ <- waitForDiagnostics
-        expectDiagnostics [ ( "B.hs", [] ) ]
+        expectDiagnostics [ ( "B.hs", [(DsError, (6, 29), "Variable not in scope: n")] ) ]
     ]
 
 xfail :: TestTree -> String -> TestTree
