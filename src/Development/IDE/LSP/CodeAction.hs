@@ -60,7 +60,7 @@ codeLens _lsp ideState CodeLensParams{_textDocument=TextDocumentIdentifier uri} 
           [ CodeLens _range (Just (Command title "typesignature.add" (Just $ List [toJSON edit]))) Nothing
           | (dFile, dDiag@Diagnostic{_range=_range@Range{..},..}) <- diag
           , dFile == filePath
-          , (title, tedit) <- suggestTopLevelBinding dDiag
+          , (title, tedit) <- suggestTopLevelBinding False dDiag
           , let edit = WorkspaceEdit (Just $ Map.singleton uri $ List tedit) Nothing
           ]
       Nothing -> pure $ List []
@@ -177,22 +177,22 @@ suggestAction contents diag@Diagnostic{_range=_range@Range{..},..}
       extractFitNames     = map (T.strip . head . T.splitOn " :: ")
       in map proposeHoleFit $ nubOrd $ findSuggestedHoleFits _message
 
-    | tlb@[_] <- suggestTopLevelBinding diag = tlb
+    | tlb@[_] <- suggestTopLevelBinding True diag = tlb
 
 suggestAction _ _ = []
 
-suggestTopLevelBinding :: Diagnostic -> [(T.Text, [TextEdit])]
-suggestTopLevelBinding Diagnostic{_range=_range@Range{..},..}
+suggestTopLevelBinding :: Bool -> Diagnostic -> [(T.Text, [TextEdit])]
+suggestTopLevelBinding isQuickFix Diagnostic{_range=_range@Range{..},..}
     | "Top-level binding with no type signature" `T.isInfixOf` _message = let
       filterNewlines = T.concat  . T.lines
       unifySpaces    = T.unwords . T.words
       signature      = T.strip $ unifySpaces $ last $ T.splitOn "type signature: " $ filterNewlines _message
       startOfLine    = Position (_line _start) 0
       beforeLine     = Range startOfLine startOfLine
-      title          = "add signature: " <> signature
+      title          = if isQuickFix then "add signature: " <> signature else signature
       action         = TextEdit beforeLine $ signature <> "\n"
       in [(title, [action])]
-suggestTopLevelBinding _ = []
+suggestTopLevelBinding _ _ = []
 
 topOfHoleFitsMarker :: T.Text
 topOfHoleFitsMarker =

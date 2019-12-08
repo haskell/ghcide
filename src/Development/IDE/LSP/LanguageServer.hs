@@ -25,7 +25,6 @@ import qualified Data.Set as Set
 import qualified Data.Text as T
 import           GHC.IO.Handle                    (hDuplicate, hDuplicateTo)
 import System.IO
-import System.Random
 import Control.Monad.Extra
 
 import Development.IDE.LSP.Definition
@@ -136,57 +135,41 @@ runLanguageServer options userHandlers getIdeState = do
                                 "Message: " ++ show x ++ "\n" ++
                                 "Exception: " ++ show e
                     Response x@RequestMessage{_id, _params} wrap act ->
-                        flip finally (clearReqId _id) $
-                        catch (do
-                            -- We could optimize this by first checking if the id
-                            -- is in the cancelled set. However, this is unlikely to be a
-                            -- bottleneck and the additional check might hide
-                            -- issues with async exceptions that need to be fixed.
-                            cancelOrRes <- race (waitForCancel _id) $ act lspFuncs ide _params
-                            case cancelOrRes of
-                                Left () -> do
-                                    logDebug (ideLogger ide) $ T.pack $
-                                        "Cancelled request " <> show _id
-                                    sendFunc $ wrap $ ResponseMessage "2.0" (responseId _id) Nothing $
-                                        Just $ ResponseError RequestCancelled "" Nothing
-                                Right res ->
-                                    sendFunc $ wrap $ ResponseMessage "2.0" (responseId _id) (Just res) Nothing
-                        ) $ \(e :: SomeException) -> do
-                            logError (ideLogger ide) $ T.pack $
-                                "Unexpected exception on request, please report!\n" ++
-                                "Message: " ++ show x ++ "\n" ++
-                                "Exception: " ++ show e
-                            sendFunc $ wrap $ ResponseMessage "2.0" (responseId _id) Nothing $
-                                Just $ ResponseError InternalError (T.pack $ show e) Nothing
+                        checkCancelled ide clearReqId waitForCancel lspFuncs wrap act x _id _params $ 
+                            \res -> sendFunc $ wrap $ ResponseMessage "2.0" (responseId _id) (Just res) Nothing
                     ResponseAndRequest x@RequestMessage{_id, _params} wrap wrapNewReq act ->
-                        flip finally (clearReqId _id) $
-                        catch (do
-                            -- We could optimize this by first checking if the id
-                            -- is in the cancelled set. However, this is unlikely to be a
-                            -- bottleneck and the additional check might hide
-                            -- issues with async exceptions that need to be fixed.
-                            cancelOrRes <- race (waitForCancel _id) $ act lspFuncs ide _params
-                            case cancelOrRes of
-                                Left () -> do
-                                    logDebug (ideLogger ide) $ T.pack $
-                                        "Cancelled request " <> show _id
-                                    sendFunc $ wrap $ ResponseMessage "2.0" (responseId _id) Nothing $
-                                        Just $ ResponseError RequestCancelled "" Nothing
-                                Right (res, newReq) -> do
-                                    sendFunc $ wrap $ ResponseMessage "2.0" (responseId _id) (Just res) Nothing
-                                    case newReq of
-                                        Nothing -> return ()
-                                        Just (rm, newReqParams) -> do
-                                            reqId <- IdInt <$> randomIO
-                                            sendFunc $ wrapNewReq $ RequestMessage "2.0" reqId rm newReqParams
-                        ) $ \(e :: SomeException) -> do
-                            logError (ideLogger ide) $ T.pack $
-                                "Unexpected exception on request, please report!\n" ++
-                                "Message: " ++ show x ++ "\n" ++
-                                "Exception: " ++ show e
-                            sendFunc $ wrap $ ResponseMessage "2.0" (responseId _id) Nothing $
-                                Just $ ResponseError InternalError (T.pack $ show e) Nothing
+                        checkCancelled ide clearReqId waitForCancel lspFuncs wrap act x _id _params $
+                            \(res, newReq) -> do
+                            sendFunc $ wrap $ ResponseMessage "2.0" (responseId _id) (Just res) Nothing
+                            case newReq of
+                                Nothing -> return ()
+                                Just (rm, newReqParams) -> do
+                                    reqId <- getNextReqId
+                                    sendFunc $ wrapNewReq $ RequestMessage "2.0" reqId rm newReqParams
             pure Nothing
+
+        checkCancelled ide clearReqId waitForCancel lspFuncs@LSP.LspFuncs{..} wrap act msg _id _params k =
+            flip finally (clearReqId _id) $
+                catch (do
+                    -- We could optimize this by first checking if the id
+                    -- is in the cancelled set. However, this is unlikely to be a
+                    -- bottleneck and the additional check might hide
+                    -- issues with async exceptions that need to be fixed.
+                    cancelOrRes <- race (waitForCancel _id) $ act lspFuncs ide _params
+                    case cancelOrRes of
+                        Left () -> do
+                            logDebug (ideLogger ide) $ T.pack $
+                                "Cancelled request " <> show _id
+                            sendFunc $ wrap $ ResponseMessage "2.0" (responseId _id) Nothing $
+                                Just $ ResponseError RequestCancelled "" Nothing
+                        Right res -> k res
+                ) $ \(e :: SomeException) -> do
+                    logError (ideLogger ide) $ T.pack $
+                        "Unexpected exception on request, please report!\n" ++
+                        "Message: " ++ show msg ++ "\n" ++
+                        "Exception: " ++ show e
+                    sendFunc $ wrap $ ResponseMessage "2.0" (responseId _id) Nothing $
+                        Just $ ResponseError InternalError (T.pack $ show e) Nothing
 
 
 -- | Things that get sent to us, but we don't deal with.
@@ -210,6 +193,9 @@ cancelHandler cancelRequest = PartialHandlers $ \_ x -> return x
 --   and defer precise processing until later (allows us to keep at a higher level of abstraction slightly longer)
 data Message
     = forall m req resp . (Show m, Show req) => Response (RequestMessage m req resp) (ResponseMessage resp -> FromServerMessage) (LSP.LspFuncs () -> IdeState -> req -> IO resp)
+    -- | Used for cases in which we need to send not only a response,
+    --   but also an additional request to the client.
+    --   For example, 'executeCommand' may generate an 'applyWorkspaceEdit' request.
     | forall m rm req resp newReqParams newReqBody . (Show m, Show rm, Show req) => ResponseAndRequest (RequestMessage m req resp) (ResponseMessage resp -> FromServerMessage) (RequestMessage rm newReqParams newReqBody -> FromServerMessage) (LSP.LspFuncs () -> IdeState -> req -> IO (resp, Maybe (rm, newReqParams)))
     | forall m req . (Show m, Show req) => Notification (NotificationMessage m req) (LSP.LspFuncs () -> IdeState -> req -> IO ())
 

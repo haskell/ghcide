@@ -48,7 +48,6 @@ library
         prettyprinter-ansi-terminal,
         prettyprinter-ansi-terminal,
         prettyprinter,
-        random,
         rope-utf16-splay,
         safe-exceptions,
         shake >= 0.17.5,
