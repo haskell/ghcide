@@ -33,6 +33,7 @@ import Control.Monad
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
 import Development.IDE.Core.Compile
+import Development.IDE.Core.Completions
 import Development.IDE.Types.Options
 import Development.IDE.Spans.Calculate
 import Development.IDE.Import.DependencyInformation
@@ -299,6 +300,14 @@ generateCoreRule :: Rules ()
 generateCoreRule =
     define $ \GenerateCore -> generateCore
 
+produceCompletions :: Rules ()
+produceCompletions =
+    define $ \ProduceCompletions file -> do
+        tm <- use_ TypeCheck file
+        dflags <- hsc_dflags . hscEnv <$> use_ GhcSession file
+        cdata <- liftIO $ cacheDataProducer dflags (tmrModule tm)
+        return ([], Just cdata)
+
 
 -- A local rule type to get caching. We want to use newCache, but it has
 -- thread killed exception issues, so we lift it to a full rule.
@@ -347,6 +356,7 @@ mainRule = do
     generateCoreRule
     loadGhcSession
     getHieFileRule
+    produceCompletions
 
 ------------------------------------------------------------
 
