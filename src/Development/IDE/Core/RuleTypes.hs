@@ -14,6 +14,7 @@ module Development.IDE.Core.RuleTypes(
 import           Control.DeepSeq
 import Data.Binary
 import           Development.IDE.Import.DependencyInformation
+import           Development.IDE.Core.Completions
 import Development.IDE.GHC.Util
 import Development.IDE.Types.Location
 import           Data.Hashable
@@ -85,6 +86,9 @@ type instance RuleResult ReportImportCycles = ()
 -- | Read the given HIE file.
 type instance RuleResult GetHieFile = HieFile
 
+-- | Produce completions info for a file
+type instance RuleResult ProduceCompletions = CachedCompletions
+
 
 data GetParsedModule = GetParsedModule
     deriving (Eq, Show, Typeable, Generic)
@@ -153,3 +157,9 @@ data GetHieFile = GetHieFile FilePath
 instance Hashable GetHieFile
 instance NFData   GetHieFile
 instance Binary   GetHieFile
+
+data ProduceCompletions = ProduceCompletions
+    deriving (Eq, Show, Typeable, Generic)
+instance Hashable ProduceCompletions
+instance NFData   ProduceCompletions
+instance Binary   ProduceCompletions
