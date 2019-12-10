@@ -17,7 +17,6 @@ module Development.IDE.Core.Rules(
     runAction, useE, useNoFileE, usesE,
     toIdeResult, defineNoFile,
     mainRule,
-    getGhcCore,
     getAtPoint,
     getDefinition,
     getDependencies,
@@ -56,10 +55,12 @@ import           Development.Shake                        hiding (Diagnostic)
 import Development.IDE.Core.RuleTypes
 
 import           GHC hiding (parseModule, typecheckModule)
+import qualified GHC.LanguageExtensions as LangExt
 import Development.IDE.GHC.Compat
 import           UniqSupply
 import NameCache
 import HscTypes
+import DynFlags (xopt)
 import GHC.Generics(Generic)
 
 import qualified Development.IDE.Spans.AtPoint as AtPoint
@@ -92,16 +93,6 @@ defineNoFile f = define $ \k file -> do
 
 ------------------------------------------------------------
 -- Exposed API
-
-
--- | Generate the GHC Core for the supplied file and its dependencies.
-getGhcCore :: NormalizedFilePath -> Action (Maybe [CoreModule])
-getGhcCore file = runMaybeT $ do
-    files <- transitiveModuleDeps <$> useE GetDependencies file
-    pms   <- usesE GetParsedModule $ files ++ [file]
-    usesE GenerateCore $ map fileFromParsedModule pms
-
-
 
 -- | Get all transitive file dependencies of a given module.
 -- Does not include the file itself.
@@ -282,13 +273,27 @@ typeCheckRule =
     define $ \TypeCheck file -> do
         pm <- use_ GetParsedModule file
         deps <- use_ GetDependencies file
-        tms <- uses_ TypeCheck (transitiveModuleDeps deps)
-        setPriority priorityTypeCheck
         packageState <- hscEnv <$> use_ GhcSession file
+        -- Figure out whether we need TemplateHaskell or QuasiQuotes support
+        let graph_needs_th_qq = needsTemplateHaskellOrQQ $ hsc_mod_graph packageState
+            file_uses_th_qq = uses_th_qq $ ms_hspp_opts (pm_mod_summary pm)
+            any_uses_th_qq = graph_needs_th_qq || file_uses_th_qq
+        tms <- if any_uses_th_qq
+                  -- If we use TH or QQ, we must obtain the bytecode
+                  then do
+                    bytecodes <- uses_ GenerateByteCode (transitiveModuleDeps deps)
+                    tmrs <- uses_ TypeCheck (transitiveModuleDeps deps)
+                    pure (zipWith addByteCode bytecodes tmrs)
+                  else uses_ TypeCheck (transitiveModuleDeps deps)
+        setPriority priorityTypeCheck
         IdeOptions{ optDefer = defer} <- getIdeOptions
         liftIO $ typecheckModule defer packageState tms pm
+    where
+        uses_th_qq dflags = xopt LangExt.TemplateHaskell dflags || xopt LangExt.QuasiQuotes dflags
+        addByteCode :: Linkable -> TcModuleResult -> TcModuleResult
+        addByteCode lm tmr = tmr { tmrModInfo = (tmrModInfo tmr) { hm_linkable = Just lm } }
 
-generateCore :: NormalizedFilePath -> Action (IdeResult CoreModule)
+generateCore :: NormalizedFilePath -> Action (IdeResult (SafeHaskellMode, CgGuts, ModDetails))
 generateCore file = do
     deps <- use_ GetDependencies file
     (tm:tms) <- uses_ TypeCheck (file:transitiveModuleDeps deps)
@@ -308,6 +313,14 @@ produceCompletions =
         cdata <- liftIO $ cacheDataProducer dflags (tmrModule tm)
         return ([], Just cdata)
 
+generateByteCodeRule :: Rules ()
+generateByteCodeRule =
+    define $ \GenerateByteCode file -> do
+      deps <- use_ GetDependencies file
+      (tm : tms) <- uses_ TypeCheck (file: transitiveModuleDeps deps)
+      session <- hscEnv <$> use_ GhcSession file
+      (_, guts, _) <- use_ GenerateCore file
+      liftIO $ generateByteCode session tms tm guts
 
 -- A local rule type to get caching. We want to use newCache, but it has
 -- thread killed exception issues, so we lift it to a full rule.
@@ -354,6 +367,7 @@ mainRule = do
     typeCheckRule
     getSpanInfoRule
     generateCoreRule
+    generateByteCodeRule
     loadGhcSession
     getHieFileRule
     produceCompletions
