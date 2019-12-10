@@ -57,7 +57,7 @@ initializeResponseTests = withResource acquire release tests where
     testGroup "initialize response capabilities"
     [ chk "   text doc sync"             _textDocumentSync  tds
     , chk "   hover"                         _hoverProvider (Just True)
-    , chk "NO completion"               _completionProvider  Nothing
+    , chk "NO completion"               _completionProvider (Just $ CompletionOptions (Just False) Nothing Nothing)
     , chk "NO signature help"        _signatureHelpProvider  Nothing
     , chk "   goto definition"          _definitionProvider (Just True)
     , chk "NO goto type definition" _typeDefinitionProvider (Just $ GotoOptionsStatic False)
