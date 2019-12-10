@@ -15,6 +15,7 @@ module Development.IDE.Core.Compile
   , computePackageDeps
   , addRelativeImport
   , mkTcModuleResult
+  , generateByteCode
   ) where
 
 import Development.IDE.Core.RuleTypes
@@ -123,7 +124,7 @@ compileModule
     :: HscEnv
     -> [TcModuleResult]
     -> TcModuleResult
-    -> IO ([FileDiagnostic], Maybe (CoreModule, TcModuleResult))
+    -> IO ([FileDiagnostic], Maybe (SafeHaskellMode, CgGuts, ModDetails))
 compileModule packageState deps tmr =
     fmap (either (, Nothing) (second Just)) $
     runGhcEnv packageState $
@@ -139,24 +140,22 @@ compileModule packageState deps tmr =
                 GHC.dm_core_module <$> GHC.desugarModule tm'
 
             -- give variables unique OccNames
-            (tidy, details) <- liftIO $ tidyProgram session desugar
+            (guts, details) <- liftIO $ tidyProgram session desugar
+            return (map snd warnings, (mg_safe_haskell desugar, guts, details))
 
-            let core = CoreModule
-                         (cg_module tidy)
-                         (md_types details)
-                         (cg_binds tidy)
-                         (mg_safe_haskell desugar)
-
-            (_, bytecode, spt_entry)
-              <- liftIO $ hscInteractive session tidy
-                            (GHC.pm_mod_summary (GHC.tm_parsed_module tm))
-            
-            let summary = pm_mod_summary . tm_parsed_module $ tm
-                linkable = LM (ms_hs_date summary) (ms_mod summary) [BCOs bytecode spt_entry]
-                HomeModInfo iface details Nothing = tmrModInfo tmr
-                tmr' = tmr { tmrModInfo = HomeModInfo iface details (Just linkable) }
-
-            return (map snd warnings, (core, tmr'))
+generateByteCode :: HscEnv -> [TcModuleResult] -> TcModuleResult -> CgGuts -> IO ([FileDiagnostic], Maybe Linkable)
+generateByteCode hscEnv deps tmr guts =
+    fmap (either (, Nothing) (second Just)) $
+    runGhcEnv hscEnv $
+      catchSrcErrors "bytecode" $ do
+          setupEnv (deps ++ [tmr])
+          session <- getSession
+          (warnings, (_, bytecode, sptEntries)) <- withWarnings "bytecode" $ \tweak ->
+              liftIO $ hscInteractive session guts (tweak $ GHC.pm_mod_summary $ GHC.tm_parsed_module $ tmrModule tmr)
+          let summary = pm_mod_summary $ tm_parsed_module $ tmrModule tmr
+          let unlinked = BCOs bytecode sptEntries
+          let linkable = LM (ms_hs_date summary) (ms_mod summary) [unlinked]
+          pure (map snd warnings, linkable)
 
 demoteTypeErrorsToWarnings :: ParsedModule -> ParsedModule
 demoteTypeErrorsToWarnings =
