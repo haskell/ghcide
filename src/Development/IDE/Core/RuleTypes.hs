@@ -14,7 +14,6 @@ module Development.IDE.Core.RuleTypes(
 import           Control.DeepSeq
 import Data.Binary
 import           Development.IDE.Import.DependencyInformation
-import           Development.IDE.Core.Completions
 import Development.IDE.GHC.Util
 import Development.IDE.Types.Location
 import           Data.Hashable
@@ -28,6 +27,7 @@ import Module (InstalledUnitId)
 import HscTypes (CgGuts, Linkable, HomeModInfo, ModDetails)
 import Development.IDE.GHC.Compat
 
+import           Development.IDE.Core.CompletionsTypes
 import           Development.IDE.Spans.Type
 
 

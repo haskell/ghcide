@@ -98,6 +98,7 @@ library
         include
     exposed-modules:
         Development.IDE.Core.Completions
+        Development.IDE.Core.CompletionsTypes
         Development.IDE.Core.FileStore
         Development.IDE.Core.OfInterest
         Development.IDE.Core.PositionMapping

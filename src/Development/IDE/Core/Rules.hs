@@ -308,9 +308,10 @@ generateCoreRule =
 produceCompletions :: Rules ()
 produceCompletions =
     define $ \ProduceCompletions file -> do
-        tm <- use_ TypeCheck file
+        deps <- use_ GetDependencies file
+        (tm : tms) <- uses_ TypeCheck (file: transitiveModuleDeps deps)
         dflags <- hsc_dflags . hscEnv <$> use_ GhcSession file
-        cdata <- liftIO $ cacheDataProducer dflags (tmrModule tm)
+        cdata <- liftIO $ cacheDataProducer dflags (tmrModule tm) (map tmrModule tms)
         return ([], Just cdata)
 
 generateByteCodeRule :: Rules ()
