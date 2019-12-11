@@ -18,6 +18,7 @@ import Control.Concurrent.Chan
 import Control.Concurrent.Extra
 import Control.Concurrent.Async
 import Control.Concurrent.STM
+import Control.Exception.Extra (retryBool)
 import Control.Exception.Safe
 import Data.Default
 import Data.Maybe
@@ -25,6 +26,7 @@ import qualified Data.Set as Set
 import qualified Data.Text as T
 import           GHC.IO.Handle                    (hDuplicate, hDuplicateTo)
 import System.IO
+import System.IO.Error
 import Control.Monad.Extra
 
 import Development.IDE.LSP.Definition
@@ -48,7 +50,8 @@ runLanguageServer options userHandlers getIdeState = do
     -- to stdout. This guards against stray prints from corrupting the JSON-RPC
     -- message stream.
     newStdout <- hDuplicate stdout
-    stderr `hDuplicateTo` stdout
+    -- dup2 can fail with EBUSY so we retry a couple of times
+    retryBool isAlreadyInUseError 10 (stderr `hDuplicateTo` stdout)
     hSetBuffering stderr NoBuffering
     hSetBuffering stdout NoBuffering
 
