@@ -14,6 +14,7 @@ module Development.IDE.LSP.CodeAction
 import           Language.Haskell.LSP.Types
 import Development.IDE.GHC.Compat
 import Development.IDE.Core.Rules
+import Development.IDE.Core.RuleTypes
 import Development.IDE.Core.Shake
 import Development.IDE.LSP.Server
 import Development.IDE.Types.Location
@@ -53,9 +54,10 @@ codeLens
     -> CodeLensParams
     -> IO (List CodeLens)
 codeLens _lsp ideState CodeLensParams{_textDocument=TextDocumentIdentifier uri} = do
-    diag <- getDiagnostics ideState
     case uriToFilePath' uri of
       Just (toNormalizedFilePath -> filePath) -> do
+        _ <- runAction ideState $ use_ TypeCheck filePath
+        diag <- getDiagnostics ideState
         pure $ List
           [ CodeLens _range (Just (Command title "typesignature.add" (Just $ List [toJSON edit]))) Nothing
           | (dFile, dDiag@Diagnostic{_range=_range@Range{..},..}) <- diag
