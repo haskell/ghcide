@@ -54,15 +54,16 @@ codeLens
     -> CodeLensParams
     -> IO (List CodeLens)
 codeLens _lsp ideState CodeLensParams{_textDocument=TextDocumentIdentifier uri} = do
+    diag <- getDiagnostics ideState
     case uriToFilePath' uri of
       Just (toNormalizedFilePath -> filePath) -> do
-        _ <- runAction ideState $ use_ TypeCheck filePath
-        diag <- getDiagnostics ideState
+        -- _ <- runAction ideState $ use_ TypeCheck filePath
+        
         pure $ List
           [ CodeLens _range (Just (Command title "typesignature.add" (Just $ List [toJSON edit]))) Nothing
           | (dFile, dDiag@Diagnostic{_range=_range@Range{..},..}) <- diag
           , dFile == filePath
-          , (title, tedit) <- suggestTopLevelBinding False dDiag
+          , (title, tedit) <- suggestSignature False dDiag
           , let edit = WorkspaceEdit (Just $ Map.singleton uri $ List tedit) Nothing
           ]
       Nothing -> pure $ List []
@@ -179,12 +180,12 @@ suggestAction contents diag@Diagnostic{_range=_range@Range{..},..}
       extractFitNames     = map (T.strip . head . T.splitOn " :: ")
       in map proposeHoleFit $ nubOrd $ findSuggestedHoleFits _message
 
-    | tlb@[_] <- suggestTopLevelBinding True diag = tlb
+    | tlb@[_] <- suggestSignature True diag = tlb
 
 suggestAction _ _ = []
 
-suggestTopLevelBinding :: Bool -> Diagnostic -> [(T.Text, [TextEdit])]
-suggestTopLevelBinding isQuickFix Diagnostic{_range=_range@Range{..},..}
+suggestSignature :: Bool -> Diagnostic -> [(T.Text, [TextEdit])]
+suggestSignature isQuickFix Diagnostic{_range=_range@Range{..},..}
     | "Top-level binding with no type signature" `T.isInfixOf` _message = let
       filterNewlines = T.concat  . T.lines
       unifySpaces    = T.unwords . T.words
@@ -194,7 +195,18 @@ suggestTopLevelBinding isQuickFix Diagnostic{_range=_range@Range{..},..}
       title          = if isQuickFix then "add signature: " <> signature else signature
       action         = TextEdit beforeLine $ signature <> "\n"
       in [(title, [action])]
-suggestTopLevelBinding _ _ = []
+suggestSignature isQuickFix Diagnostic{_range=_range@Range{..},..}
+    | "Polymorphic local binding with no type signature" `T.isInfixOf` _message = let
+      filterNewlines = T.concat  . T.lines
+      unifySpaces    = T.unwords . T.words
+      signature      = T.takeWhile (\x -> x/='*' && x/='•')
+                     $ T.strip $ unifySpaces $ last $ T.splitOn "type signature: " $ filterNewlines _message
+      startOfLine    = Position (_line _start) (_character _start)
+      beforeLine     = Range startOfLine startOfLine
+      title          = if isQuickFix then "add signature: " <> signature else signature
+      action         = TextEdit beforeLine $ signature <> "\n" <> T.replicate (_character _start) " "
+      in [(title, [action])]
+suggestSignature _ _ = []
 
 topOfHoleFitsMarker :: T.Text
 topOfHoleFitsMarker =

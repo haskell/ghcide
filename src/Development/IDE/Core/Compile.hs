@@ -104,7 +104,8 @@ typecheckModule (IdeDefer defer) packageState deps pm =
             let modSummary = pm_mod_summary pm
             modSummary' <- initPlugins modSummary
             (warnings, tcm) <- withWarnings "typecheck" $ \tweak ->
-                GHC.typecheckModule $ demoteIfDefer pm{pm_mod_summary = tweak modSummary'}
+                GHC.typecheckModule $ enableTopLevelWarnings
+                                    $ demoteIfDefer pm{pm_mod_summary = tweak modSummary'}
             tcm2 <- mkTcModuleResult tcm
             return (map unDefer warnings, tcm2)
 
@@ -170,12 +171,17 @@ demoteTypeErrorsToWarnings =
                    . (`gopt_set` Opt_DeferTypedHoles)
                    . (`gopt_set` Opt_DeferOutOfScopeVariables)
 
-  update_hspp_opts :: (DynFlags -> DynFlags) -> ModSummary -> ModSummary
-  update_hspp_opts up ms = ms{ms_hspp_opts = up $ ms_hspp_opts ms}
+enableTopLevelWarnings :: ParsedModule -> ParsedModule
+enableTopLevelWarnings =
+  (update_pm_mod_summary . update_hspp_opts)
+  ((`wopt_set` Opt_WarnMissingSignatures) . (`wopt_set` Opt_WarnMissingLocalSignatures))
 
-  update_pm_mod_summary :: (ModSummary -> ModSummary) -> ParsedModule -> ParsedModule
-  update_pm_mod_summary up pm =
-    pm{pm_mod_summary = up $ pm_mod_summary pm}
+update_hspp_opts :: (DynFlags -> DynFlags) -> ModSummary -> ModSummary
+update_hspp_opts up ms = ms{ms_hspp_opts = up $ ms_hspp_opts ms}
+
+update_pm_mod_summary :: (ModSummary -> ModSummary) -> ParsedModule -> ParsedModule
+update_pm_mod_summary up pm =
+  pm{pm_mod_summary = up $ pm_mod_summary pm}
 
 unDefer :: (WarnReason, FileDiagnostic) -> FileDiagnostic
 unDefer (Reason Opt_WarnDeferredTypeErrors         , fd) = upgradeWarningToError fd
