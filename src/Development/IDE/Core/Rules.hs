@@ -33,6 +33,7 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
 import Development.IDE.Core.Compile
 import Development.IDE.Core.Completions
+import Development.IDE.Core.Shake
 import Development.IDE.Types.Options
 import Development.IDE.Spans.Calculate
 import Development.IDE.Import.DependencyInformation
@@ -65,7 +66,6 @@ import GHC.Generics(Generic)
 
 import qualified Development.IDE.Spans.AtPoint as AtPoint
 import Development.IDE.Core.Service
-import Development.IDE.Core.Shake
 import Development.Shake.Classes
 
 -- | This is useful for rules to convert rules that can only produce errors or
@@ -287,7 +287,12 @@ typeCheckRule =
                   else uses_ TypeCheck (transitiveModuleDeps deps)
         setPriority priorityTypeCheck
         IdeOptions{ optDefer = defer} <- getIdeOptions
-        liftIO $ typecheckModule defer packageState tms pm
+        tcm <- liftIO $ typecheckModule defer packageState tms pm
+        -- Save last version if typechecking was successful
+        case tcm of
+            (_, Just r) -> updateLastTypecheckedModule file (tmrModule r) =<< getShakeExtras
+            _ -> return ()
+        return tcm
     where
         uses_th_qq dflags = xopt LangExt.TemplateHaskell dflags || xopt LangExt.QuasiQuotes dflags
         addByteCode :: Linkable -> TcModuleResult -> TcModuleResult
@@ -309,10 +314,15 @@ produceCompletions :: Rules ()
 produceCompletions =
     define $ \ProduceCompletions file -> do
         deps <- use_ GetDependencies file
-        (tm : tms) <- uses_ TypeCheck (file: transitiveModuleDeps deps)
+        _ <- uses TypeCheck (file: transitiveModuleDeps deps)
         dflags <- hsc_dflags . hscEnv <$> use_ GhcSession file
-        cdata <- liftIO $ cacheDataProducer dflags (tmrModule tm) (map tmrModule tms)
-        return ([], Just cdata)
+        extras <- getShakeExtras
+        tm <- getLastTypecheckedModule file extras
+        tms <- getAllLastTypecheckedModules extras
+        case tm of
+            Just tm' -> do cdata <- liftIO $ cacheDataProducer dflags tm' tms
+                           return ([], Just cdata)
+            Nothing  -> return ([], Nothing)
 
 generateByteCodeRule :: Rules ()
 generateByteCodeRule =
