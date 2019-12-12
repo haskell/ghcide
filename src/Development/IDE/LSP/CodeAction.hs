@@ -25,7 +25,6 @@ import Language.Haskell.LSP.VFS
 import Language.Haskell.LSP.Messages
 import qualified Data.Rope.UTF16 as Rope
 import Data.Aeson.Types (toJSON, fromJSON, Value(..), Result(..))
-import Control.Monad (join)
 import Control.Monad.Trans.Maybe
 import Data.Char
 import Data.Maybe
@@ -201,13 +200,18 @@ suggestSignature isQuickFix Diagnostic{_range=_range@Range{..},..}
     | "Polymorphic local binding with no type signature" `T.isInfixOf` _message = let
       filterNewlines = T.concat  . T.lines
       unifySpaces    = T.unwords . T.words
-      signature      = T.takeWhile (\x -> x/='*' && x/='•')
+      signature      = removeInitialForAll
+                     $ T.takeWhile (\x -> x/='*' && x/='•')
                      $ T.strip $ unifySpaces $ last $ T.splitOn "type signature: " $ filterNewlines _message
       startOfLine    = Position (_line _start) (_character _start)
       beforeLine     = Range startOfLine startOfLine
       title          = if isQuickFix then "add signature: " <> signature else signature
       action         = TextEdit beforeLine $ signature <> "\n" <> T.replicate (_character _start) " "
       in [(title, [action])]
+    where removeInitialForAll :: T.Text -> T.Text
+          removeInitialForAll (T.breakOnEnd " :: " -> (nm, ty))
+              | "forall" `T.isPrefixOf` ty = nm <> T.drop 2 (snd (T.breakOn "." ty))
+              | otherwise                  = nm <> ty
 suggestSignature _ _ = []
 
 topOfHoleFitsMarker :: T.Text
