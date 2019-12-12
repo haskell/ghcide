@@ -25,6 +25,8 @@ import Language.Haskell.LSP.VFS
 import Language.Haskell.LSP.Messages
 import qualified Data.Rope.UTF16 as Rope
 import Data.Aeson.Types (toJSON, fromJSON, Value(..), Result(..))
+import Control.Monad (join)
+import Control.Monad.Trans.Maybe
 import Data.Char
 import Data.Maybe
 import Data.List.Extra
@@ -57,7 +59,7 @@ codeLens _lsp ideState CodeLensParams{_textDocument=TextDocumentIdentifier uri} 
     -- diag <- getDiagnostics ideState
     case uriToFilePath' uri of
       Just (toNormalizedFilePath -> filePath) -> do
-        _ <- runAction ideState $ use_ TypeCheck filePath
+        _ <- runAction ideState $ runMaybeT $ useE TypeCheck filePath
         diag <- getDiagnostics ideState
         pure $ List
           [ CodeLens _range (Just (Command title "typesignature.add" (Just $ List [toJSON edit]))) Nothing
