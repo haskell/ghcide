@@ -27,7 +27,7 @@ module Development.IDE.Core.Shake(
     use, useWithStale, useNoFile, uses, usesWithStale,
     use_, useNoFile_, uses_,
     define, defineEarlyCutoff, defineOnDisk, needOnDisk, needOnDisks, fingerprintToBS,
-    getDiagnostics, unsafeClearDiagnostics, getShakeExtras,
+    getDiagnostics, unsafeClearDiagnostics,
     IsIdeGlobal, addIdeGlobal, getIdeGlobalState, getIdeGlobalAction,
     garbageCollect,
     setPriority,
@@ -37,10 +37,7 @@ module Development.IDE.Core.Shake(
     FileVersion(..),
     Priority(..),
     updatePositionMapping,
-    OnDiskRule(..),
-    getAllLastTypecheckedModules,
-    getLastTypecheckedModule,
-    updateLastTypecheckedModule
+    OnDiskRule(..)
     ) where
 
 import           Development.Shake hiding (ShakeValue, doesFileExist)
@@ -86,7 +83,6 @@ import           GHC.Generics
 import           System.IO.Unsafe
 import           Numeric.Extra
 import Language.Haskell.LSP.Types
-import qualified GHC
 
 
 -- information we stash inside the shakeExtra field
@@ -103,8 +99,6 @@ data ShakeExtras = ShakeExtras
     ,positionMapping :: Var (Map NormalizedUri (Map TextDocumentVersion PositionMapping))
     -- ^ Map from a text document version to a PositionMapping that describes how to map
     -- positions in a version of that document to positions in the latest version
-    ,lastTypechecked :: Var (Map NormalizedUri GHC.TypecheckedModule)
-    -- ^ Map from files to the last correct version
     }
 
 getShakeExtras :: Action ShakeExtras
@@ -298,7 +292,6 @@ shakeOpen getLspId eventer logger shakeProfileDir (IdeReportProgress reportProgr
         publishedDiagnostics <- newVar mempty
         debouncer <- newDebouncer
         positionMapping <- newVar Map.empty
-        lastTypechecked <- newVar Map.empty
         pure ShakeExtras{..}
     (shakeDb, shakeClose) <-
         shakeOpenDatabase
@@ -689,27 +682,6 @@ publishDiagnosticsNotification uri diags =
     LSP.NotPublishDiagnostics $
     LSP.NotificationMessage "2.0" LSP.TextDocumentPublishDiagnostics $
     LSP.PublishDiagnosticsParams uri (List diags)
-
-getAllLastTypecheckedModules ::
-  ShakeExtras -> Action [GHC.TypecheckedModule]
-getAllLastTypecheckedModules ShakeExtras {lastTypechecked} = do
-    Map.elems <$> liftIO (readVar lastTypechecked)
-
-getLastTypecheckedModule ::
-  NormalizedFilePath -> ShakeExtras -> Action (Maybe GHC.TypecheckedModule)
-getLastTypecheckedModule fp ShakeExtras {lastTypechecked} = do
-    let uri = filePathToUri' fp
-    (Map.!? uri) <$> liftIO (readVar lastTypechecked)
-
-updateLastTypecheckedModule ::
-     NormalizedFilePath
-  -> GHC.TypecheckedModule
-  -> ShakeExtras
-  -> Action ()
-updateLastTypecheckedModule fp m ShakeExtras {lastTypechecked} = do
-    let uri = filePathToUri' fp
-    liftIO $ mask_ $ modifyVar_ lastTypechecked $ \lastTcs -> do
-        pure $! Map.insert uri m lastTcs
 
 newtype Priority = Priority Double
 
