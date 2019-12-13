@@ -25,3 +25,7 @@ instance Class Int where
   method = succ
 kkk :: Class a => Int -> a -> Int
 kkk n c = n + method c
+
+doBind :: Maybe ()
+doBind = do unwrapped <- Just ()
+            return unwrapped
