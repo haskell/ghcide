@@ -29,3 +29,6 @@ kkk n c = n + method c
 doBind :: Maybe ()
 doBind = do unwrapped <- Just ()
             return unwrapped
+
+listCompBind :: [Char]
+listCompBind = [ succ c | c <- "abc" ]

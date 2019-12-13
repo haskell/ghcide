@@ -786,8 +786,10 @@ findDefinitionAndHoverTests = let
   clL23  = Position 23 11  ;  cls    = [mkR  21  0   22 20]
   clL25  = Position 25  9
   eclL15 = Position 15  8  ;  ecls   = [ExpectHoverText ["Num"], ExpectExternFail]
-  dnbL29 = Position 29 18  ;  dnb    = [ExpectHoverText [":: ()"], mkR  29 12   29 21]
+  dnbL29 = Position 29 18  ;  dnb    = [ExpectHoverText [":: ()"],   mkR  29 12   29 21]
   dnbL30 = Position 30 23
+  lcbL33 = Position 33 26  ;  lcb    = [ExpectHoverText [":: Char"], mkR  33 26   33 27]
+  lclL33 = Position 33 22
   in
   mkFindTests
   --     def    hover  look   expect
@@ -810,6 +812,8 @@ findDefinitionAndHoverTests = let
   , test broken broken eclL15 ecls   "external class in signature"
   , test yes    broken dnbL29 dnb    "do-notation   bind"
   , test yes    yes    dnbL30 dnb    "do-notation lookup"
+  , test yes    broken lcbL33 lcb    "listcomp   bind"
+  , test yes    yes    lclL33 lcb    "listcomp lookup"
   ]
   where yes, broken :: (TestTree -> Maybe TestTree)
         yes    = Just -- test should run and pass
