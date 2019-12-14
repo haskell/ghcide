@@ -14,7 +14,6 @@ module Development.IDE.Spans.Type(
 import GHC
 import Control.DeepSeq
 import OccName
-import Data.List
 import Development.IDE.GHC.Util
 
 -- | Type of some span of source code. Most of these fields are
@@ -38,8 +37,8 @@ data SpanInfo =
            }
 instance Show SpanInfo where
   show (SpanInfo sl sc el ec t n) =
-    intercalate " " ["(SpanInfo", show sl, show sc, show el, show ec
-                    , show $ maybe "NoType" prettyPrint t, ("(" <> show n <> "))")]
+    unwords ["(SpanInfo", show sl, show sc, show el, show ec
+            , show $ maybe "NoType" prettyPrint t, "(" <> show n <> "))"]
 
 instance NFData SpanInfo where
     rnf = rwhnf
