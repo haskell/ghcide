@@ -308,11 +308,15 @@ generateCoreRule =
 produceCompletions :: Rules ()
 produceCompletions =
     define $ \ProduceCompletions file -> do
-        deps <- use_ GetDependencies file
-        (tm : tms) <- uses_ TypeCheck (file: transitiveModuleDeps deps)
-        dflags <- hsc_dflags . hscEnv <$> use_ GhcSession file
-        cdata <- liftIO $ cacheDataProducer dflags (tmrModule tm) (map tmrModule tms)
-        return ([], Just cdata)
+        deps <- maybe (TransitiveDependencies [] []) fst <$> useWithStale GetDependencies file
+        tms <- mapMaybe (fmap fst) <$> usesWithStale TypeCheck (transitiveModuleDeps deps)
+        tm <- fmap fst <$> useWithStale TypeCheck file
+        dflags <- fmap (hsc_dflags . hscEnv . fst) <$> useWithStale GhcSession file
+        case (tm, dflags) of
+            (Just tm', Just dflags') -> do
+                cdata <- liftIO $ cacheDataProducer dflags' (tmrModule tm') (map tmrModule tms)
+                return ([], Just cdata)
+            _ -> return ([], Nothing)
 
 generateByteCodeRule :: Rules ()
 generateByteCodeRule =

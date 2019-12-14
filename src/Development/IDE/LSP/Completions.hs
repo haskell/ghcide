@@ -29,7 +29,8 @@ getCompletionsLSP lsp ide CompletionParams{_textDocument=TextDocumentIdentifier 
       (Just cnts, Just path) -> do
         pfix <- VFS.getCompletionPrefix position cnts
         let npath = toNormalizedFilePath path
-        (tm, cci) <- runAction ide ( (,) <$> use TypeCheck npath <*> use ProduceCompletions npath )
+        tm  <- fmap fst <$> runAction ide (useWithStale TypeCheck npath)
+        cci <- fmap fst <$> runAction ide (useWithStale ProduceCompletions npath)
         case (pfix, tm, cci) of
           (Just pfix', Just tm', Just cci') -> do
             let fakeClientCapabilities = ClientCapabilities Nothing Nothing Nothing Nothing
