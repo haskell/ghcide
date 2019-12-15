@@ -817,7 +817,7 @@ findDefinitionAndHoverTests = let
   , test yes    yes    lcbL33 lcb    "listcomp   bind"               -- 137
   , test yes    yes    lclL33 lcb    "listcomp lookup"
   , test yes    yes    mclL36 mcl    "top-level fn 1st clause"
-  , test broken broken mclL37 mcl    "top-level fn 2nd clause #245"
+  , test yes    yes    mclL37 mcl    "top-level fn 2nd clause #246"
   ]
   where yes, broken :: (TestTree -> Maybe TestTree)
         yes    = Just -- test should run and pass
