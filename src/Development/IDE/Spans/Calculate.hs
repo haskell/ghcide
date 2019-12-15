@@ -100,14 +100,8 @@ getTypeLHsBind :: (GhcMonad m)
                -> m [(SpanSource, SrcSpan, Maybe Type)]
 getTypeLHsBind _ (L _spn FunBind{ fun_id = pid
                                 , fun_matches = MG{mg_alts=(L _ matches)}}) =
-  return [(namedSpanSource pid, getLoc match, justType pid) | match <- matches ]
+  return [(Named (getName (unLoc pid)), getLoc match, Just (varType (unLoc pid))) | match <- matches ]
 getTypeLHsBind _ _ = return []
-
-namedSpanSource :: NamedThing a => GenLocated l a -> SpanSource
-namedSpanSource = Named . getName . unLoc
-
-justType :: GenLocated l Var -> Maybe Kind
-justType = Just . varType . unLoc
 
 -- | Get the name and type of an expression.
 getTypeLHsExpr :: (GhcMonad m)
