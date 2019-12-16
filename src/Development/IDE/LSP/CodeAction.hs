@@ -55,7 +55,6 @@ codeLens
     -> CodeLensParams
     -> IO (List CodeLens)
 codeLens _lsp ideState CodeLensParams{_textDocument=TextDocumentIdentifier uri} = do
-    -- diag <- getDiagnostics ideState
     case uriToFilePath' uri of
       Just (toNormalizedFilePath -> filePath) -> do
         _ <- runAction ideState $ runMaybeT $ useE TypeCheck filePath
@@ -69,7 +68,7 @@ codeLens _lsp ideState CodeLensParams{_textDocument=TextDocumentIdentifier uri} 
           ]
       Nothing -> pure $ List []
 
--- | Generate code lenses.
+-- | Execute the "typesignature.add" command.
 executeAddSignatureCommand
     :: LSP.LspFuncs ()
     -> IdeState
