@@ -8,6 +8,8 @@ module Development.IDE.Spans.AtPoint (
   , gotoDefinition
   ) where
 
+import Debug.Trace
+
 import           Development.IDE.Spans.Documentation
 import           Development.IDE.GHC.Error
 import Development.IDE.GHC.Orphans()
@@ -89,10 +91,11 @@ atPoint IdeOptions{..} tcs srcSpans pos = do
         Nothing -> False
 
 locationsAtPoint :: forall m . MonadIO m => (FilePath -> m (Maybe HieFile)) -> IdeOptions -> HscEnv -> Position -> [SpanInfo] -> m [Location]
-locationsAtPoint getHieFile IdeOptions{..} pkgState pos =
-    fmap (map srcSpanToLocation) .
-    mapMaybeM (getSpan . spaninfoSource) .
-    spansAtPoint pos
+locationsAtPoint getHieFile IdeOptions{..} pkgState pos spans =
+    traceShow (pos, spans, spansAtPoint pos spans) $
+    fmap (map srcSpanToLocation) $
+    mapMaybeM (getSpan . spaninfoSource) $
+    spansAtPoint pos spans
   where getSpan :: SpanSource -> m (Maybe SrcSpan)
         getSpan NoSource = pure Nothing
         getSpan (SpanS sp) = pure $ Just sp
