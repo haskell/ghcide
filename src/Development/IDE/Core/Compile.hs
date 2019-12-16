@@ -108,14 +108,15 @@ typecheckModule (IdeDefer defer) packageState deps pm =
                 GHC.typecheckModule $ enableTopLevelWarnings
                                     $ demoteIfDefer pm{pm_mod_summary = tweak modSummary'}
             tcm2 <- mkTcModuleResult tcm
-            let errorPipeline = unDefer
-                              . (if wopt Opt_WarnMissingSignatures dflags
-                                    then id
-                                    else degradeError Opt_WarnMissingSignatures)
-                              . (if wopt Opt_WarnMissingLocalSignatures dflags
-                                    then id
-                                    else degradeError Opt_WarnMissingLocalSignatures)
-            return (map errorPipeline warnings, tcm2)
+            let errorPipeline =
+                    fmap unDefer .
+                    (if wopt Opt_WarnMissingSignatures dflags
+                       then Just
+                       else filterWarning Opt_WarnMissingSignatures) <=<
+                    (if wopt Opt_WarnMissingLocalSignatures dflags
+                       then Just
+                      else filterWarning Opt_WarnMissingLocalSignatures)
+            return (mapMaybe errorPipeline warnings, tcm2)
 
 initPlugins :: GhcMonad m => ModSummary -> m ModSummary
 initPlugins modSummary = do
@@ -197,20 +198,16 @@ unDefer (Reason Opt_WarnTypedHoles                 , fd) = upgradeWarningToError
 unDefer (Reason Opt_WarnDeferredOutOfScopeVariables, fd) = upgradeWarningToError fd
 unDefer ( _                                        , fd) = fd
 
-degradeError :: WarningFlag -> (WarnReason, FileDiagnostic) -> (WarnReason, FileDiagnostic)
-degradeError f (Reason f', fd)
-  | f == f'        = (Reason f', degradeWarningToError fd)
-degradeError _ wfd = wfd
+filterWarning :: WarningFlag -> (WarnReason, FileDiagnostic) -> Maybe (WarnReason, FileDiagnostic)
+filterWarning f (Reason f', _)
+  | f == f' = Nothing
+filterWarning _ wfd = Just wfd
 
 upgradeWarningToError :: FileDiagnostic -> FileDiagnostic
 upgradeWarningToError (nfp, fd) =
   (nfp, fd{_severity = Just DsError, _message = warn2err $ _message fd}) where
   warn2err :: T.Text -> T.Text
   warn2err = T.intercalate ": error:" . T.splitOn ": warning:"
-
-degradeWarningToError :: FileDiagnostic -> FileDiagnostic
-degradeWarningToError (nfp, fd) =
-  (nfp, fd{_severity = Just DsInfo})
 
 addRelativeImport :: NormalizedFilePath -> ParsedModule -> DynFlags -> DynFlags
 addRelativeImport fp modu dflags = dflags
