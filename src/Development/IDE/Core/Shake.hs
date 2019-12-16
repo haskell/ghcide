@@ -682,13 +682,13 @@ updateFileDiagnostics fp k ShakeExtras{diagnostics, hiddenDiagnostics, published
             _ <- evaluate newDiagsStore
             _ <- evaluate newDiags
             pure $! (newDiagsStore, newDiags)
-        _newHiddenDiags <- modifyVar hiddenDiagnostics $ \old -> do
+        modifyVar_ hiddenDiagnostics $ \old -> do
             let newDiagsStore = setStageDiagnostics fp (vfsVersion =<< modTime)
                                   (T.pack $ show k) (map snd currentHidden) old
             let newDiags = getFileDiagnostics fp newDiagsStore
             _ <- evaluate newDiagsStore
             _ <- evaluate newDiags
-            pure $! (newDiagsStore, newDiags)
+            return newDiagsStore
         let uri = filePathToUri' fp
         let delay = if null newDiags then 0.1 else 0
         registerEvent debouncer delay uri $ do

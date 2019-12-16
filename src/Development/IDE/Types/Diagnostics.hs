@@ -41,8 +41,16 @@ ideErrorText fp msg = (fp, ShowDiag, LSP.Diagnostic {
     _relatedInformation = Nothing
     })
 
+-- | Defines whether a particular diagnostic should be reported
+--   back to the user.
+--
+--   One important use case is "missing signature" code lenses,
+--   for which we need to enable the corresponding warning during
+--   type checking. However, we do not want to show the warning
+--   unless the programmer asks for it (#261).
 data ShowDiagnostic
-    = ShowDiag | HideDiag
+    = ShowDiag  -- ^ Report back to the user
+    | HideDiag  -- ^ Hide from user
     deriving (Eq, Ord, Show)
 
 instance NFData ShowDiagnostic where
