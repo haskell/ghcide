@@ -109,12 +109,7 @@ typecheckModule (IdeDefer defer) packageState deps pm =
                                     $ demoteIfDefer pm{pm_mod_summary = tweak modSummary'}
             tcm2 <- mkTcModuleResult tcm
             let errorPipeline = unDefer
-                              . (if wopt Opt_WarnMissingSignatures dflags
-                                    then id
-                                    else degradeError Opt_WarnMissingSignatures)
-                              . (if wopt Opt_WarnMissingLocalSignatures dflags
-                                    then id
-                                    else degradeError Opt_WarnMissingLocalSignatures)
+                              . unShow dflags
             return (map errorPipeline warnings, tcm2)
 
 initPlugins :: GhcMonad m => ModSummary -> m ModSummary
@@ -197,20 +192,16 @@ unDefer (Reason Opt_WarnTypedHoles                 , fd) = upgradeWarningToError
 unDefer (Reason Opt_WarnDeferredOutOfScopeVariables, fd) = upgradeWarningToError fd
 unDefer ( _                                        , fd) = fd
 
-degradeError :: WarningFlag -> (WarnReason, FileDiagnostic) -> (WarnReason, FileDiagnostic)
-degradeError f (Reason f', fd)
-  | f == f'        = (Reason f', degradeWarningToError fd)
-degradeError _ wfd = wfd
-
 upgradeWarningToError :: FileDiagnostic -> FileDiagnostic
-upgradeWarningToError (nfp, fd) =
-  (nfp, fd{_severity = Just DsError, _message = warn2err $ _message fd}) where
+upgradeWarningToError (nfp, sh, fd) =
+  (nfp, sh, fd{_severity = Just DsError, _message = warn2err $ _message fd}) where
   warn2err :: T.Text -> T.Text
   warn2err = T.intercalate ": error:" . T.splitOn ": warning:"
 
-degradeWarningToError :: FileDiagnostic -> FileDiagnostic
-degradeWarningToError (nfp, fd) =
-  (nfp, fd{_severity = Just DsInfo})
+unShow :: DynFlags -> (WarnReason, FileDiagnostic) -> (WarnReason, FileDiagnostic)
+unShow originalFlags (Reason warning, (nfp, _sh, fd))
+  | not (wopt warning originalFlags) = (Reason warning, (nfp, HideDiag, fd))
+unShow _originalFlags t = t 
 
 addRelativeImport :: NormalizedFilePath -> ParsedModule -> DynFlags -> DynFlags
 addRelativeImport fp modu dflags = dflags
