@@ -719,10 +719,9 @@ addSigLensesTests = let
     let originalCode = before withMissing def
     let expectedCode = after' withMissing def sig
     doc <- openDoc' "Sigs.hs" "haskell" originalCode
-    _ <- waitForDiagnostics
     [CodeLens {_command = Just c}] <- getCodeLenses doc
     executeCommand c
-    modifiedCode <- documentContents doc
+    modifiedCode <- getDocumentEdit doc
     liftIO $ expectedCode @=? modifiedCode
   in
   testGroup "add signature"
