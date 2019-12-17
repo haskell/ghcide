@@ -315,7 +315,7 @@ produceCompletions =
         case (tm, dflags) of
             (Just tm', Just dflags') -> do
                 cdata <- liftIO $ cacheDataProducer dflags' (tmrModule tm') (map tmrModule tms)
-                return ([], Just cdata)
+                return ([], Just (cdata, tm'))
             _ -> return ([], Nothing)
 
 generateByteCodeRule :: Rules ()

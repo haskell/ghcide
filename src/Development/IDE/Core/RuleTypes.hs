@@ -87,7 +87,7 @@ type instance RuleResult ReportImportCycles = ()
 type instance RuleResult GetHieFile = HieFile
 
 -- | Produce completions info for a file
-type instance RuleResult ProduceCompletions = CachedCompletions
+type instance RuleResult ProduceCompletions = (CachedCompletions, TcModuleResult)
 
 
 data GetParsedModule = GetParsedModule
