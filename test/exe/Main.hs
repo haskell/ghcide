@@ -39,6 +39,7 @@ main = defaultMain $ testGroup "HIE"
   , initializeResponseTests
   , diagnosticTests
   , codeActionTests
+  , codeLensesTests
   , findDefinitionAndHoverTests
   , pluginTests
   , thTests
@@ -385,6 +386,11 @@ codeActionTests = testGroup "code actions"
   , addSigActionTests
   ]
 
+codeLensesTests :: TestTree
+codeLensesTests = testGroup "code lenses"
+  [ addSigLensesTests
+  ]
+
 renameActionTests :: TestTree
 renameActionTests = testGroup "rename actions"
   [ testSession "change to local variable name" $ do
@@ -675,19 +681,47 @@ addSigActionTests :: TestTree
 addSigActionTests = let
   header = "{-# OPTIONS_GHC -Wmissing-signatures #-}"
   moduleH = "module Sigs where"
-  before  withHeader def
-    = T.unlines $ if withHeader then [header, moduleH, def] else [moduleH, def]
-  after'  withHeader def sig
-    = T.unlines $ if withHeader then [header, moduleH, sig, def] else [moduleH, sig, def]
+  before def     = T.unlines [header, moduleH,      def]
+  after' def sig = T.unlines [header, moduleH, sig, def]
 
-  sigSession withHeader def sig = testSession (T.unpack def) $ do
-    let originalCode = before withHeader def
-    let expectedCode = after' withHeader def sig
+  def >:: sig = testSession (T.unpack def) $ do
+    let originalCode = before def
+    let expectedCode = after' def sig
     doc <- openDoc' "Sigs.hs" "haskell" originalCode
-    when withHeader $ void waitForDiagnostics
+    _ <- waitForDiagnostics
     actionsOrCommands <- getCodeActions doc (Range (Position 3 1) (Position 3 maxBound))
     let chosenAction = pickActionWithTitle ("add signature: " <> sig) actionsOrCommands
     executeCodeAction chosenAction
+    modifiedCode <- documentContents doc
+    liftIO $ expectedCode @=? modifiedCode
+  in
+  testGroup "add signature"
+    [ "abc = True"             >:: "abc :: Bool"
+    , "foo a b = a + b"        >:: "foo :: Num a => a -> a -> a"
+    , "bar a b = show $ a + b" >:: "bar :: (Show a, Num a) => a -> a -> String"
+    , "(!!!) a b = a > b"      >:: "(!!!) :: Ord a => a -> a -> Bool"
+    , "a >>>> b = a + b"       >:: "(>>>>) :: Num a => a -> a -> a"
+    , "a `haha` b = a b"       >:: "haha :: (t1 -> t2) -> t1 -> t2"
+    ]
+
+addSigLensesTests :: TestTree
+addSigLensesTests = let
+  missing = "{-# OPTIONS_GHC -Wmissing-signatures -Wunused-matches #-}"
+  notMissing = "{-# OPTIONS_GHC -Wunused-matches #-}"
+  moduleH = "module Sigs where"
+  other = T.unlines ["f :: Integer -> Integer", "f x = 3"]
+  before  withMissing def
+    = T.unlines $ (if withMissing then (missing :) else (notMissing :)) [moduleH, def, other]
+  after'  withMissing def sig
+    = T.unlines $ (if withMissing then (missing :) else (notMissing :)) [moduleH, sig, def, other]
+
+  sigSession withMissing def sig = testSession (T.unpack def) $ do
+    let originalCode = before withMissing def
+    let expectedCode = after' withMissing def sig
+    doc <- openDoc' "Sigs.hs" "haskell" originalCode
+    _ <- waitForDiagnostics
+    [CodeLens {_command = Just c}] <- getCodeLenses doc
+    executeCommand c
     modifiedCode <- documentContents doc
     liftIO $ expectedCode @=? modifiedCode
   in
