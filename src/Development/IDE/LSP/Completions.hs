@@ -2,6 +2,8 @@ module Development.IDE.LSP.Completions (
   setHandlersCompletion
 ) where
 
+import Data.Bifunctor
+
 import Language.Haskell.LSP.Messages
 import Language.Haskell.LSP.Types
 import qualified Language.Haskell.LSP.Core as LSP
@@ -22,15 +24,15 @@ getCompletionsLSP
     -> CompletionParams
     -> IO CompletionResponseResult
 getCompletionsLSP lsp ide CompletionParams{_textDocument=TextDocumentIdentifier uri,_position=position} = do
-    -- disable logging as its quite verbose
-    -- logInfo (ideLogger ide) $ T.pack $ "Code action req: " ++ show arg
     contents <- LSP.getVirtualFileFunc lsp $ toNormalizedUri uri
     case (contents, uriToFilePath' uri) of
       (Just cnts, Just path) -> do
         pfix <- VFS.getCompletionPrefix position cnts
         let npath = toNormalizedFilePath path
-        tm  <- fmap fst <$> runAction ide (useWithStale TypeCheck npath)
-        cci <- fmap fst <$> runAction ide (useWithStale ProduceCompletions npath)
+        (tm, cci) 
+          <- bimap (fmap fst) (fmap fst) <$>
+             runAction ide ((,) <$> useWithStale TypeCheck npath
+                                <*> useWithStale ProduceCompletions npath)
         case (pfix, tm, cci) of
           (Just pfix', Just tm', Just cci') -> do
             let fakeClientCapabilities = ClientCapabilities Nothing Nothing Nothing Nothing
