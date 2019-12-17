@@ -125,6 +125,8 @@ main = do
         let files xs = let n = length xs in if n == 1 then "1 file" else show n ++ " files"
         putStrLn $ "\nCompleted (" ++ files worked ++ " worked, " ++ files failed ++ " failed)"
 
+        unless (null failed) exitFailure
+
 
 expandFiles :: [FilePath] -> IO [FilePath]
 expandFiles = concatMapM $ \x -> do
@@ -154,7 +156,13 @@ showEvent lock e = withLock lock $ print e
 
 cradleToSession :: Cradle -> IO HscEnvEq
 cradleToSession cradle = do
-    opts <- either throwIO return =<< getCompilerOptions "" cradle
+    cradleRes <- getCompilerOptions "" cradle
+    opts <- case cradleRes of
+        CradleSuccess r -> pure r
+        CradleFail err -> throwIO err
+        -- TODO Rather than failing here, we should ignore any files that use this cradle.
+        -- That will require some more changes.
+        CradleNone -> fail "'none' cradle is not yet supported"
     libdir <- getLibdir
     env <- runGhc (Just libdir) $ do
         _targets <- initSession opts

@@ -1,5 +1,5 @@
-
-module Testing ( module Testing )where
+{- HLINT ignore -}
+module Testing ( module Testing ) where
 import Data.Text (Text, pack)
 data TypeConstructor = DataConstructor
   { fff :: Text
@@ -25,3 +25,14 @@ instance Class Int where
   method = succ
 kkk :: Class a => Int -> a -> Int
 kkk n c = n + method c
+
+doBind :: Maybe ()
+doBind = do unwrapped <- Just ()
+            return unwrapped
+
+listCompBind :: [Char]
+listCompBind = [ succ c | c <- "abc" ]
+
+multipleClause :: Bool -> Char
+multipleClause True  = 't'
+multipleClause False = 'f'
