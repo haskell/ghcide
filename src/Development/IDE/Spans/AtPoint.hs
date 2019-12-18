@@ -46,7 +46,7 @@ gotoDefinition
   -> Position
   -> m (Maybe Location)
 gotoDefinition getHieFile ideOpts pkgState srcSpans pos =
-  locationsAtPoint getHieFile ideOpts pkgState pos srcSpans
+  listToMaybe <$> locationsAtPoint getHieFile ideOpts pkgState pos srcSpans
 
 -- | Synopsis for the name at a given position.
 atPoint
@@ -107,9 +107,9 @@ atPoint IdeOptions{..} tcs pos srcSpans = do
         Just name -> any (`isInfixOf` getOccString name) ["==", "showsPrec"]
         Nothing -> False
 
-locationsAtPoint :: forall m . MonadIO m => (FilePath -> m (Maybe HieFile)) -> IdeOptions -> HscEnv -> Position -> [SpanInfo] -> m (Maybe Location)
+locationsAtPoint :: forall m . MonadIO m => (FilePath -> m (Maybe HieFile)) -> IdeOptions -> HscEnv -> Position -> [SpanInfo] -> m [Location]
 locationsAtPoint getHieFile IdeOptions{..} pkgState pos =
-    fmap (listToMaybe . map srcSpanToLocation) . mapMaybeM (getSpan . spaninfoSource) . spansAtPoint pos
+    fmap (map srcSpanToLocation) . mapMaybeM (getSpan . spaninfoSource) . spansAtPoint pos
   where getSpan :: SpanSource -> m (Maybe SrcSpan)
         getSpan NoSource = pure Nothing
         getSpan (SpanS sp) = pure $ Just sp
