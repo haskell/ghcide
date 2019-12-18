@@ -37,6 +37,7 @@ main = defaultMain $ testGroup "HIE"
       closeDoc doc
       void (message :: Session WorkDoneProgressEndNotification)
   , initializeResponseTests
+  , completionTests
   , diagnosticTests
   , codeActionTests
   , codeLensesTests
@@ -58,7 +59,7 @@ initializeResponseTests = withResource acquire release tests where
     testGroup "initialize response capabilities"
     [ chk "   text doc sync"             _textDocumentSync  tds
     , chk "   hover"                         _hoverProvider (Just True)
-    , chk "NO completion"               _completionProvider (Just $ CompletionOptions (Just False) Nothing Nothing)
+    , chk "   completion"               _completionProvider (Just $ CompletionOptions (Just False) Nothing Nothing)
     , chk "NO signature help"        _signatureHelpProvider  Nothing
     , chk "   goto definition"          _definitionProvider (Just True)
     , chk "NO goto type definition" _typeDefinitionProvider (Just $ GotoOptionsStatic False)
@@ -926,6 +927,52 @@ thTests =
         _ <- openDoc' "A.hs" "haskell" sourceA
         _ <- openDoc' "B.hs" "haskell" sourceB
         expectDiagnostics [ ( "B.hs", [(DsError, (6, 29), "Variable not in scope: n")] ) ]
+    ]
+
+completionTests :: TestTree
+completionTests
+  = testGroup "completion"
+    [ testSessionWait "variable" $ do
+        let source = T.unlines ["module A where", "f = hea"]
+        docId <- openDoc' "A.hs" "haskell" source
+        compls <- getCompletions docId (Position 1 7)
+        liftIO $ length compls @=? 1
+        let [CompletionItem {_label = l, _kind = k}] = compls
+        liftIO $ l @=? "head"
+        liftIO $ k @=? Just CiFunction
+    , testSessionWait "type" $ do
+        let source = T.unlines ["module A where", "f :: B", "f = True"]
+        docId <- openDoc' "A.hs" "haskell" source
+        compls <- getCompletions docId (Position 1 6)
+        liftIO $ length compls @=? 1
+        let [CompletionItem {_label = l, _kind = k}] = compls
+        liftIO $ l @=? "head"
+        liftIO $ k @=? Just CiFunction
+    , expectFailBecause "qualified not supported" $ testSessionWait "qualified" $ do
+        let source = T.unlines ["module A where", "f = Prelude.hea"]
+        docId <- openDoc' "A.hs" "haskell" source
+        compls <- getCompletions docId (Position 1 15)
+        liftIO $ length compls @=? 1
+        let [CompletionItem {_label = l, _kind = k}] = compls
+        liftIO $ l @=? "head"
+        liftIO $ k @=? Just CiFunction
+    , testSessionWait "check stale" $ do
+        let source = T.unlines ["module A where"]
+        docId <- openDoc' "A.hs" "haskell" source
+        void (message :: Session WorkDoneProgressCreateRequest)
+        void (message :: Session WorkDoneProgressBeginNotification)
+        let change = TextDocumentContentChangeEvent
+                       { _range = Just (Range (Position 0 15) (Position 1 7))
+                       , _rangeLength = Nothing
+                       , _text = "\nf = head"
+                       }
+        changeDoc docId [change]
+        expectDiagnostics []
+        compls <- getCompletions docId (Position 1 7)
+        liftIO $ length compls @=? 1
+        let [CompletionItem {_label = l, _kind = k}] = compls
+        liftIO $ l @=? "head"
+        liftIO $ k @=? Just CiFunction
     ]
 
 xfail :: TestTree -> String -> TestTree
