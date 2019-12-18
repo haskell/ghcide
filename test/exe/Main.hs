@@ -852,8 +852,8 @@ findDefinitionAndHoverTests = let
   , test yes    yes    aaaL14 aaa    "top-level name"                       -- 120
   , test broken broken dcL7   tcDC   "data constructor record         #247"
   , test yes    yes    dcL12  tcDC   "data constructor plain"               -- 121
-  , test yes    yes    tcL6   tcData "type constructor                #249" -- 147
-  , test broken yes    xtcL5  xtc    "type constructor external       #249"
+  , test yes    yes    tcL6   tcData "type constructor                #248" -- 147
+  , test broken yes    xtcL5  xtc    "type constructor external   #248,249"
   , test broken yes    xvL20  xvMsg  "value external package          #249" -- 120
   , test yes    yes    vvL16  vv     "plain parameter"                      -- 120
   , test yes    yes    aL18   apmp   "pattern match name"                   -- 120
