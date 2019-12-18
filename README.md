@@ -71,7 +71,7 @@ marketplace](https://marketplace.visualstudio.com/items?itemName=DigitalAssetHol
 
 ### Using with Atom
 
-Youy can follow the [instructions](https://github.com/moodmosaic/ide-haskell-ghcide#readme) to install with `apm`.
+You can follow the [instructions](https://github.com/moodmosaic/ide-haskell-ghcide#readme) to install with `apm`.
 
 ### Using with Emacs
 
