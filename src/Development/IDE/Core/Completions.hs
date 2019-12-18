@@ -322,11 +322,11 @@ cacheDataProducer dflags tm tcs = do
           typ = Just $ varType var
           name = Var.varName var
           label = T.pack $ showGhc name
-          docs = getDocumentation name tcs
+          docs = getDocumentation tcs name
 
       toCompItem :: ModuleName -> Name -> CompItem
       toCompItem mn n =
-        CI n (showModName mn) Nothing (T.pack $ showGhc n) Nothing (getDocumentation n tcs)
+        CI n (showModName mn) Nothing (T.pack $ showGhc n) Nothing (getDocumentation tcs n)
 
       (unquals,quals) = getCompls rdrElts
 
