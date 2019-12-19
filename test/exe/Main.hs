@@ -10,6 +10,7 @@ module Main (main) where
 import Control.Applicative.Combinators
 import Control.Monad
 import Control.Monad.IO.Class (liftIO)
+import qualified Data.Aeson as Aeson
 import Data.Char (toLower)
 import Data.Foldable
 import Development.IDE.GHC.Util
@@ -950,44 +951,48 @@ completionTests
         let source = T.unlines ["module A where", "f = hea"]
         docId <- openDoc' "A.hs" "haskell" source
         compls <- getCompletions docId (Position 1 7)
-        liftIO $ length compls @=? 1
-        let [CompletionItem {_label = l, _kind = k}] = compls
-        liftIO $ l @=? "head"
-        liftIO $ k @=? Just CiFunction
+        liftIO $ compls @?= [complItem "head" ["GHC.List", "base", "v", "head"] (Just CiFunction)]
     , testSessionWait "type" $ do
-        let source = T.unlines ["module A where", "f :: B", "f = True"]
+        let source = T.unlines ["{-# OPTIONS_GHC -Wall #-}", "module A () where", "f :: ()", "f = ()"]
         docId <- openDoc' "A.hs" "haskell" source
-        compls <- getCompletions docId (Position 1 6)
-        liftIO $ length compls @=? 1
-        let [CompletionItem {_label = l, _kind = k}] = compls
-        liftIO $ l @=? "head"
-        liftIO $ k @=? Just CiFunction
-    , expectFailBecause "qualified not supported" $ testSessionWait "qualified" $ do
-        let source = T.unlines ["module A where", "f = Prelude.hea"]
+        expectDiagnostics [ ("A.hs", [(DsWarning, (3,0), "not used")]) ]
+        changeDoc docId [TextDocumentContentChangeEvent Nothing Nothing $ T.unlines ["{-# OPTIONS_GHC -Wall #-}", "module A () where", "f :: B", "f = True"]]
+        compls <- getCompletions docId (Position 2 6)
+        -- TODO Not quite sure why we get Foldable, Traversable and Maybe here.
+        liftIO $ compls @?=
+            [ complItem "Foldable" ["Data.Foldable", "base", "t", "Foldable"] (Just CiClass)
+            , complItem "Traversable" ["Data.Traversable", "base", "t", "Traversable"] (Just CiClass)
+            , complItem "Bounded" ["GHC.Enum", "base", "t", "Bounded"] (Just CiClass)
+            , complItem "Bool" ["GHC.Types", "ghc-prim", "t", "Bool"] (Just CiClass)
+            , complItem "Double" ["GHC.Types", "ghc-prim", "t", "Double"] (Just CiClass)
+            , complItem "Maybe" ["GHC.Maybe", "base", "t", "Maybe"] (Just CiClass)
+            ]
+    , testSessionWait "qualified" $ do
+        let source = T.unlines ["{-# OPTIONS_GHC -Wunused-binds #-}", "module A () where", "f = ()"]
         docId <- openDoc' "A.hs" "haskell" source
-        compls <- getCompletions docId (Position 1 15)
-        liftIO $ length compls @=? 1
-        let [CompletionItem {_label = l, _kind = k}] = compls
-        liftIO $ l @=? "head"
-        liftIO $ k @=? Just CiFunction
-    , testSessionWait "check stale" $ do
-        let source = T.unlines ["module A where"]
-        docId <- openDoc' "A.hs" "haskell" source
-        void (message :: Session WorkDoneProgressCreateRequest)
-        void (message :: Session WorkDoneProgressBeginNotification)
-        let change = TextDocumentContentChangeEvent
-                       { _range = Just (Range (Position 0 15) (Position 1 7))
-                       , _rangeLength = Nothing
-                       , _text = "\nf = head"
-                       }
-        changeDoc docId [change]
-        expectDiagnostics []
-        compls <- getCompletions docId (Position 1 7)
-        liftIO $ length compls @=? 1
-        let [CompletionItem {_label = l, _kind = k}] = compls
-        liftIO $ l @=? "head"
-        liftIO $ k @=? Just CiFunction
+        expectDiagnostics [ ("A.hs", [(DsWarning, (2, 0), "not used")]) ]
+        changeDoc docId [TextDocumentContentChangeEvent Nothing Nothing $ T.unlines ["{-# OPTIONS_GHC -Wunused-binds #-}", "module A () where", "f = Prelude.hea"]]
+        compls <- getCompletions docId (Position 2 15)
+        liftIO $ compls @?= [complItem "head" ["GHC.List", "base", "v", "head"] (Just CiFunction)]
     ]
+  where
+    complItem label xdata kind = CompletionItem
+      { _label = label
+      , _kind = kind
+      , _detail = Just "Prelude"
+      , _documentation = Just (CompletionDocMarkup (MarkupContent {_kind = MkMarkdown, _value = ""}))
+      , _deprecated = Nothing
+      , _preselect = Nothing
+      , _sortText = Nothing
+      , _filterText = Nothing
+      , _insertText = Nothing
+      , _insertTextFormat = Just PlainText
+      , _textEdit = Nothing
+      , _additionalTextEdits = Nothing
+      , _commitCharacters = Nothing
+      , _command = Nothing
+      , _xdata = Just (Aeson.toJSON (xdata :: [T.Text]))
+      }
 
 xfail :: TestTree -> String -> TestTree
 xfail = flip expectFailBecause

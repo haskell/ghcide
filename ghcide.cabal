@@ -175,6 +175,7 @@ test-suite ghcide-tests
     build-tool-depends:
         ghcide:ghcide
     build-depends:
+        aeson,
         base,
         bytestring,
         containers,
