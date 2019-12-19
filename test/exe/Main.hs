@@ -956,16 +956,11 @@ completionTests
         let source = T.unlines ["{-# OPTIONS_GHC -Wall #-}", "module A () where", "f :: ()", "f = ()"]
         docId <- openDoc' "A.hs" "haskell" source
         expectDiagnostics [ ("A.hs", [(DsWarning, (3,0), "not used")]) ]
-        changeDoc docId [TextDocumentContentChangeEvent Nothing Nothing $ T.unlines ["{-# OPTIONS_GHC -Wall #-}", "module A () where", "f :: B", "f = True"]]
-        compls <- getCompletions docId (Position 2 6)
-        -- TODO Not quite sure why we get Foldable, Traversable and Maybe here.
+        changeDoc docId [TextDocumentContentChangeEvent Nothing Nothing $ T.unlines ["{-# OPTIONS_GHC -Wall #-}", "module A () where", "f :: Bo", "f = True"]]
+        compls <- getCompletions docId (Position 2 7)
         liftIO $ compls @?=
-            [ complItem "Foldable" ["Data.Foldable", "base", "t", "Foldable"] (Just CiClass)
-            , complItem "Traversable" ["Data.Traversable", "base", "t", "Traversable"] (Just CiClass)
-            , complItem "Bounded" ["GHC.Enum", "base", "t", "Bounded"] (Just CiClass)
+            [ complItem "Bounded" ["GHC.Enum", "base", "t", "Bounded"] (Just CiClass)
             , complItem "Bool" ["GHC.Types", "ghc-prim", "t", "Bool"] (Just CiClass)
-            , complItem "Double" ["GHC.Types", "ghc-prim", "t", "Double"] (Just CiClass)
-            , complItem "Maybe" ["GHC.Maybe", "base", "t", "Maybe"] (Just CiClass)
             ]
     , testSessionWait "qualified" $ do
         let source = T.unlines ["{-# OPTIONS_GHC -Wunused-binds #-}", "module A () where", "f = ()"]
