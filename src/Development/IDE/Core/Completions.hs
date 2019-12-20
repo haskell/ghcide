@@ -215,8 +215,8 @@ mkPragmaCompl label insertText =
     Nothing Nothing Nothing Nothing Nothing (Just insertText) (Just Snippet)
     Nothing Nothing Nothing Nothing Nothing
 
-cacheDataProducer :: DynFlags -> TypecheckedModule -> [TypecheckedModule] -> IO CachedCompletions
-cacheDataProducer dflags tm tcs = do
+cacheDataProducer :: HscEnv -> DynFlags -> TypecheckedModule -> [TypecheckedModule] -> IO CachedCompletions
+cacheDataProducer packageState dflags tm tcs = do
   let parsedMod = tm_parsed_module tm
       curMod = moduleName $ ms_mod $ pm_mod_summary parsedMod
       Just (_,limports,_,_) = tm_renamed_source tm
@@ -242,42 +242,47 @@ cacheDataProducer dflags tm tcs = do
       rdrEnv = tcg_rdr_env $ fst $ tm_internals_ tm
       rdrElts = globalRdrEnvElts rdrEnv
 
-      getCompls :: [GlobalRdrElt] -> ([CompItem],QualCompls)
-      getCompls = foldMap getComplsForOne
+      foldMapM :: (Foldable f, Monad m, Monoid b) => (a -> m b) -> f a -> m b
+      foldMapM f xs = foldr step return xs mempty where
+        step x r z = f x >>= \y -> r $! z `mappend` y
 
-      getComplsForOne :: GlobalRdrElt -> ([CompItem],QualCompls)
+      getCompls :: [GlobalRdrElt] -> IO ([CompItem],QualCompls)
+      getCompls = foldMapM getComplsForOne
+
+      getComplsForOne :: GlobalRdrElt -> IO ([CompItem],QualCompls)
       getComplsForOne (GRE n _ True _) =
         case lookupTypeEnv typeEnv n of
           Just tt -> case safeTyThingId tt of
-            Just var -> ([varToCompl var],mempty)
-            Nothing -> ([toCompItem curMod n],mempty)
-          Nothing -> ([toCompItem curMod n],mempty)
+            Just var -> (\x -> ([x],mempty)) <$> varToCompl var
+            Nothing -> (\x -> ([x],mempty)) <$> toCompItem curMod n
+          Nothing -> (\x -> ([x],mempty)) <$> toCompItem curMod n
       getComplsForOne (GRE n _ False prov) =
-        flip foldMap (map is_decl prov) $ \spec ->
+        flip foldMapM (map is_decl prov) $ \spec -> do
+          compItem <- toCompItem (is_mod spec) n
           let unqual
                 | is_qual spec = []
-                | otherwise = compItem
+                | otherwise = [compItem]
               qual
-                | is_qual spec = Map.singleton asMod compItem
-                | otherwise = Map.fromList [(asMod,compItem),(origMod,compItem)]
-              compItem = [toCompItem (is_mod spec) n]
+                | is_qual spec = Map.singleton asMod [compItem]
+                | otherwise = Map.fromList [(asMod,[compItem]),(origMod,[compItem])]
               asMod = showModName (is_as spec)
               origMod = showModName (is_mod spec)
-          in (unqual,QualCompls qual)
+          return (unqual,QualCompls qual)
 
-      varToCompl :: Var -> CompItem
-      varToCompl var = CI name (showModName curMod) typ label Nothing docs
-        where
-          typ = Just $ varType var
-          name = Var.varName var
-          label = T.pack $ showGhc name
-          docs = getDocumentation tcs name
+      varToCompl :: Var -> IO CompItem
+      varToCompl var = do
+        let typ = Just $ varType var
+            name = Var.varName var
+            label = T.pack $ showGhc name
+        docs <- getDocumentationTryGhc packageState (tm:tcs) name
+        return $ CI name (showModName curMod) typ label Nothing docs
 
-      toCompItem :: ModuleName -> Name -> CompItem
+      toCompItem :: ModuleName -> Name -> IO CompItem
       toCompItem mn n =
-        CI n (showModName mn) Nothing (T.pack $ showGhc n) Nothing (getDocumentation tcs n)
+        CI n (showModName mn) Nothing (T.pack $ showGhc n) Nothing
+        <$> getDocumentationTryGhc packageState (tm:tcs) n
 
-      (unquals,quals) = getCompls rdrElts
+  (unquals,quals) <- getCompls rdrElts
 
   return $ CC
     { allModNamesAsNS = allModNamesAsNS

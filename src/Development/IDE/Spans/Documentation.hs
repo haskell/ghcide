@@ -3,6 +3,7 @@
 
 module Development.IDE.Spans.Documentation (
     getDocumentation
+  , getDocumentationTryGhc
   ) where
 
 import           Control.Monad
@@ -12,10 +13,21 @@ import           Data.Maybe
 import qualified Data.Text as T
 import           Development.IDE.GHC.Error
 import           Development.IDE.Spans.Calculate
+import           Development.IDE.GHC.Util
 import           FastString
 import           GHC
 import SrcLoc
 
+getDocumentationTryGhc
+  :: HscEnv
+  -> [TypecheckedModule]
+  -> Name
+  -> IO [T.Text]
+getDocumentationTryGhc packageState tcs name = do
+  res <- runGhcEnv packageState $ getDocs name
+  case res of
+    Right (Just docs, _) -> return [T.pack $ unpackHDS docs]
+    _ -> return $ getDocumentation tcs name
 
 getDocumentation
  :: [TypecheckedModule] -- ^ All of the possible modules it could be defined in.
