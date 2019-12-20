@@ -1096,7 +1096,7 @@ completionTests
       , _additionalTextEdits = Nothing
       , _commitCharacters = Nothing
       , _command = Nothing
-      , _xdata = Just (Aeson.toJSON (xdata :: [T.Text]))
+      , _xdata = Nothing
       }
 
 outlineTests :: TestTree
