@@ -1,5 +1,6 @@
 -- Copyright (c) 2019 The DAML Authors. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE CPP #-}
 
 module Development.IDE.Spans.Documentation (
     getDocumentation
@@ -24,10 +25,14 @@ getDocumentationTryGhc
   -> Name
   -> IO [T.Text]
 getDocumentationTryGhc packageState tcs name = do
+#if MIN_VERSION_ghc(8,6,0)
   res <- runGhcEnv packageState $ catchSrcErrors "docs" $ getDocs name
   case res of
     Right (Right (Just docs, _)) -> return [T.pack $ unpackHDS docs]
     _ -> return $ getDocumentation tcs name
+#else
+  return $ getDocumentation tcs name 
+#endif
 
 getDocumentation
  :: [TypecheckedModule] -- ^ All of the possible modules it could be defined in.
