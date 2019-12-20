@@ -1,6 +1,5 @@
 -- Copyright (c) 2019 The DAML Authors. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE CPP #-}
 
 module Development.IDE.Spans.Documentation (
     getDocumentation
@@ -19,20 +18,25 @@ import           FastString
 import           GHC
 import SrcLoc
 
+import qualified Text.Pandoc as P
+
+haddockToMarkdown
+  :: T.Text -> T.Text
+haddockToMarkdown hdk
+  = case P.runPure $ P.readHaddock P.def hdk >>= P.writeMarkdown P.def of
+      Left _    -> hdk
+      Right mkd -> mkd
+
 getDocumentationTryGhc
   :: HscEnv
   -> [TypecheckedModule]
   -> Name
   -> IO [T.Text]
 getDocumentationTryGhc packageState tcs name = do
-#if MIN_VERSION_ghc(8,6,0)
   res <- runGhcEnv packageState $ catchSrcErrors "docs" $ getDocs name
   case res of
-    Right (Right (Just docs, _)) -> return [T.pack $ unpackHDS docs]
+    Right (Right (Just docs, _)) -> return [haddockToMarkdown $ T.pack $ unpackHDS docs]
     _ -> return $ getDocumentation tcs name
-#else
-  return $ getDocumentation tcs name 
-#endif
 
 getDocumentation
  :: [TypecheckedModule] -- ^ All of the possible modules it could be defined in.
