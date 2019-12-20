@@ -24,9 +24,9 @@ getDocumentationTryGhc
   -> Name
   -> IO [T.Text]
 getDocumentationTryGhc packageState tcs name = do
-  res <- runGhcEnv packageState $ getDocs name
+  res <- runGhcEnv packageState $ catchSrcErrors "docs" $ getDocs name
   case res of
-    Right (Just docs, _) -> return [T.pack $ unpackHDS docs]
+    Right (Right (Just docs, _)) -> return [T.pack $ unpackHDS docs]
     _ -> return $ getDocumentation tcs name
 
 getDocumentation

@@ -1060,14 +1060,14 @@ completionTests
         let source = T.unlines ["module A where", "f = hea"]
         docId <- openDoc' "A.hs" "haskell" source
         compls <- getCompletions docId (Position 1 7)
-        liftIO $ compls @?= [complItem "head" (Just CiFunction)]
+        liftIO $ map dropDocs compls @?= [complItem "head" (Just CiFunction)]
     , testSessionWait "type" $ do
         let source = T.unlines ["{-# OPTIONS_GHC -Wall #-}", "module A () where", "f :: ()", "f = ()"]
         docId <- openDoc' "A.hs" "haskell" source
         expectDiagnostics [ ("A.hs", [(DsWarning, (3,0), "not used")]) ]
         changeDoc docId [TextDocumentContentChangeEvent Nothing Nothing $ T.unlines ["{-# OPTIONS_GHC -Wall #-}", "module A () where", "f :: Bo", "f = True"]]
         compls <- getCompletions docId (Position 2 7)
-        liftIO $ compls @?=
+        liftIO $ map dropDocs compls @?=
             [ complItem "Bounded" (Just CiClass)
             , complItem "Bool" (Just CiClass)
             ]
@@ -1077,14 +1077,16 @@ completionTests
         expectDiagnostics [ ("A.hs", [(DsWarning, (2, 0), "not used")]) ]
         changeDoc docId [TextDocumentContentChangeEvent Nothing Nothing $ T.unlines ["{-# OPTIONS_GHC -Wunused-binds #-}", "module A () where", "f = Prelude.hea"]]
         compls <- getCompletions docId (Position 2 15)
-        liftIO $ compls @?= [complItem "head" (Just CiFunction)]
+        liftIO $ map dropDocs compls @?= [complItem "head" (Just CiFunction)]
     ]
   where
+    dropDocs :: CompletionItem -> CompletionItem
+    dropDocs ci = ci { _documentation = Nothing }
     complItem label kind = CompletionItem
       { _label = label
       , _kind = kind
       , _detail = Just "Prelude"
-      , _documentation = Just (CompletionDocMarkup (MarkupContent {_kind = MkMarkdown, _value = ""}))
+      , _documentation = Nothing
       , _deprecated = Nothing
       , _preselect = Nothing
       , _sortText = Nothing
