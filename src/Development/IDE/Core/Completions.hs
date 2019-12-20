@@ -33,6 +33,8 @@ import Language.Haskell.LSP.Types.Capabilities
 import qualified Language.Haskell.LSP.VFS as VFS
 import Development.IDE.Core.CompletionsTypes
 import Development.IDE.Spans.Documentation
+import Development.IDE.GHC.Util
+import Development.IDE.GHC.Error
 
 -- From haskell-ide-engine/src/Haskell/Ide/Engine/Support/HieExtras.hs
 
@@ -144,8 +146,8 @@ occNameToComKind oc
 
 mkCompl :: CompItem -> CompletionItem
 mkCompl CI{origName,importedFrom,thingType,label,isInfix,docs} =
-  CompletionItem label kind (Just $ maybe "" (<>"\n") typeText <> importedFrom)
-    (Just $ CompletionDocMarkup $ MarkupContent MkMarkdown $ T.intercalate sectionSeparator docs)
+  CompletionItem label kind ((":: "<>) <$> typeText)
+    (Just $ CompletionDocMarkup $ MarkupContent MkMarkdown $ T.intercalate sectionSeparator docs')
     Nothing Nothing Nothing Nothing (Just insertText) (Just Snippet)
     Nothing Nothing Nothing Nothing Nothing
   where kind = Just $ occNameToComKind $ occName origName
@@ -159,6 +161,7 @@ mkCompl CI{origName,importedFrom,thingType,label,isInfix,docs} =
         typeText
           | Just t <- thingType = Just . stripForall $ T.pack (showGhc t)
           | otherwise = Nothing
+        docs' = ("*Defined in '" <> importedFrom <> "'*\n") : docs
 
 stripForall :: T.Text -> T.Text
 stripForall t
@@ -278,9 +281,14 @@ cacheDataProducer packageState dflags tm tcs = do
         return $ CI name (showModName curMod) typ label Nothing docs
 
       toCompItem :: ModuleName -> Name -> IO CompItem
-      toCompItem mn n =
-        CI n (showModName mn) Nothing (T.pack $ showGhc n) Nothing
-        <$> getDocumentationTryGhc packageState (tm:tcs) n
+      toCompItem mn n = do
+        docs <- getDocumentationTryGhc packageState (tm:tcs) n
+        ty <- runGhcEnv packageState $ catchSrcErrors "completion" $ do
+                name' <- lookupName n
+                case name' >>= safeTyThingId of
+                  Nothing -> return Nothing
+                  Just v  -> return (Just $ varType v)
+        return $ CI n (showModName mn) (either (const Nothing) id ty) (T.pack $ showGhc n) Nothing docs
 
   (unquals,quals) <- getCompls rdrElts
 
