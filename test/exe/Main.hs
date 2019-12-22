@@ -612,7 +612,7 @@ removeImportTests = testGroup "remove import actions"
       _ <- waitForDiagnostics
       [CACodeAction action@CodeAction { _title = actionTitle }]
           <- getCodeActions docB (Range (Position 2 0) (Position 2 5))
-      liftIO $ "Remove import" @=? actionTitle
+      liftIO $ "Remove stuffA from import" @=? actionTitle
       executeCodeAction action
       contentAfterAction <- documentContents docB
       let expectedContentAfterAction = T.unlines
@@ -620,6 +620,34 @@ removeImportTests = testGroup "remove import actions"
             , "module ModuleB where"
             , "import ModuleA (stuffB)"
             , "main = print stuffB"
+            ]
+      liftIO $ expectedContentAfterAction @=? contentAfterAction
+  , testSession "redundant symbol binding" $ do
+      let contentA = T.unlines
+            [ "module ModuleA where"
+            , "a !! b = a"
+            , "stuffB :: Integer"
+            , "stuffB = 123"
+            ]
+      _docA <- openDoc' "ModuleA.hs" "haskell" contentA
+      let contentB = T.unlines
+            [ "{-# OPTIONS_GHC -Wunused-imports #-}"
+            , "module ModuleB where"
+            , "import qualified ModuleA as A ((!!), stuffB, (!!))"
+            , "main = print A.stuffB"
+            ]
+      docB <- openDoc' "ModuleB.hs" "haskell" contentB
+      _ <- waitForDiagnostics
+      [CACodeAction action@CodeAction { _title = actionTitle }]
+          <- getCodeActions docB (Range (Position 2 0) (Position 2 5))
+      liftIO $ "Remove !! from import" @=? actionTitle
+      executeCodeAction action
+      contentAfterAction <- documentContents docB
+      let expectedContentAfterAction = T.unlines
+            [ "{-# OPTIONS_GHC -Wunused-imports #-}"
+            , "module ModuleB where"
+            , "import qualified ModuleA as A (stuffB)"
+            , "main = print A.stuffB"
             ]
       liftIO $ expectedContentAfterAction @=? contentAfterAction
   ]
