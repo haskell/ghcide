@@ -88,7 +88,7 @@ executeAddSignatureCommand _lsp _ideState ExecuteCommandParams{..}
 suggestAction :: Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
 suggestAction contents diag@Diagnostic{_range=_range@Range{..},..}
 --     The qualified import of ‘many’ from module ‘Control.Applicative’ is redundant
-    | Just [_, bindings] <- matchRegex _message ("The( qualified)? import of ‘([^’]*)’ from module [^ ]* is redundant")
+    | Just [_, bindings] <- matchRegex _message "The( qualified)? import of ‘([^’]*)’ from module [^ ]* is redundant"
     , Just c <- contents
     , importLine <- textInRange _range c
     = [( "Remove " <> bindings <> " from import"
