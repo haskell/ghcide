@@ -327,7 +327,7 @@ dropBindingsFromImportLine bindings_ importLine =
 
       filtering x = case () of
         () | x `elem` bindings -> Nothing
-        () | x `elem` (map (<> ")") bindings) -> Just ")"
+        () | x `elem` map (<> ")") bindings -> Just ")"
         _                      -> Just x
 
       joinCloseParens (x : ")" : rest) = (x <> ")") : joinCloseParens rest
