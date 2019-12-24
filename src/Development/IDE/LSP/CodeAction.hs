@@ -311,12 +311,15 @@ dropBindingsFromImportLine :: [T.Text] -> T.Text -> T.Text
 dropBindingsFromImportLine bindings_ importLine =
       importPre <> "(" <> importRest'
     where
-      bindings = map
-        (\binding ->
-          if isAlpha (T.head binding) then binding else "(" <> binding <> ")"
-        )
-        bindings_
+      bindings = map (wrapOperatorInParens . removeQualified) bindings_
+
       (importPre, importRest) = T.breakOn "(" importLine
+
+      wrapOperatorInParens x = if isAlpha (T.head x) then x else "(" <> x <> ")"
+
+      removeQualified x = case T.breakOn "." x of
+        (_qualifier, T.uncons -> Just (_, unqualified)) -> unqualified
+        _ -> x
 
       importRest' =
         T.intercalate ","
