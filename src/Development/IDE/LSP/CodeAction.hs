@@ -92,6 +92,7 @@ suggestAction text diag = concat
     , suggestExtendImport text diag
     , suggestFillHole diag
     , suggestFillTypeWildcard diag
+    , suggestFixConstructorImport text diag
     , suggestModuleTypo diag
     , suggestRemoveRedundantImport text diag
     , suggestReplaceIdentifier text diag
@@ -232,6 +233,20 @@ suggestExtendImport contents Diagnostic{_range=_range,..}
         in [("Add " <> binding <> " to the import list of " <> mod
         , [TextEdit range (addBindingToImportList binding importLine)])]
     | otherwise = []
+
+suggestFixConstructorImport :: Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
+suggestFixConstructorImport _ Diagnostic{_range=_range,..}
+    -- ‘Success’ is a data constructor of ‘Result’
+    -- To import it use
+    -- import Data.Aeson.Types( Result( Success ) )
+    -- or
+    -- import Data.Aeson.Types( Result(..) ) (lsp-ui)
+  | Just [constructor, typ] <-
+    matchRegex _message
+    "‘([^’]*)’ is a data constructor of ‘([^’]*)’ To import it use"
+  = let fixedImport = typ <> "(" <> constructor <> ")"
+    in [("Fix import of " <> fixedImport, [TextEdit _range fixedImport])]
+  | otherwise = []
 
 suggestSignature :: Bool -> Diagnostic -> [(T.Text, [TextEdit])]
 suggestSignature isQuickFix Diagnostic{_range=_range@Range{..},..}

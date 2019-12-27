@@ -388,6 +388,7 @@ codeActionTests = testGroup "code actions"
   , typeWildCardActionTests
   , removeImportTests
   , extendImportTests
+  , fixConstructorImportTests
   , importRenameActionTests
   , fillTypedHoleTests
   , addSigActionTests
@@ -777,6 +778,37 @@ extendImportTests = testGroup "extend import actions"
       _docA <- openDoc' "ModuleA.hs" "haskell" contentA
       docB <- openDoc' "ModuleB.hs" "haskell" contentB
       _ <- waitForDiagnostics
+      CACodeAction action@CodeAction { _title = actionTitle } : _
+                  <- sortOn (\(CACodeAction CodeAction{_title=x}) -> x) <$>
+                     getCodeActions docB range
+      liftIO $ expectedAction @=? actionTitle
+      executeCodeAction action
+      contentAfterAction <- documentContents docB
+      liftIO $ expectedContentB @=? contentAfterAction
+
+fixConstructorImportTests :: TestTree
+fixConstructorImportTests = testGroup "fix import actions"
+  [ testSession "fix constructor import" $ template
+      (T.unlines
+            [ "module ModuleA where"
+            , "data A = Constructor"
+            ])
+      (T.unlines
+            [ "module ModuleB where"
+            , "import ModuleA(Constructor)"
+            ])
+      (Range (Position 1 10) (Position 1 11))
+      "Fix import of A(Constructor)"
+      (T.unlines
+            [ "module ModuleB where"
+            , "import ModuleA(A(Constructor))"
+            ])
+  ]
+  where
+    template contentA contentB range expectedAction expectedContentB = do
+      _docA <- openDoc' "ModuleA.hs" "haskell" contentA
+      docB  <- openDoc' "ModuleB.hs" "haskell" contentB
+      _diags <- waitForDiagnostics
       CACodeAction action@CodeAction { _title = actionTitle } : _
                   <- sortOn (\(CACodeAction CodeAction{_title=x}) -> x) <$>
                      getCodeActions docB range
