@@ -321,12 +321,13 @@ dropBindingsFromImportLine bindings_ importLine =
         (_qualifier, T.uncons -> Just (_, unqualified)) -> unqualified
         _ -> x
 
-      importRest' =
-        T.intercalate ","
-          $ joinCloseParens
-          $ mapMaybe (filtering . T.strip)
-          $ T.splitOn ","
-          $ T.tail importRest
+      importRest' = case T.uncons importRest of
+        Just (_, x) ->
+          T.intercalate ","
+            $ joinCloseParens
+            $ mapMaybe (filtering . T.strip)
+            $ T.splitOn "," x
+        Nothing -> importRest
 
       filtering x = case () of
         () | x `elem` bindings -> Nothing
