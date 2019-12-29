@@ -1,4 +1,7 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DuplicateRecordFields #-}
+#include "ghc-api-version.h"
+
 module Development.IDE.LSP.Outline
   ( setHandlersOutline
   )
@@ -16,10 +19,10 @@ import           Data.Text                      ( Text
 import qualified Data.Text                     as T
 import           Development.IDE.Core.Rules
 import           Development.IDE.Core.Shake
+import           Development.IDE.GHC.Compat
 import           Development.IDE.GHC.Error      ( srcSpanToRange )
 import           Development.IDE.LSP.Server
 import           Development.IDE.Types.Location
-import           GHC
 import           Outputable                     ( Outputable
                                                 , ppr
                                                 , showSDocUnsafe
@@ -61,7 +64,7 @@ moduleOutline _lsp ideState DocumentSymbolParams { _textDocument = TextDocumentI
     Nothing -> pure $ DSDocumentSymbols (List [])
 
 documentSymbolForDecl :: Located (HsDecl GhcPs) -> Maybe DocumentSymbol
-documentSymbolForDecl (L l (TyClD _ FamDecl { tcdFam = FamilyDecl { fdLName = L _ n, fdInfo, fdTyVars } }))
+documentSymbolForDecl (L l (TyClD FamDecl { tcdFam = FamilyDecl { fdLName = L _ n, fdInfo, fdTyVars } }))
   = Just (defDocumentSymbol l :: DocumentSymbol)
     { _name   = showRdrName n
                   <> (case pprText fdTyVars of
@@ -71,7 +74,7 @@ documentSymbolForDecl (L l (TyClD _ FamDecl { tcdFam = FamilyDecl { fdLName = L 
     , _detail = Just $ pprText fdInfo
     , _kind   = SkClass
     }
-documentSymbolForDecl (L l (TyClD _ ClassDecl { tcdLName = L _ name, tcdSigs, tcdTyVars }))
+documentSymbolForDecl (L l (TyClD ClassDecl { tcdLName = L _ name, tcdSigs, tcdTyVars }))
   = Just (defDocumentSymbol l :: DocumentSymbol)
     { _name     = showRdrName name
                     <> (case pprText tcdTyVars of
@@ -87,11 +90,11 @@ documentSymbolForDecl (L l (TyClD _ ClassDecl { tcdLName = L _ name, tcdSigs, tc
             , _kind           = SkMethod
             , _selectionRange = srcSpanToRange l'
             }
-        | L l  (ClassOpSig _ False names _) <- tcdSigs
+        | L l  (ClassOpSig False names _) <- tcdSigs
         , L l' n                            <- names
         ]
     }
-documentSymbolForDecl (L l (TyClD _ DataDecl { tcdLName = L _ name, tcdDataDefn = HsDataDefn { dd_cons } }))
+documentSymbolForDecl (L l (TyClD DataDecl { tcdLName = L _ name, tcdDataDefn = HsDataDefn { dd_cons } }))
   = Just (defDocumentSymbol l :: DocumentSymbol)
     { _name     = showRdrName name
     , _kind     = SkStruct
@@ -106,34 +109,34 @@ documentSymbolForDecl (L l (TyClD _ DataDecl { tcdLName = L _ name, tcdDataDefn 
         , L l' n <- getConNames x
         ]
     }
-documentSymbolForDecl (L l (TyClD _ SynDecl { tcdLName = L l' n })) = Just
+documentSymbolForDecl (L l (TyClD SynDecl { tcdLName = L l' n })) = Just
   (defDocumentSymbol l :: DocumentSymbol) { _name           = showRdrName n
                                           , _kind           = SkTypeParameter
                                           , _selectionRange = srcSpanToRange l'
                                           }
-documentSymbolForDecl (L l (InstD _ (ClsInstD { cid_inst = ClsInstDecl { cid_poly_ty } })))
+documentSymbolForDecl (L l (InstD (ClsInstD { cid_inst = ClsInstDecl { cid_poly_ty } })))
   = Just (defDocumentSymbol l :: DocumentSymbol) { _name = pprText cid_poly_ty
                                                  , _kind = SkInterface
                                                  }
-documentSymbolForDecl (L l (InstD _ DataFamInstD { dfid_inst = DataFamInstDecl (HsIB { hsib_body = FamEqn { feqn_tycon, feqn_pats } }) }))
+documentSymbolForDecl (L l (InstD DataFamInstD { dfid_inst = DataFamInstDecl (HsIB { hsib_body = FamEqn { feqn_tycon, feqn_pats } }) }))
   = Just (defDocumentSymbol l :: DocumentSymbol)
     { _name = showRdrName (unLoc feqn_tycon) <> " " <> T.unwords
                 (map pprText feqn_pats)
     , _kind = SkInterface
     }
-documentSymbolForDecl (L l (InstD _ TyFamInstD { tfid_inst = TyFamInstDecl (HsIB { hsib_body = FamEqn { feqn_tycon, feqn_pats } }) }))
+documentSymbolForDecl (L l (InstD TyFamInstD { tfid_inst = TyFamInstDecl (HsIB { hsib_body = FamEqn { feqn_tycon, feqn_pats } }) }))
   = Just (defDocumentSymbol l :: DocumentSymbol)
     { _name = showRdrName (unLoc feqn_tycon) <> " " <> T.unwords
                 (map pprText feqn_pats)
     , _kind = SkInterface
     }
-documentSymbolForDecl (L l (DerivD _ DerivDecl { deriv_type })) =
+documentSymbolForDecl (L l (DerivD DerivDecl { deriv_type })) =
   gfindtype deriv_type <&> \(L (_ :: SrcSpan) name) ->
     (defDocumentSymbol l :: DocumentSymbol) { _name = pprText @(HsType GhcPs)
                                               name
                                             , _kind = SkInterface
                                             }
-documentSymbolForDecl (L l (ValD _ x)) =
+documentSymbolForDecl (L l (ValD x)) =
   gfindtype x <&> \(L (_ :: SrcSpan) name) ->
     (defDocumentSymbol l :: DocumentSymbol)
       { _name   = showRdrName name
@@ -143,17 +146,21 @@ documentSymbolForDecl (L l (ValD _ x)) =
       , _detail = Nothing  -- avoid UI issues with multi-line detail
       }
 
-documentSymbolForDecl (L l (ForD _ x)) = Just
+documentSymbolForDecl (L l (ForD x)) = Just
   (defDocumentSymbol l :: DocumentSymbol)
     { _name   = case x of
                   ForeignImport{} -> name
                   ForeignExport{} -> name
-                  _               -> "?"
+#if MIN_GHC_API_VERSION(8,6,0)
+                  XForeignDecl{}  -> "?"
+#endif
     , _kind   = SkObject
     , _detail = case x of
                   ForeignImport{} -> Just "import"
                   ForeignExport{} -> Just "export"
-                  _               -> Nothing
+#if MIN_GHC_API_VERSION(8,6,0)
+                  XForeignDecl{}  -> Nothing
+#endif
     }
   where name = showRdrName $ unLoc $ fd_name x
 
@@ -166,7 +173,9 @@ documentSymbolForImport (L l ImportDecl { ideclName, ideclQualified }) = Just
     , _kind   = SkModule
     , _detail = if ideclQualified then Just "qualified" else Nothing
     }
-documentSymbolForImport _ = Nothing
+#if MIN_GHC_API_VERSION(8,6,0)
+documentSymbolForImport (L _ XImportDecl {}) = Nothing
+#endif
 
 defDocumentSymbol :: SrcSpan -> DocumentSymbol
 defDocumentSymbol l = DocumentSymbol { .. } where
