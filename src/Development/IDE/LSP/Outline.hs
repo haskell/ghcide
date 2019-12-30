@@ -136,12 +136,15 @@ documentSymbolForDecl (L l (DerivD DerivDecl { deriv_type })) =
                                               name
                                             , _kind = SkInterface
                                             }
-documentSymbolForDecl (L l (ValD x)) =
-  gfindtype x <&> \(L (_ :: SrcSpan) name) ->
+documentSymbolForDecl (L l (ValD FunBind{fun_id = L _ name})) = Just
     (defDocumentSymbol l :: DocumentSymbol)
       { _name   = showRdrName name
       , _kind   = SkFunction
-      , _detail = Nothing  -- avoid UI issues with multi-line detail
+      }
+documentSymbolForDecl (L l (ValD PatBind{pat_lhs})) = Just
+    (defDocumentSymbol l :: DocumentSymbol)
+      { _name   = pprText pat_lhs
+      , _kind   = SkFunction
       }
 
 documentSymbolForDecl (L l (ForD x)) = Just

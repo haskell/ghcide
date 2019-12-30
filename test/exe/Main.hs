@@ -1073,6 +1073,18 @@ outlineTests = testGroup
     symbols <- getDocumentSymbols docId
     liftIO $ symbols @?= Left
       [docSymbol "a" SkFunction (R 0 0 0 6)]
+  , testSessionWait "pattern" $ do
+    let source = T.unlines ["Just foo = Just 21"]
+    docId   <- openDoc' "A.hs" "haskell" source
+    symbols <- getDocumentSymbols docId
+    liftIO $ symbols @?= Left
+      [docSymbol "Just foo" SkFunction (R 0 0 0 18)]
+  , testSessionWait "pattern with type signature" $ do
+    let source = T.unlines ["{-# language ScopedTypeVariables #-}", "a :: () = ()"]
+    docId   <- openDoc' "A.hs" "haskell" source
+    symbols <- getDocumentSymbols docId
+    liftIO $ symbols @?= Left
+      [docSymbol "a :: ()" SkFunction (R 1 0 1 12)]
   , testSessionWait "function" $ do
     let source = T.unlines ["a x = ()"]
     docId   <- openDoc' "A.hs" "haskell" source
@@ -1094,7 +1106,7 @@ outlineTests = testGroup
                               (R 0 0 0 10)
                               [docSymbol "C" SkConstructor (R 0 9 0 10)]
       ]
-  , testSessionWait " import" $ do
+  , testSessionWait "import" $ do
     let source = T.unlines ["import Data.Maybe"]
     docId   <- openDoc' "A.hs" "haskell" source
     symbols <- getDocumentSymbols docId
