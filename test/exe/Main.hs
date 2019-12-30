@@ -40,6 +40,7 @@ main = defaultMain $ testGroup "HIE"
       void (message :: Session WorkDoneProgressEndNotification)
   , initializeResponseTests
   , completionTests
+  , cppTests
   , diagnosticTests
   , codeActionTests
   , codeLensesTests
@@ -1004,6 +1005,31 @@ pluginTests = testSessionWait "plugins" $ do
   expectDiagnostics
     [ ( "Testing.hs",
         [(DsError, (8, 14), "Variable not in scope: c")]
+      )
+    ]
+
+cppTests :: TestTree
+cppTests = testSessionWait "cpp" $ do
+  let content =
+        T.unlines
+          [ "{-# LANGUAGE CPP #-}",
+            "module Testing where",
+            "#ifdef FOO",
+            "foo = 42"
+          ]
+  _ <- openDoc' "Testing.hs" "haskell" content
+  expectDiagnostics
+    [ ( "Testing.hs",
+        [ ( DsError,
+            (2, 1),
+            T.unlines
+              [ "unterminated conditional directive",
+                "#ifdef FOO",
+                " ^",
+                "1 error generated."
+              ]
+          )
+        ]
       )
     ]
 

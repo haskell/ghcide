@@ -14,8 +14,12 @@ module Development.IDE.GHC.Error
   , srcSpanToLocation
   , srcSpanToRange
   , srcSpanToFilename
+  , srcSpanToRange
   , zeroSpan
   , realSpan
+
+  -- * utilities working with severities
+  , toDSeverity
   ) where
 
 import                     Development.IDE.Types.Diagnostics as D
