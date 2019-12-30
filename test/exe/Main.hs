@@ -730,6 +730,25 @@ extendImportTests = testGroup "extend import actions"
             , "b :: A"
             , "b = 0"
             ])
+  ,  (`xfail` "known broken") $ testSession "extend single line import with constructor" $ template
+      (T.unlines
+            [ "module ModuleA where"
+            , "data A = Constructor"
+            ])
+      (T.unlines
+            [ "module ModuleB where"
+            , "import ModuleA (A)"
+            , "b :: A"
+            , "b = Constructor"
+            ])
+      (Range (Position 2 5) (Position 2 5))
+      "Add Constructor to the import list of ModuleA"
+      (T.unlines
+            [ "module ModuleB where"
+            , "import ModuleA (A(Constructor))"
+            , "b :: A"
+            , "b = Constructor"
+            ])
   , testSession "extend single line qualified import with value" $ template
       (T.unlines
             [ "module ModuleA where"
