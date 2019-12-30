@@ -1023,10 +1023,9 @@ cppTests = testSessionWait "cpp" $ do
         [ ( DsError,
             (2, -1),
             T.unlines
-              [ "unterminated conditional directive",
-                "#ifdef FOO",
-                " ^",
-                "1 error generated."
+              [ " error: unterminated #ifdef",
+                " #ifdef FOO",
+                " ^"
               ]
           )
         ]
