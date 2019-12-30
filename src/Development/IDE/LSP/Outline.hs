@@ -48,7 +48,7 @@ moduleOutline _lsp ideState DocumentSymbolParams { _textDocument = TextDocumentI
                  (defDocumentSymbol l :: DocumentSymbol)
                    { _name  = pprText m
                    , _kind  = SkFile
-                   , _range = Range (Position 0 0) (Position 10000000 0) -- _ltop is 0 0 0 0
+                   , _range = Range (Position 0 0) (Position maxBound 0) -- _ltop is 0 0 0 0
                    }
                importSymbols = mapMaybe documentSymbolForImport hsmodImports
                allSymbols    = case moduleSymbol of

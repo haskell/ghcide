@@ -1130,7 +1130,7 @@ outlineTests = testGroup
                                             Nothing
                                             SkFile
                                             Nothing
-                                            (R 0 0 10000000 0)
+                                            (R 0 0 maxBound 0)
                                             loc
                                             (Just $ List cc)
   classSymbol name loc cc = DocumentSymbol name
