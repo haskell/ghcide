@@ -1021,7 +1021,7 @@ cppTests = testSessionWait "cpp" $ do
   expectDiagnostics
     [ ( "Testing.hs",
         [ ( DsError,
-            (2, 1),
+            (2, -1),
             T.unlines
               [ "unterminated conditional directive",
                 "#ifdef FOO",
