@@ -140,9 +140,7 @@ documentSymbolForDecl (L l (ValD x)) =
   gfindtype x <&> \(L (_ :: SrcSpan) name) ->
     (defDocumentSymbol l :: DocumentSymbol)
       { _name   = showRdrName name
-      , _kind   = case x of
-                    PatBind{} -> SkConstant
-                    _         -> SkFunction
+      , _kind   = SkFunction
       , _detail = Nothing  -- avoid UI issues with multi-line detail
       }
 
