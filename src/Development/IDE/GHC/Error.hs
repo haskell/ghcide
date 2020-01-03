@@ -14,7 +14,6 @@ module Development.IDE.GHC.Error
   , srcSpanToLocation
   , srcSpanToRange
   , srcSpanToFilename
-  , srcSpanToRange
   , zeroSpan
   , realSpan
 
