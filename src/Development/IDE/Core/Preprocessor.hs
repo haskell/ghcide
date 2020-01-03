@@ -24,7 +24,7 @@ import SysTools (Option (..), runUnlit, runPp)
 import Control.Monad.Trans.Except
 import qualified GHC.LanguageExtensions as LangExt
 import Data.Maybe
-import Control.Exception (SomeException, catch, throwIO)
+import Control.Exception.Safe (catch, throw)
 import Data.IORef (IORef, modifyIORef, newIORef, readIORef)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -57,12 +57,13 @@ preprocessor filename mbContents = do
                         $ liftIO
                         $ (Right <$> (runCpp dflags {log_action = logAction cppLogs} filename
                                        $ if isOnDisk then Nothing else Just contents))
-              `catch` (\(e :: SomeException) -> do
-                        logs <- readIORef cppLogs
-                        case diagsFromCPPLogs filename (reverse logs) of
-                          [] -> throwIO e
-                          diags -> return $ Left diags
-                      )
+                            `catch`
+                            ( \(e :: GhcException) -> do
+                                logs <- readIORef cppLogs
+                                case diagsFromCPPLogs filename (reverse logs) of
+                                  [] -> throw e
+                                  diags -> return $ Left diags
+                            )
             dflags <- ExceptT $ parsePragmasIntoDynFlags filename contents
             return (False, contents, dflags)
 

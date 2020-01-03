@@ -4,11 +4,13 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 #include "ghc-api-version.h"
 
 module Main (main) where
 
 import Control.Applicative.Combinators
+import Control.Exception (catch)
 import Control.Monad
 import Control.Monad.IO.Class (liftIO)
 import qualified Data.Aeson as Aeson
@@ -1009,28 +1011,30 @@ pluginTests = testSessionWait "plugins" $ do
     ]
 
 cppTests :: TestTree
-cppTests = testSessionWait "cpp" $ do
-  let content =
-        T.unlines
-          [ "{-# LANGUAGE CPP #-}",
-            "module Testing where",
-            "#ifdef FOO",
-            "foo = 42"
-          ]
-  _ <- openDoc' "Testing.hs" "haskell" content
-  expectDiagnostics
-    [ ( "Testing.hs",
-        [ ( DsError,
-            (2, -1),
-            T.unlines
-              [ " error: unterminated #ifdef",
-                " #ifdef FOO",
-                " ^"
-              ]
+cppTests =
+  testCase "cpp" $ do
+    let content =
+          T.unlines
+            [ "{-# LANGUAGE CPP #-}",
+              "module Testing where",
+              "#ifdef FOO",
+              "foo = 42"
+            ]
+    -- The error locations differ depending on which C-preprocessor is used.
+    -- Some give the column number and others don't (hence -1). Assert either
+    -- of them.
+    (run $ expectError content (2, -1))
+      `catch` (\(_ :: HUnitFailure) -> run $ expectError content (2, 1))
+  where
+    expectError :: T.Text -> Cursor -> Session ()
+    expectError content cursor = do
+      _ <- openDoc' "Testing.hs" "haskell" content
+      expectDiagnostics
+        [ ( "Testing.hs",
+            [(DsError, cursor, "error: unterminated")]
           )
         ]
-      )
-    ]
+      expectNoMoreDiagnostics 0.5
 
 preprocessorTests :: TestTree
 preprocessorTests = testSessionWait "preprocessor" $ do
