@@ -4,7 +4,6 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE CPP #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 #include "ghc-api-version.h"
 
 module Main (main) where
@@ -1024,7 +1023,10 @@ cppTests =
     -- Some give the column number and others don't (hence -1). Assert either
     -- of them.
     (run $ expectError content (2, -1))
-      `catch` (\(_ :: HUnitFailure) -> run $ expectError content (2, 1))
+      `catch` ( \e -> do
+                  let _ = e :: HUnitFailure
+                  run $ expectError content (2, 1)
+              )
   where
     expectError :: T.Text -> Cursor -> Session ()
     expectError content cursor = do
