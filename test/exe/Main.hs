@@ -11,6 +11,7 @@ module Main (main) where
 import Control.Applicative.Combinators
 import Control.Monad
 import Control.Monad.IO.Class (liftIO)
+import qualified Data.Aeson as Aeson
 import Data.Char (toLower)
 import Data.Foldable
 import Development.IDE.GHC.Util
@@ -1060,7 +1061,7 @@ completionTests
         let source = T.unlines ["module A where", "f = hea"]
         docId <- openDoc' "A.hs" "haskell" source
         compls <- getCompletions docId (Position 1 7)
-        liftIO $ map dropDocs compls @?= [complItem "head" (Just CiFunction) (Just "[a] -> a")]
+        liftIO $ map dropDocs compls @?= [complItem "head" ["GHC.List", "base", "v", "head"] (Just CiFunction) (Just "[a] -> a")]
     , testSessionWait "type" $ do
         let source = T.unlines ["{-# OPTIONS_GHC -Wall #-}", "module A () where", "f :: ()", "f = ()"]
         docId <- openDoc' "A.hs" "haskell" source
@@ -1068,8 +1069,8 @@ completionTests
         changeDoc docId [TextDocumentContentChangeEvent Nothing Nothing $ T.unlines ["{-# OPTIONS_GHC -Wall #-}", "module A () where", "f :: Bo", "f = True"]]
         compls <- getCompletions docId (Position 2 7)
         liftIO $ map dropDocs compls @?=
-            [ complItem "Bounded" (Just CiClass) Nothing
-            , complItem "Bool" (Just CiClass) Nothing
+            [ complItem "Bounded" ["GHC.Enum", "base", "t", "Bounded"] (Just CiClass) Nothing
+            , complItem "Bool" ["GHC.Types", "ghc-prim", "t", "Bool"] (Just CiClass) Nothing
             ]
     , testSessionWait "qualified" $ do
         let source = T.unlines ["{-# OPTIONS_GHC -Wunused-binds #-}", "module A () where", "f = ()"]
@@ -1077,12 +1078,12 @@ completionTests
         expectDiagnostics [ ("A.hs", [(DsWarning, (2, 0), "not used")]) ]
         changeDoc docId [TextDocumentContentChangeEvent Nothing Nothing $ T.unlines ["{-# OPTIONS_GHC -Wunused-binds #-}", "module A () where", "f = Prelude.hea"]]
         compls <- getCompletions docId (Position 2 15)
-        liftIO $ map dropDocs compls @?= [complItem "head" (Just CiFunction) (Just "[a] -> a")]
+        liftIO $ map dropDocs compls @?= [complItem "head" ["GHC.List", "base", "v", "head"] (Just CiFunction) (Just "[a] -> a")]
     ]
   where
     dropDocs :: CompletionItem -> CompletionItem
     dropDocs ci = ci { _documentation = Nothing }
-    complItem label kind ty = CompletionItem
+    complItem label xdata kind ty = CompletionItem
       { _label = label
       , _kind = kind
       , _detail = (":: " <>) <$> ty
