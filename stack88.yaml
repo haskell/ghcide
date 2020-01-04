@@ -4,7 +4,6 @@ packages:
 extra-deps:
 - hie-bios-0.3.2
 - fuzzy-0.1.0.0
-- pandoc-2.9
 allow-newer: true
 nix:
   packages: [zlib]

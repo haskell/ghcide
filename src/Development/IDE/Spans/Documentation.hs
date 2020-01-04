@@ -21,14 +21,8 @@ import           FastString
 import           GHC
 import SrcLoc
 
-import qualified Text.Pandoc as P
-
-haddockToMarkdown
-  :: T.Text -> T.Text
-haddockToMarkdown hdk
-  = case P.runPure $ P.readHaddock P.def hdk >>= P.writeMarkdown P.def of
-      Left _    -> hdk
-      Right mkd -> mkd
+import qualified Documentation.Haddock.Parser as H
+import qualified Documentation.Haddock.Types as H
 
 getDocumentationTryGhc
   :: HscEnv
@@ -39,7 +33,7 @@ getDocumentationTryGhc packageState tcs name = do
 #if MIN_GHC_API_VERSION(8,6,0)
   res <- runGhcEnv packageState $ catchSrcErrors "docs" $ getDocs name
   case res of
-    Right (Right (Just docs, _)) -> return [haddockToMarkdown $ T.pack $ unpackHDS docs]
+    Right (Right (Just docs, _)) -> return [T.pack $ haddockToMarkdown $ H.toRegular $ H._doc $ H.parseParas Nothing $ unpackHDS docs]
     _ -> return $ getDocumentation tcs name
 #else
   return $ getDocumentation tcs name
@@ -118,3 +112,70 @@ docHeaders = mapMaybe (\(L _ x) -> wrk x)
                             then Just $ T.pack s
                             else Nothing
     _ -> Nothing
+
+-- Simple (and a bit hacky) conversion from Haddock markup to Markdown
+haddockToMarkdown
+  :: H.DocH String String -> String
+
+haddockToMarkdown H.DocEmpty
+  = ""
+haddockToMarkdown (H.DocAppend d1 d2)
+  = haddockToMarkdown d1 <> haddockToMarkdown d2
+haddockToMarkdown (H.DocString s)
+  = s
+haddockToMarkdown (H.DocParagraph p)
+  = "\n\n" ++ haddockToMarkdown p
+haddockToMarkdown (H.DocIdentifier i)
+  = "`" ++ i ++ "`"
+haddockToMarkdown (H.DocIdentifierUnchecked i)
+  = "`" ++ i ++ "`"
+haddockToMarkdown (H.DocModule i)
+  = "`" ++ i ++ "`"
+haddockToMarkdown (H.DocWarning w)
+  = haddockToMarkdown w
+haddockToMarkdown (H.DocEmphasis d)
+  = "*" ++ haddockToMarkdown d ++ "*"
+haddockToMarkdown (H.DocBold d)
+  = "**" ++ haddockToMarkdown d ++ "**"
+haddockToMarkdown (H.DocMonospaced d)
+  = "`" ++ haddockToMarkdown d ++ "`"
+haddockToMarkdown (H.DocCodeBlock d)
+  = "\n```haskell\n" ++ haddockToMarkdown d ++ "\n```\n"
+haddockToMarkdown (H.DocExamples es)
+  = "\n```haskell\n" ++ unlines (map exampleToMarkdown es) ++ "\n```\n"
+  where
+    exampleToMarkdown (H.Example expr result)
+      = ">>> " ++ expr ++ "\n" ++ unlines result
+haddockToMarkdown (H.DocHyperlink (H.Hyperlink url Nothing))
+  = "<" ++ url ++ ">"
+haddockToMarkdown (H.DocHyperlink (H.Hyperlink url (Just label)))
+  = "[" ++ label ++ "](" ++ url ++ ")"
+haddockToMarkdown (H.DocPic (H.Picture url Nothing))
+  = "![](" ++ url ++ ")"
+haddockToMarkdown (H.DocPic (H.Picture url (Just label)))
+  = "![" ++ label ++ "](" ++ url ++ ")"
+haddockToMarkdown (H.DocAName aname)
+  = "[" ++ aname ++ "]:"
+haddockToMarkdown (H.DocHeader (H.Header level title))
+  = replicate level '#' ++ " " ++ haddockToMarkdown title
+
+haddockToMarkdown (H.DocUnorderedList things)
+  = unlines $ map (\thing -> "+ " ++ haddockToMarkdown thing) things
+haddockToMarkdown (H.DocOrderedList things)
+  = unlines $ map (\thing -> "1. " ++ haddockToMarkdown thing) things
+haddockToMarkdown (H.DocDefList things)
+  = unlines $ map (\(term, defn) -> "+ **" ++ haddockToMarkdown term ++ "**: " ++ haddockToMarkdown defn) things
+
+-- we cannot render math by default
+haddockToMarkdown (H.DocMathInline _)
+  = "*cannot render inline math formula*"
+haddockToMarkdown (H.DocMathDisplay _)
+  = "\n\n*cannot render display math formula*\n\n"
+
+-- TODO: render tables
+haddockToMarkdown (H.DocTable _t)
+  = "\n\n*tables are not yet supported*\n\n"
+
+-- things I don't really know how to handle
+haddockToMarkdown (H.DocProperty _)
+  = ""  -- don't really know what to do
