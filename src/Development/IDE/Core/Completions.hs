@@ -206,11 +206,9 @@ mkCompl CI{origName,importedFrom,thingType,label,isInfix,docs} =
           | Just t <- thingType = Just . stripForall $ T.pack (showGhc t)
           | otherwise = Nothing
         docs' = ("*Defined in '" <> importedFrom <> "'*\n") : docs
-        nameDets =
-          case (thingType, nameModule_maybe origName) of
-            (Just _,_) -> Nothing
-            (Nothing, Nothing) -> Nothing
-            (Nothing, Just mdl) -> Just (NameDetails mdl (nameOccName origName))
+        nameDets = do
+          mdl <- nameModule_maybe origName
+          return $ NameDetails mdl (nameOccName origName)
 
 stripForall :: T.Text -> T.Text
 stripForall t
