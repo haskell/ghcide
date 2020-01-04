@@ -10,6 +10,7 @@ module Development.IDE.Spans.Documentation (
   ) where
 
 import           Control.Monad
+import           Data.Char (isSpace)
 import           Data.List.Extra
 import qualified Data.Map as M
 import           Data.Maybe
@@ -138,7 +139,11 @@ haddockToMarkdown (H.DocEmphasis d)
 haddockToMarkdown (H.DocBold d)
   = "**" ++ haddockToMarkdown d ++ "**"
 haddockToMarkdown (H.DocMonospaced d)
-  = "`" ++ haddockToMarkdown d ++ "`"
+  = "`" ++ escapeBackticks (haddockToMarkdown d) ++ "`"
+  where
+    escapeBackticks "" = ""
+    escapeBackticks ('`':ss) = '\\':'`':escapeBackticks ss
+    escapeBackticks (s  :ss) = s:escapeBackticks ss
 haddockToMarkdown (H.DocCodeBlock d)
   = "\n```haskell\n" ++ haddockToMarkdown d ++ "\n```\n"
 haddockToMarkdown (H.DocExamples es)
@@ -160,11 +165,11 @@ haddockToMarkdown (H.DocHeader (H.Header level title))
   = replicate level '#' ++ " " ++ haddockToMarkdown title
 
 haddockToMarkdown (H.DocUnorderedList things)
-  = unlines $ map (\thing -> "+ " ++ haddockToMarkdown thing) things
+  = '\n' : (unlines $ map (\thing -> "+ " ++ dropWhile isSpace (haddockToMarkdown thing)) things)
 haddockToMarkdown (H.DocOrderedList things)
-  = unlines $ map (\thing -> "1. " ++ haddockToMarkdown thing) things
+  = '\n' : (unlines $ map (\thing -> "1. " ++ dropWhile isSpace (haddockToMarkdown thing)) things)
 haddockToMarkdown (H.DocDefList things)
-  = unlines $ map (\(term, defn) -> "+ **" ++ haddockToMarkdown term ++ "**: " ++ haddockToMarkdown defn) things
+  = '\n' : (unlines $ map (\(term, defn) -> "+ **" ++ haddockToMarkdown term ++ "**: " ++ haddockToMarkdown defn) things)
 
 -- we cannot render math by default
 haddockToMarkdown (H.DocMathInline _)
