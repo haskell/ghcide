@@ -83,6 +83,12 @@ safeTyThingId (AnId i)                    = Just i
 safeTyThingId (AConLike (RealDataCon dc)) = Just $ dataConWrapId dc
 safeTyThingId _                           = Nothing
 
+safeTyThingType :: TyThing -> Maybe Type
+safeTyThingType thing
+  | Just i <- safeTyThingId thing = Just (varType i)
+safeTyThingType (ATyCon tycon)    = Just (tyConKind tycon)
+safeTyThingType _                 = Nothing
+
 -- From haskell-ide-engine/hie-plugin-api/Haskell/Ide/Engine/Context.hs
 
 -- | A context of a declaration in the program
@@ -334,9 +340,7 @@ cacheDataProducer packageState dflags tm tcs = do
         docs <- getDocumentationTryGhc packageState (tm:tcs) n
         ty <- runGhcEnv packageState $ catchSrcErrors "completion" $ do
                 name' <- lookupName n
-                case name' >>= safeTyThingId of
-                  Nothing -> return Nothing
-                  Just v  -> return (Just $ varType v)
+                return $ name' >>= safeTyThingType
         return $ CI n (showModName mn) (either (const Nothing) id ty) (T.pack $ showGhc n) Nothing docs
 
   (unquals,quals) <- getCompls rdrElts
