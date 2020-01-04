@@ -395,6 +395,7 @@ codeActionTests = testGroup "code actions"
   , importRenameActionTests
   , fillTypedHoleTests
   , addSigActionTests
+  , insertNewDefinitionTests
   ]
 
 codeLensesTests :: TestTree
@@ -808,6 +809,33 @@ extendImportTests = testGroup "extend import actions"
       executeCodeAction action
       contentAfterAction <- documentContents docB
       liftIO $ expectedContentB @=? contentAfterAction
+
+insertNewDefinitionTests :: TestTree
+insertNewDefinitionTests = testGroup "insert new definition actions"
+  [ testSession "insert new function definition" $ do
+      let txtB =
+            ["data Person = Person { age :: Int}"
+            ,"main = putStrLn $ head $ showByAge [Person{age = Just 10}]"
+            ]
+          txtB' =
+            [""
+            ,"someOtherCode = ()"
+            ]
+      docB <- openDoc' "ModuleB.hs" "haskell" (T.unlines $ txtB ++ txtB')
+      _ <- waitForDiagnostics
+      CACodeAction action@CodeAction { _title = actionTitle } : _
+                  <- sortOn (\(CACodeAction CodeAction{_title=x}) -> x) <$>
+                     getCodeActions docB (R 1 0 1 50)
+      liftIO $ actionTitle @?= "Define showByAge :: [Person] -> [String]"
+      executeCodeAction action
+      contentAfterAction <- documentContents docB
+      liftIO $ contentAfterAction @?= T.unlines (txtB ++
+        [ ""
+        , "showByAge :: [Person] -> [String]"
+        , "showByAge = error \"not implemented\""
+        ]
+        ++ txtB')
+  ]
 
 fixConstructorImportTests :: TestTree
 fixConstructorImportTests = testGroup "fix import actions"

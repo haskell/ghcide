@@ -97,6 +97,7 @@ suggestAction parsedModule text diag = concat
     , suggestFillTypeWildcard diag
     , suggestFixConstructorImport text diag
     , suggestModuleTypo diag
+    , suggestNewDefinition text diag
     , suggestReplaceIdentifier text diag
     , suggestSignature True diag
     ] ++ concat
@@ -136,6 +137,22 @@ suggestReplaceIdentifier contents Diagnostic{_range=_range@Range{..},..}
 --     Module ‘Data.Text’ does not export ‘isPrfixOf’.
     | renameSuggestions@(_:_) <- extractRenamableTerms _message
         = [ ("Replace with ‘" <> name <> "’", [mkRenameEdit contents _range name]) | name <- renameSuggestions ]
+    | otherwise = []
+
+suggestNewDefinition :: Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
+suggestNewDefinition mb_contents Diagnostic{_message, _range}
+--     * Variable not in scope:
+--         suggestAcion :: Maybe T.Text -> Range -> Range
+    | Just contents <- mb_contents
+    , Just [name, typ] <- matchRegex (unifySpaces _message) "Variable not in scope: ([^ ]*) :: ([^*•]*)"
+    , sig <- name <> " :: " <> T.dropWhileEnd isSpace typ
+    , rangeLine <- _line (_start _range)
+    , contentLines <- T.lines contents
+    , nextEmptyLine <- findIndex T.null (drop rangeLine contentLines)
+    , p <- Position (maybe (length contentLines) (rangeLine +) nextEmptyLine) 0
+    = [ ("Define " <> sig
+        , [TextEdit (Range p p) (T.unlines ["", sig, name <> " = error \"not implemented\""])]
+        )]
     | otherwise = []
 
 suggestFillTypeWildcard :: Diagnostic -> [(T.Text, [TextEdit])]
@@ -255,8 +272,6 @@ suggestFixConstructorImport _ Diagnostic{_range=_range,..}
 suggestSignature :: Bool -> Diagnostic -> [(T.Text, [TextEdit])]
 suggestSignature isQuickFix Diagnostic{_range=_range@Range{..},..}
     | "Top-level binding with no type signature" `T.isInfixOf` _message = let
-      filterNewlines = T.concat  . T.lines
-      unifySpaces    = T.unwords . T.words
       signature      = T.strip $ unifySpaces $ last $ T.splitOn "type signature: " $ filterNewlines _message
       startOfLine    = Position (_line _start) 0
       beforeLine     = Range startOfLine startOfLine
@@ -265,8 +280,6 @@ suggestSignature isQuickFix Diagnostic{_range=_range@Range{..},..}
       in [(title, [action])]
 suggestSignature isQuickFix Diagnostic{_range=_range@Range{..},..}
     | "Polymorphic local binding with no type signature" `T.isInfixOf` _message = let
-      filterNewlines = T.concat  . T.lines
-      unifySpaces    = T.unwords . T.words
       signature      = removeInitialForAll
                      $ T.takeWhile (\x -> x/='*' && x/='•')
                      $ T.strip $ unifySpaces $ last $ T.splitOn "type signature: " $ filterNewlines _message
@@ -403,7 +416,7 @@ addBindingToImportList binding importLine = case T.breakOn "(" importLine of
 
 -- | Returns Just (the submatches) for the first capture, or Nothing.
 matchRegex :: T.Text -> T.Text -> Maybe [T.Text]
-matchRegex message regex = case T.unwords (T.words message) =~~ regex of
+matchRegex message regex = case unifySpaces message =~~ regex of
     Just (_ :: T.Text, _ :: T.Text, _ :: T.Text, bindings) -> Just bindings
     Nothing -> Nothing
 
@@ -417,6 +430,12 @@ setHandlersCodeLens = PartialHandlers $ \WithMessage{..} x -> return x{
     LSP.codeLensHandler = withResponse RspCodeLens codeLens,
     LSP.executeCommandHandler = withResponseAndRequest RspExecuteCommand ReqApplyWorkspaceEdit executeAddSignatureCommand
     }
+
+filterNewlines :: T.Text -> T.Text
+filterNewlines = T.concat  . T.lines
+
+unifySpaces :: T.Text -> T.Text
+unifySpaces    = T.unwords . T.words
 
 --------------------------------------------------------------------------------
 
