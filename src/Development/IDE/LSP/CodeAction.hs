@@ -365,9 +365,14 @@ textInRange (Range (Position startRow startCol) (Position endRow endCol)) text =
 rangesForBinding :: ImportDecl GhcPs -> String -> [Range]
 rangesForBinding ImportDecl{ideclHiding = Just (False, L _ lies)} b =
     concatMap (map srcSpanToRange . rangesForBinding' b') lies
-    where
-      b' = wrapOperatorInParens b
-      wrapOperatorInParens x = if isAlpha (head x) then x else "(" <> x <> ")"
+  where
+    b' = wrapOperatorInParens (unqualify b)
+
+    wrapOperatorInParens x = if isAlpha (head x) then x else "(" <> x <> ")"
+
+    unqualify x = case breakOn "." x of
+      (_qualifier, _:unqualified) -> unqualified
+      _ -> x
 
 rangesForBinding _ _ = []
 
@@ -375,7 +380,7 @@ rangesForBinding' :: String -> LIE GhcPs -> [SrcSpan]
 rangesForBinding' b (L l x@IEVar{}) | showSDocUnsafe (ppr x) == b = [l]
 rangesForBinding' b (L l x@IEThingAbs{}) | showSDocUnsafe (ppr x) == b = [l]
 rangesForBinding' b (L l x@IEThingAll{}) | showSDocUnsafe (ppr x) == b = [l]
-rangesForBinding' b (L l (IEThingWith _ thing _  inners labels))
+rangesForBinding' b (L l (IEThingWith thing _  inners labels))
     | showSDocUnsafe (ppr thing) == b = [l]
     | otherwise =
         [ l' | L l' x <- inners, showSDocUnsafe (ppr x) == b] ++
