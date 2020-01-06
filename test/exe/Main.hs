@@ -9,11 +9,12 @@
 module Main (main) where
 
 import Control.Applicative.Combinators
+import Control.Exception (catch)
 import Control.Monad
 import Control.Monad.IO.Class (liftIO)
-import qualified Data.Aeson as Aeson
 import Data.Char (toLower)
 import Data.Foldable
+import Data.List
 import Development.IDE.GHC.Util
 import qualified Data.Text as T
 import Development.IDE.Test
@@ -41,6 +42,7 @@ main = defaultMain $ testGroup "HIE"
       void (message :: Session WorkDoneProgressEndNotification)
   , initializeResponseTests
   , completionTests
+  , cppTests
   , diagnosticTests
   , codeActionTests
   , codeLensesTests
@@ -388,6 +390,8 @@ codeActionTests = testGroup "code actions"
   [ renameActionTests
   , typeWildCardActionTests
   , removeImportTests
+  , extendImportTests
+  , fixConstructorImportTests
   , importRenameActionTests
   , fillTypedHoleTests
   , addSigActionTests
@@ -688,6 +692,153 @@ removeImportTests = testGroup "remove import actions"
       liftIO $ expectedContentAfterAction @=? contentAfterAction
   ]
 
+extendImportTests :: TestTree
+extendImportTests = testGroup "extend import actions"
+  [ testSession "extend single line import with value" $ template
+      (T.unlines
+            [ "module ModuleA where"
+            , "stuffA :: Double"
+            , "stuffA = 0.00750"
+            , "stuffB :: Integer"
+            , "stuffB = 123"
+            ])
+      (T.unlines
+            [ "module ModuleB where"
+            , "import ModuleA as A (stuffB)"
+            , "main = print (stuffA, stuffB)"
+            ])
+      (Range (Position 3 17) (Position 3 18))
+      "Add stuffA to the import list of ModuleA"
+      (T.unlines
+            [ "module ModuleB where"
+            , "import ModuleA as A (stuffA, stuffB)"
+            , "main = print (stuffA, stuffB)"
+            ])
+  , testSession "extend single line import with type" $ template
+      (T.unlines
+            [ "module ModuleA where"
+            , "type A = Double"
+            ])
+      (T.unlines
+            [ "module ModuleB where"
+            , "import ModuleA ()"
+            , "b :: A"
+            , "b = 0"
+            ])
+      (Range (Position 2 5) (Position 2 5))
+      "Add A to the import list of ModuleA"
+      (T.unlines
+            [ "module ModuleB where"
+            , "import ModuleA (A)"
+            , "b :: A"
+            , "b = 0"
+            ])
+  ,  (`xfail` "known broken") $ testSession "extend single line import with constructor" $ template
+      (T.unlines
+            [ "module ModuleA where"
+            , "data A = Constructor"
+            ])
+      (T.unlines
+            [ "module ModuleB where"
+            , "import ModuleA (A)"
+            , "b :: A"
+            , "b = Constructor"
+            ])
+      (Range (Position 2 5) (Position 2 5))
+      "Add Constructor to the import list of ModuleA"
+      (T.unlines
+            [ "module ModuleB where"
+            , "import ModuleA (A(Constructor))"
+            , "b :: A"
+            , "b = Constructor"
+            ])
+  , testSession "extend single line qualified import with value" $ template
+      (T.unlines
+            [ "module ModuleA where"
+            , "stuffA :: Double"
+            , "stuffA = 0.00750"
+            , "stuffB :: Integer"
+            , "stuffB = 123"
+            ])
+      (T.unlines
+            [ "module ModuleB where"
+            , "import qualified ModuleA as A (stuffB)"
+            , "main = print (A.stuffA, A.stuffB)"
+            ])
+      (Range (Position 3 17) (Position 3 18))
+      "Add stuffA to the import list of ModuleA"
+      (T.unlines
+            [ "module ModuleB where"
+            , "import qualified ModuleA as A (stuffA, stuffB)"
+            , "main = print (A.stuffA, A.stuffB)"
+            ])
+  , testSession "extend multi line import with value" $ template
+      (T.unlines
+            [ "module ModuleA where"
+            , "stuffA :: Double"
+            , "stuffA = 0.00750"
+            , "stuffB :: Integer"
+            , "stuffB = 123"
+            ])
+      (T.unlines
+            [ "module ModuleB where"
+            , "import ModuleA (stuffB"
+            , "               )"
+            , "main = print (stuffA, stuffB)"
+            ])
+      (Range (Position 3 17) (Position 3 18))
+      "Add stuffA to the import list of ModuleA"
+      (T.unlines
+            [ "module ModuleB where"
+            , "import ModuleA (stuffA, stuffB"
+            , "               )"
+            , "main = print (stuffA, stuffB)"
+            ])
+  ]
+  where
+    template contentA contentB range expectedAction expectedContentB = do
+      _docA <- openDoc' "ModuleA.hs" "haskell" contentA
+      docB <- openDoc' "ModuleB.hs" "haskell" contentB
+      _ <- waitForDiagnostics
+      CACodeAction action@CodeAction { _title = actionTitle } : _
+                  <- sortOn (\(CACodeAction CodeAction{_title=x}) -> x) <$>
+                     getCodeActions docB range
+      liftIO $ expectedAction @=? actionTitle
+      executeCodeAction action
+      contentAfterAction <- documentContents docB
+      liftIO $ expectedContentB @=? contentAfterAction
+
+fixConstructorImportTests :: TestTree
+fixConstructorImportTests = testGroup "fix import actions"
+  [ testSession "fix constructor import" $ template
+      (T.unlines
+            [ "module ModuleA where"
+            , "data A = Constructor"
+            ])
+      (T.unlines
+            [ "module ModuleB where"
+            , "import ModuleA(Constructor)"
+            ])
+      (Range (Position 1 10) (Position 1 11))
+      "Fix import of A(Constructor)"
+      (T.unlines
+            [ "module ModuleB where"
+            , "import ModuleA(A(Constructor))"
+            ])
+  ]
+  where
+    template contentA contentB range expectedAction expectedContentB = do
+      _docA <- openDoc' "ModuleA.hs" "haskell" contentA
+      docB  <- openDoc' "ModuleB.hs" "haskell" contentB
+      _diags <- waitForDiagnostics
+      CACodeAction action@CodeAction { _title = actionTitle } : _
+                  <- sortOn (\(CACodeAction CodeAction{_title=x}) -> x) <$>
+                     getCodeActions docB range
+      liftIO $ expectedAction @=? actionTitle
+      executeCodeAction action
+      contentAfterAction <- documentContents docB
+      liftIO $ expectedContentB @=? contentAfterAction
+
 importRenameActionTests :: TestTree
 importRenameActionTests = testGroup "import rename actions"
   [ testSession "Data.Mape -> Data.Map"   $ check "Map"
@@ -953,7 +1104,7 @@ findDefinitionAndHoverTests = let
   , test broken broken fffL8  fff    "field in record construction     #71"
   , test yes    yes    fffL14 fff    "field name used as accessor"          -- 120 in Calculate.hs
   , test yes    yes    aaaL14 aaa    "top-level name"                       -- 120
-  , test broken broken dcL7   tcDC   "data constructor record         #247"
+  , test yes    yes    dcL7   tcDC   "data constructor record         #247"
   , test yes    yes    dcL12  tcDC   "data constructor plain"               -- 121
   , test yes    yes    tcL6   tcData "type constructor                #248" -- 147
   , test broken yes    xtcL5  xtc    "type constructor external   #248,249"
@@ -1009,6 +1160,35 @@ pluginTests = testSessionWait "plugins" $ do
       )
     ]
 
+cppTests :: TestTree
+cppTests =
+  testCase "cpp" $ do
+    let content =
+          T.unlines
+            [ "{-# LANGUAGE CPP #-}",
+              "module Testing where",
+              "#ifdef FOO",
+              "foo = 42"
+            ]
+    -- The error locations differ depending on which C-preprocessor is used.
+    -- Some give the column number and others don't (hence -1). Assert either
+    -- of them.
+    (run $ expectError content (2, -1))
+      `catch` ( \e -> do
+                  let _ = e :: HUnitFailure
+                  run $ expectError content (2, 1)
+              )
+  where
+    expectError :: T.Text -> Cursor -> Session ()
+    expectError content cursor = do
+      _ <- openDoc' "Testing.hs" "haskell" content
+      expectDiagnostics
+        [ ( "Testing.hs",
+            [(DsError, cursor, "error: unterminated")]
+          )
+        ]
+      expectNoMoreDiagnostics 0.5
+
 preprocessorTests :: TestTree
 preprocessorTests = testSessionWait "preprocessor" $ do
   let content =
@@ -1061,7 +1241,9 @@ completionTests
         let source = T.unlines ["module A where", "f = hea"]
         docId <- openDoc' "A.hs" "haskell" source
         compls <- getCompletions docId (Position 1 7)
-        liftIO $ map dropDocs compls @?= [complItem "head" ["GHC.List", "base", "v", "head"] (Just CiFunction) (Just "[a] -> a")]
+        liftIO $ map dropDocs compls @?= 
+          [complItem "head" (Just CiFunction) (Just "[a] -> a")
+                     "*Defined in 'Prelude'*\n*\t*\t*\n\n\nExtract the first element of a list, which must be non-empty."]
     , testSessionWait "type" $ do
         let source = T.unlines ["{-# OPTIONS_GHC -Wall #-}", "module A () where", "f :: ()", "f = ()"]
         docId <- openDoc' "A.hs" "haskell" source
@@ -1069,8 +1251,9 @@ completionTests
         changeDoc docId [TextDocumentContentChangeEvent Nothing Nothing $ T.unlines ["{-# OPTIONS_GHC -Wall #-}", "module A () where", "f :: Bo", "f = True"]]
         compls <- getCompletions docId (Position 2 7)
         liftIO $ map dropDocs compls @?=
-            [ complItem "Bounded" ["GHC.Enum", "base", "t", "Bounded"] (Just CiClass) Nothing
-            , complItem "Bool" ["GHC.Types", "ghc-prim", "t", "Bool"] (Just CiClass) Nothing
+            [ complItem "Bounded" (Just CiClass) (Just "* -> Constraint")
+                        "*Defined in 'Prelude'*\n*\t*\t*\n\n\nThe `Bounded` class is used to name the upper and lower limits of a\n "
+            , complItem "Bool" (Just CiClass) (Just "*") "*Defined in 'Prelude'*\n"
             ]
     , testSessionWait "qualified" $ do
         let source = T.unlines ["{-# OPTIONS_GHC -Wunused-binds #-}", "module A () where", "f = ()"]
@@ -1078,16 +1261,23 @@ completionTests
         expectDiagnostics [ ("A.hs", [(DsWarning, (2, 0), "not used")]) ]
         changeDoc docId [TextDocumentContentChangeEvent Nothing Nothing $ T.unlines ["{-# OPTIONS_GHC -Wunused-binds #-}", "module A () where", "f = Prelude.hea"]]
         compls <- getCompletions docId (Position 2 15)
-        liftIO $ map dropDocs compls @?= [complItem "head" ["GHC.List", "base", "v", "head"] (Just CiFunction) (Just "[a] -> a")]
+        liftIO $ map dropDocs compls @?= 
+          [complItem "head" (Just CiFunction) (Just "[a] -> a")
+                     "*Defined in 'Prelude'*\n*\t*\t*\n\n\nExtract the first element of a list, which must be non-empty."]
     ]
   where
     dropDocs :: CompletionItem -> CompletionItem
-    dropDocs ci = ci { _documentation = Nothing }
-    complItem label xdata kind ty = CompletionItem
+    dropDocs ci@CompletionItem { _documentation = d }
+      = ci { _documentation = applyToCompDocs (T.take 100) <$> d }
+    applyToCompDocs f (CompletionDocString s)
+      = CompletionDocString (f s)
+    applyToCompDocs f (CompletionDocMarkup (MarkupContent k s))
+      = CompletionDocMarkup (MarkupContent k (f s))
+    complItem label kind ty docs = CompletionItem
       { _label = label
       , _kind = kind
       , _detail = (":: " <>) <$> ty
-      , _documentation = Nothing
+      , _documentation = Just (CompletionDocMarkup (MarkupContent MkMarkdown docs))
       , _deprecated = Nothing
       , _preselect = Nothing
       , _sortText = Nothing
@@ -1098,7 +1288,7 @@ completionTests
       , _additionalTextEdits = Nothing
       , _commitCharacters = Nothing
       , _command = Nothing
-      , _xdata = Just (Aeson.toJSON (xdata :: [T.Text]))
+      , _xdata = Nothing
       }
 
 outlineTests :: TestTree
