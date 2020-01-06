@@ -413,9 +413,7 @@ renameActionTests = testGroup "rename actions"
             ]
       doc <- openDoc' "Testing.hs" "haskell" content
       _ <- waitForDiagnostics
-      [CACodeAction action@CodeAction { _title = actionTitle }]
-          <- getCodeActions doc (Range (Position 2 14) (Position 2 20))
-      liftIO $ "Replace with ‘argName’" @=? actionTitle
+      action <- findCodeAction doc (Range (Position 2 14) (Position 2 20)) "Replace with ‘argName’"
       executeCodeAction action
       contentAfterAction <- documentContents doc
       let expectedContentAfterAction = T.unlines
@@ -433,9 +431,7 @@ renameActionTests = testGroup "rename actions"
             ]
       doc <- openDoc' "Testing.hs" "haskell" content
       _ <- waitForDiagnostics
-      [CACodeAction action@CodeAction { _title = actionTitle }]
-          <- getCodeActions doc (Range (Position 3 6) (Position 3 16))
-      liftIO $ "Replace with ‘maybeToList’" @=? actionTitle
+      action <- findCodeAction doc (Range (Position 3 6) (Position 3 16))  "Replace with ‘maybeToList’"
       executeCodeAction action
       contentAfterAction <- documentContents doc
       let expectedContentAfterAction = T.unlines
@@ -453,10 +449,9 @@ renameActionTests = testGroup "rename actions"
             ]
       doc <- openDoc' "Testing.hs" "haskell" content
       _ <- waitForDiagnostics
-      actionsOrCommands <- getCodeActions doc (Range (Position 2 36) (Position 2 45))
-      let actionTitles = [ actionTitle | CACodeAction CodeAction{ _title = actionTitle } <- actionsOrCommands ]
-          expectedActionTitles = ["Replace with ‘argument1’", "Replace with ‘argument2’", "Replace with ‘argument3’"]
-      liftIO $ expectedActionTitles @=? actionTitles
+      _ <- findCodeActions doc (Range (Position 2 36) (Position 2 45))
+                           ["Replace with ‘argument1’", "Replace with ‘argument2’", "Replace with ‘argument3’"]
+      return()
   , testSession "change infix function" $ do
       let content = T.unlines
             [ "module Testing where"
@@ -1573,6 +1568,25 @@ openTestDataDoc :: FilePath -> Session TextDocumentIdentifier
 openTestDataDoc path = do
   source <- liftIO $ readFileUtf8 $ "test/data" </> path
   openDoc' path "haskell" source
+
+findCodeActions :: TextDocumentIdentifier -> Range -> [T.Text] -> Session [CodeAction]
+findCodeActions doc range expectedTitles = do
+  actions <- getCodeActions doc range
+  let matches = sequence
+        [ listToMaybe
+          [ action
+          | CACodeAction action@CodeAction { _title = actionTitle } <- actions
+          , actionTitle == expectedTitle ]
+        | expectedTitle <- expectedTitles]
+  let msg = show $
+            [ actionTitle
+            | CACodeAction CodeAction { _title = actionTitle } <- actions
+            ]
+  liftIO $ assertBool msg (isJust matches)
+  return (fromJust matches)
+
+findCodeAction :: TextDocumentIdentifier -> Range -> T.Text -> Session CodeAction
+findCodeAction doc range t = head <$> findCodeActions doc range [t]
 
 unitTests :: TestTree
 unitTests = do
