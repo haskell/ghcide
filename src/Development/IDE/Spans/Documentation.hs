@@ -17,26 +17,29 @@ import           Data.Maybe
 import qualified Data.Text as T
 import           Development.IDE.GHC.Error
 import           Development.IDE.Spans.Calculate
-import           Development.IDE.GHC.Util
 import           FastString
 import           GHC
 import SrcLoc
 
+#if MIN_GHC_API_VERSION(8,6,0)
+import           Development.IDE.GHC.Util
 import qualified Documentation.Haddock.Parser as H
 import qualified Documentation.Haddock.Types as H
+#endif
 
 getDocumentationTryGhc
   :: HscEnv
   -> [TypecheckedModule]
   -> Name
   -> IO [T.Text]
-getDocumentationTryGhc packageState tcs name = do
 #if MIN_GHC_API_VERSION(8,6,0)
+getDocumentationTryGhc packageState tcs name = do
   res <- runGhcEnv packageState $ catchSrcErrors "docs" $ getDocs name
   case res of
     Right (Right (Just docs, _)) -> return [T.pack $ haddockToMarkdown $ H.toRegular $ H._doc $ H.parseParas Nothing $ unpackHDS docs]
     _ -> return $ getDocumentation tcs name
 #else
+getDocumentationTryGhc _packageState tcs name = do
   return $ getDocumentation tcs name
 #endif
 
@@ -114,6 +117,7 @@ docHeaders = mapMaybe (\(L _ x) -> wrk x)
                             else Nothing
     _ -> Nothing
 
+#if MIN_GHC_API_VERSION(8,6,0)
 -- Simple (and a bit hacky) conversion from Haddock markup to Markdown
 haddockToMarkdown
   :: H.DocH String String -> String
@@ -184,3 +188,4 @@ haddockToMarkdown (H.DocTable _t)
 -- things I don't really know how to handle
 haddockToMarkdown (H.DocProperty _)
   = ""  -- don't really know what to do
+#endif
