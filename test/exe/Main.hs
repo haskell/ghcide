@@ -1243,7 +1243,7 @@ completionTests
         compls <- getCompletions docId (Position 1 7)
         liftIO $ map dropDocs compls @?= 
           [complItem "head" (Just CiFunction) (Just "[a] -> a")
-                     "*Defined in 'Prelude'*\n*\t*\t*\n\n\nExtract the first element of a list, which must be non-empty."]
+                     "*Defined in 'Prelude'*"]
     , testSessionWait "type" $ do
         let source = T.unlines ["{-# OPTIONS_GHC -Wall #-}", "module A () where", "f :: ()", "f = ()"]
         docId <- openDoc' "A.hs" "haskell" source
@@ -1252,8 +1252,8 @@ completionTests
         compls <- getCompletions docId (Position 2 7)
         liftIO $ map dropDocs compls @?=
             [ complItem "Bounded" (Just CiClass) (Just "* -> Constraint")
-                        "*Defined in 'Prelude'*\n*\t*\t*\n\n\nThe `Bounded` class is used to name the upper and lower limits of a\n "
-            , complItem "Bool" (Just CiClass) (Just "*") "*Defined in 'Prelude'*\n"
+                        "*Defined in 'Prelude'*"
+            , complItem "Bool" (Just CiClass) (Just "*") "*Defined in 'Prelude'*"
             ]
     , testSessionWait "qualified" $ do
         let source = T.unlines ["{-# OPTIONS_GHC -Wunused-binds #-}", "module A () where", "f = ()"]
@@ -1263,12 +1263,12 @@ completionTests
         compls <- getCompletions docId (Position 2 15)
         liftIO $ map dropDocs compls @?= 
           [complItem "head" (Just CiFunction) (Just "[a] -> a")
-                     "*Defined in 'Prelude'*\n*\t*\t*\n\n\nExtract the first element of a list, which must be non-empty."]
+                     "*Defined in 'Prelude'*"]
     ]
   where
     dropDocs :: CompletionItem -> CompletionItem
     dropDocs ci@CompletionItem { _documentation = d }
-      = ci { _documentation = applyToCompDocs (T.take 100) <$> d }
+      = ci { _documentation = applyToCompDocs (T.takeWhile (/='\n')) <$> d }
     applyToCompDocs f (CompletionDocString s)
       = CompletionDocString (f s)
     applyToCompDocs f (CompletionDocMarkup (MarkupContent k s))
