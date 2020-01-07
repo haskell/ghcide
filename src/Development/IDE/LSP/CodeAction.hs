@@ -430,7 +430,7 @@ indexedByPosition = unfoldr f . (Position 0 0,) where
   f (p@(Position l _), '\n' : rest) = Just ((p,'\n'), (Position (l+1) 0, rest))
   f (p@(Position l c),    x : rest) = Just ((p,   x), (Position l (c+1), rest))
 
--- | Returns a tuple (before, contents, context)
+-- | Returns a tuple (before, contents, after)
 unconsRange :: Range -> PositionIndexedString -> (PositionIndexedString, PositionIndexedString, PositionIndexedString)
 unconsRange Range {..} indexedString = (before, mid, after)
   where
