@@ -370,9 +370,7 @@ rangesForBinding ImportDecl{ideclHiding = Just (False, L _ lies)} b =
 
     wrapOperatorInParens x = if isAlpha (head x) then x else "(" <> x <> ")"
 
-    unqualify x = case breakOn "." x of
-      (_qualifier, _:unqualified) -> unqualified
-      _ -> x
+    unqualify x = snd $ breakOnEnd "." x
 
 rangesForBinding _ _ = []
 
