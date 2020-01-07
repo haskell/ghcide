@@ -16,10 +16,12 @@ import Control.Monad (join)
 import Development.IDE.GHC.Compat
 import Development.IDE.Core.Rules
 import Development.IDE.Core.RuleTypes
+import Development.IDE.Core.Service
 import Development.IDE.Core.Shake
 import Development.IDE.GHC.Error
 import Development.IDE.LSP.Server
 import Development.IDE.Types.Location
+import Development.IDE.Types.Options
 import qualified Data.HashMap.Strict as Map
 import qualified Data.HashSet as Set
 import qualified Language.Haskell.LSP.Core as LSP
@@ -47,10 +49,12 @@ codeAction lsp state CodeActionParams{_textDocument=TextDocumentIdentifier uri,_
     -- logInfo (ideLogger ide) $ T.pack $ "Code action req: " ++ show arg
     contents <- LSP.getVirtualFileFunc lsp $ toNormalizedUri uri
     let text = Rope.toText . (_text :: VirtualFile -> Rope.Rope) <$> contents
-    parsedModule <- (runAction state . getParsedModule . toNormalizedFilePath) `traverse` uriToFilePath uri
+    (ideOptions, parsedModule) <- runAction state $
+      (,) <$> getIdeOptions
+          <*> (getParsedModule . toNormalizedFilePath) `traverse` uriToFilePath uri
     pure $ List
         [ CACodeAction $ CodeAction title (Just CodeActionQuickFix) (Just $ List [x]) (Just edit) Nothing
-        | x <- xs, (title, tedit) <- suggestAction ( join parsedModule ) text x
+        | x <- xs, (title, tedit) <- suggestAction ideOptions ( join parsedModule ) text x
         , let edit = WorkspaceEdit (Just $ Map.singleton uri $ List tedit) Nothing
         ]
 
@@ -89,15 +93,15 @@ executeAddSignatureCommand _lsp _ideState ExecuteCommandParams{..}
     | otherwise
     = return (Null, Nothing)
 
-suggestAction  :: Maybe ParsedModule -> Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
-suggestAction parsedModule text diag = concat
+suggestAction  :: IdeOptions -> Maybe ParsedModule -> Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
+suggestAction ideOptions parsedModule text diag = concat
     [ suggestAddExtension diag
     , suggestExtendImport text diag
     , suggestFillHole diag
     , suggestFillTypeWildcard diag
     , suggestFixConstructorImport text diag
     , suggestModuleTypo diag
-    , suggestNewDefinition text diag
+    , suggestNewDefinition ideOptions text diag
     , suggestReplaceIdentifier text diag
     , suggestSignature True diag
     ] ++ concat
@@ -139,13 +143,18 @@ suggestReplaceIdentifier contents Diagnostic{_range=_range@Range{..},..}
         = [ ("Replace with ‘" <> name <> "’", [mkRenameEdit contents _range name]) | name <- renameSuggestions ]
     | otherwise = []
 
-suggestNewDefinition :: Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
-suggestNewDefinition mb_contents Diagnostic{_message, _range}
+suggestNewDefinition :: IdeOptions -> Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
+suggestNewDefinition ideOptions mb_contents Diagnostic{_message, _range}
 --     * Variable not in scope:
 --         suggestAcion :: Maybe T.Text -> Range -> Range
     | Just contents <- mb_contents
     , Just [name, typ] <- matchRegex (unifySpaces _message) "Variable not in scope: ([^ ]*) :: ([^*•]*)"
-    , sig <- name <> " :: " <> T.dropWhileEnd isSpace typ
+    = newDefinitionAction ideOptions contents _range name typ
+    | otherwise = []
+
+newDefinitionAction :: IdeOptions -> T.Text -> Range -> T.Text -> T.Text -> [(T.Text, [TextEdit])]
+newDefinitionAction IdeOptions{..} contents _range name typ
+    | sig <- name <> colon <> T.dropWhileEnd isSpace typ
     , rangeLine <- _line (_start _range)
     , contentLines <- T.lines contents
     , nextEmptyLine <- findIndex T.null (drop rangeLine contentLines)
@@ -153,7 +162,8 @@ suggestNewDefinition mb_contents Diagnostic{_message, _range}
     = [ ("Define " <> sig
         , [TextEdit (Range p p) (T.unlines ["", sig, name <> " = error \"not implemented\""])]
         )]
-    | otherwise = []
+  where
+    colon = if optNewColonConvention then " : " else " :: "
 
 suggestFillTypeWildcard :: Diagnostic -> [(T.Text, [TextEdit])]
 suggestFillTypeWildcard Diagnostic{_range=_range@Range{..},..}
