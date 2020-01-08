@@ -608,19 +608,20 @@ removeImportTests = testGroup "remove import actions"
             , "stuffA = False"
             , "stuffB :: Integer"
             , "stuffB = 123"
+            , "stuffC = ()"
             ]
       _docA <- openDoc' "ModuleA.hs" "haskell" contentA
       let contentB = T.unlines
             [ "{-# OPTIONS_GHC -Wunused-imports #-}"
             , "module ModuleB where"
-            , "import ModuleA (stuffA, stuffB)"
+            , "import ModuleA (stuffA, stuffB, stuffC, stuffA)"
             , "main = print stuffB"
             ]
       docB <- openDoc' "ModuleB.hs" "haskell" contentB
       _ <- waitForDiagnostics
       [CACodeAction action@CodeAction { _title = actionTitle }]
           <- getCodeActions docB (Range (Position 2 0) (Position 2 5))
-      liftIO $ "Remove stuffA from import" @=? actionTitle
+      liftIO $ "Remove stuffA, stuffC from import" @=? actionTitle
       executeCodeAction action
       contentAfterAction <- documentContents docB
       let expectedContentAfterAction = T.unlines
@@ -1097,6 +1098,8 @@ findDefinitionAndHoverTests = let
   chrL36 = Position 36 25  ;  litC   = [ExpectHoverText ["'t'"]]
   txtL8  = Position  8 14  ;  litT   = [ExpectHoverText ["\"dfgv\""]]
   lstL43 = Position 43 12  ;  litL   = [ExpectHoverText ["[ 8391 :: Int, 6268 ]"]]
+  outL45 = Position 45  3  ;  outSig = [ExpectHoverText ["outer", "Bool"], mkR 46 0 46 5]
+  innL48 = Position 48  5  ;  innSig = [ExpectHoverText ["inner", "Char"], mkR 49 2 49 7]
   in
   mkFindTests
   --     def    hover  look   expect
@@ -1132,6 +1135,8 @@ findDefinitionAndHoverTests = let
   , test no     broken txtL8  litT   "literal Text in hover info      #274"
   , test no     broken lstL43 litL   "literal List in hover info      #274"
   , test no     broken docL41 constr "type constraint in hover info   #283"
+  , test broken broken outL45 outSig "top-level signature             #310"
+  , test broken broken innL48 innSig "inner     signature             #310"
   ]
   where yes, broken :: (TestTree -> Maybe TestTree)
         yes    = Just -- test should run and pass
@@ -1492,9 +1497,11 @@ run s = withTempDir $ \dir -> do
   runSessionWithConfig conf cmd fullCaps { _window = Just $ WindowClientCapabilities $ Just True } dir s
   where
     conf = defaultConfig
-      -- If you uncomment this you can see all messages
+      -- If you uncomment this you can see all logging
       -- which can be quite useful for debugging.
-      -- { logMessages = True, logColor = False, logStdErr = True }
+      -- { logStdErr = True, logColor = False }
+      -- If you really want to, you can also see all messages
+      -- { logMessages = True, logColor = False }
 
 openTestDataDoc :: FilePath -> Session TextDocumentIdentifier
 openTestDataDoc path = do
