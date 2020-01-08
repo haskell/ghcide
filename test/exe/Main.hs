@@ -1260,7 +1260,12 @@ completionTests
         compls <- getCompletions docId (Position 1 7)
         liftIO $ map dropDocs compls @?= 
           [ complItem "True" (Just CiConstructor) (Just "Bool")
-          , complItem "truncate" (Just CiFunction) (Just "(RealFrac a, Integral b) => a -> b") ]
+#if MIN_GHC_API_VERSION(8,6,0)
+          , complItem "truncate" (Just CiFunction) (Just "(RealFrac a, Integral b) => a -> b")
+#else
+          , complItem "truncate" (Just CiFunction) (Just "RealFrac a => forall b. Integral b => a -> b") 
+#endif
+          ]
     , testSessionWait "type" $ do
         let source = T.unlines ["{-# OPTIONS_GHC -Wall #-}", "module A () where", "f :: ()", "f = ()"]
         docId <- openDoc' "A.hs" "haskell" source
