@@ -1254,6 +1254,13 @@ completionTests
                                      , "Extract the first element of a list"
 #endif
                                      ]
+    , testSessionWait "constructor" $ do
+        let source = T.unlines ["module A where", "f = Tru"]
+        docId <- openDoc' "A.hs" "haskell" source
+        compls <- getCompletions docId (Position 1 7)
+        liftIO $ map dropDocs compls @?= 
+          [ complItem "True" (Just CiConstructor) (Just "Bool")
+          , complItem "truncate" (Just CiFunction) (Just "(RealFrac a, Integral b) => a -> b") ]
     , testSessionWait "type" $ do
         let source = T.unlines ["{-# OPTIONS_GHC -Wall #-}", "module A () where", "f :: ()", "f = ()"]
         docId <- openDoc' "A.hs" "haskell" source

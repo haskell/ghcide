@@ -7,7 +7,7 @@ module Development.IDE.Core.Completions (
 ) where
 
 import Control.Applicative
-import Data.Char (isSpace)
+import Data.Char (isSpace, isUpper)
 import Data.Generics
 import Data.List as List hiding (stripPrefix)
 import qualified Data.Map  as Map
@@ -146,7 +146,9 @@ getCContext pos pm
 
 occNameToComKind :: Maybe T.Text -> OccName -> CompletionItemKind
 occNameToComKind ty oc
-  | isVarOcc  oc = CiFunction
+  | isVarOcc  oc = case occNameString oc of
+                     i:_ | isUpper i -> CiConstructor
+                     _               -> CiFunction
   | isTcOcc   oc = case ty of
                      Just t
                        | "Constraint" `T.isSuffixOf` t 
