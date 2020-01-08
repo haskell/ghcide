@@ -1097,9 +1097,9 @@ findDefinitionAndHoverTests = let
   chrL36 = Position 36 25  ;  litC   = [ExpectHoverText ["'t'"]]
   txtL8  = Position  8 14  ;  litT   = [ExpectHoverText ["\"dfgv\""]]
   lstL43 = Position 43 12  ;  litL   = [ExpectHoverText ["[ 8391 :: Int, 6268 ]"]]
-  outL45 = Position 45  3  ;  outSig = [ExpectHoverText ["outer", "Bool"], mkR 45 0 45 5]
+  outL45 = Position 45  3  ;  outSig = [ExpectHoverText ["outer", "Bool"], mkR 46 0 46 5]
   outL46 = Position 46  3  ;  outDef = [ExpectHoverText ["outer", "Bool"], mkR 46 0 46 5]
-  innL48 = Position 48  5  ;  innSig = [ExpectHoverText ["inner", "Char"], mkR 48 2 48 7]
+  innL48 = Position 48  5  ;  innSig = [ExpectHoverText ["inner", "Char"], mkR 49 2 49 7]
   innL49 = Position 49  5  ;  innDef = [ExpectHoverText ["inner", "Char"], mkR 49 2 49 7]
   in
   mkFindTests
@@ -1136,7 +1136,7 @@ findDefinitionAndHoverTests = let
   , test no     broken txtL8  litT   "literal Text in hover info      #274"
   , test no     broken lstL43 litL   "literal List in hover info      #274"
   , test no     broken docL41 constr "type constraint in hover info   #283"
-  , test no     broken outL45 outSig "top-level signature             #310"
+  , test broken broken outL45 outSig "top-level signature             #310"
   , test yes    yes    outL46 outDef "top-level definition            #310"
   , test broken broken innL48 innSig "inner     signature             #310"
   , test yes    yes    innL49 innDef "inner     definition            #310"
