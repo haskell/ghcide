@@ -101,11 +101,12 @@ suggestAction ideOptions parsedModule text diag = concat
     , suggestFillTypeWildcard diag
     , suggestFixConstructorImport text diag
     , suggestModuleTypo diag
-    , suggestNewDefinition ideOptions text diag
     , suggestReplaceIdentifier text diag
     , suggestSignature True diag
     ] ++ concat
-    [ suggestRemoveRedundantImport pm text diag | Just pm <- [parsedModule]]
+    [  suggestNewDefinition ideOptions pm diag
+    ++ suggestRemoveRedundantImport pm text diag
+    | Just pm <- [parsedModule]]
 
 
 suggestRemoveRedundantImport :: ParsedModule -> Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
@@ -143,27 +144,30 @@ suggestReplaceIdentifier contents Diagnostic{_range=_range@Range{..},..}
         = [ ("Replace with ‘" <> name <> "’", [mkRenameEdit contents _range name]) | name <- renameSuggestions ]
     | otherwise = []
 
-suggestNewDefinition :: IdeOptions -> Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
-suggestNewDefinition ideOptions mb_contents Diagnostic{_message, _range}
+suggestNewDefinition :: IdeOptions -> ParsedModule -> Diagnostic -> [(T.Text, [TextEdit])]
+suggestNewDefinition ideOptions parsedModule Diagnostic{_message, _range}
 --     * Variable not in scope:
 --         suggestAcion :: Maybe T.Text -> Range -> Range
-    | Just contents <- mb_contents
-    , Just [name, typ] <- matchRegex (unifySpaces _message) "Variable not in scope: ([^ ]*) :: ([^*•]*)"
-    = newDefinitionAction ideOptions contents _range name typ
+    | Just [name, typ] <- matchRegex (unifySpaces _message) "Variable not in scope: ([^ ]*) :: ([^*•]*)"
+    = newDefinitionAction ideOptions parsedModule _range name typ
     | otherwise = []
 
-newDefinitionAction :: IdeOptions -> T.Text -> Range -> T.Text -> T.Text -> [(T.Text, [TextEdit])]
-newDefinitionAction IdeOptions{..} contents _range name typ
-    | sig <- name <> colon <> T.dropWhileEnd isSpace typ
-    , rangeLine <- _line (_start _range)
-    , contentLines <- T.lines contents
-    , nextEmptyLine <- findIndex T.null (drop rangeLine contentLines)
-    , p <- Position (maybe (length contentLines) (rangeLine +) nextEmptyLine) 0
+newDefinitionAction :: IdeOptions -> ParsedModule -> Range -> T.Text -> T.Text -> [(T.Text, [TextEdit])]
+newDefinitionAction IdeOptions{..} parsedModule Range{_start} name typ
+    | Range _ lastLineP : _ <-
+      [ srcSpanToRange (RealSrcSpan l)
+      | (L (RealSrcSpan l) _) <- hsmodDecls
+      , _start `isInsideRange` l]
+    , nextLineP <- Position{ _line = _line lastLineP + 1, _character = 0}
     = [ ("Define " <> sig
-        , [TextEdit (Range p p) (T.unlines ["", sig, name <> " = error \"not implemented\""])]
+        , [TextEdit (Range nextLineP nextLineP) (T.unlines ["", sig, name <> " = error \"not implemented\""])]
         )]
+    | otherwise = []
   where
     colon = if optNewColonConvention then " : " else " :: "
+    sig = name <> colon <> T.dropWhileEnd isSpace typ
+    ParsedModule{pm_parsed_source = L _ HsModule{hsmodDecls}} = parsedModule
+
 
 suggestFillTypeWildcard :: Diagnostic -> [(T.Text, [TextEdit])]
 suggestFillTypeWildcard Diagnostic{_range=_range@Range{..},..}

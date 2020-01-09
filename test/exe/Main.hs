@@ -810,7 +810,9 @@ insertNewDefinitionTests = testGroup "insert new definition actions"
   [ testSession "insert new function definition" $ do
       let txtB =
             ["data Person = Person { age :: Int}"
-            ,"main = putStrLn $ head $ showByAge [Person{age = Just 10}]"
+            ,"foo True = putStrLn $ head $ showByAge [Person{age = Just 10}]"
+            , ""
+            ,"foo False = show 0"
             ]
           txtB' =
             [""

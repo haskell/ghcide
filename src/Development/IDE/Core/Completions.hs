@@ -26,7 +26,6 @@ import Packages
 import DynFlags
 import ConLike
 import DataCon
-import SrcLoc as GHC
 
 import Language.Haskell.LSP.Types
 import Language.Haskell.LSP.Types.Capabilities
@@ -35,6 +34,7 @@ import Development.IDE.Core.CompletionsTypes
 import Development.IDE.Spans.Documentation
 import Development.IDE.GHC.Util
 import Development.IDE.GHC.Error
+import Development.IDE.Types.Location
 import Development.IDE.Types.Options
 
 -- From haskell-ide-engine/src/Haskell/Ide/Engine/Support/HieExtras.hs
@@ -106,23 +106,6 @@ getCContext pos pm
           | pos `isInsideRange` r = Just TypeContext
           | otherwise = Nothing
         goInline _ = Nothing
-
-        p `isInsideRange` r = sp <= p && p <= ep
-          where (sp, ep) = unpackRealSrcSpan r
-
-        -- | Converts from one based tuple
-        toPos :: (Int,Int) -> Position
-        toPos (l,c) = Position (l-1) (c-1)
-          
-        unpackRealSrcSpan :: GHC.RealSrcSpan -> (Position, Position)
-        unpackRealSrcSpan rspan =
-          (toPos (l1,c1),toPos (l2,c2))
-          where s  = GHC.realSrcSpanStart rspan
-                l1 = GHC.srcLocLine s
-                c1 = GHC.srcLocCol s
-                e  = GHC.realSrcSpanEnd rspan
-                l2 = GHC.srcLocLine e
-                c2 = GHC.srcLocCol e
 
         importGo :: GHC.LImportDecl GhcPs -> Maybe Context
         importGo (L (RealSrcSpan r) impDecl)
