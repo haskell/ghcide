@@ -104,7 +104,7 @@ suggestAction ideOptions parsedModule text diag = concat
     , suggestReplaceIdentifier text diag
     , suggestSignature True diag
     ] ++ concat
-    [  suggestNewDefinition ideOptions pm diag
+    [  suggestNewDefinition ideOptions pm text diag
     ++ suggestRemoveRedundantImport pm text diag
     | Just pm <- [parsedModule]]
 
@@ -144,13 +144,18 @@ suggestReplaceIdentifier contents Diagnostic{_range=_range@Range{..},..}
         = [ ("Replace with ‘" <> name <> "’", [mkRenameEdit contents _range name]) | name <- renameSuggestions ]
     | otherwise = []
 
-suggestNewDefinition :: IdeOptions -> ParsedModule -> Diagnostic -> [(T.Text, [TextEdit])]
-suggestNewDefinition ideOptions parsedModule Diagnostic{_message, _range}
+suggestNewDefinition :: IdeOptions -> ParsedModule -> Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
+suggestNewDefinition ideOptions parsedModule contents Diagnostic{_message, _range}
 --     * Variable not in scope:
 --         suggestAcion :: Maybe T.Text -> Range -> Range
-    | Just [name, typ] <- matchRegex (unifySpaces _message) "Variable not in scope: ([^ ]*) :: ([^*•]*)"
+    | Just [name, typ] <- matchRegex message "Variable not in scope: ([^ ]+) :: ([^*•]+)"
     = newDefinitionAction ideOptions parsedModule _range name typ
+    | Just [name, typ] <- matchRegex message "Found hole: _([^ ]+) :: ([^*•]+) Or perhaps"
+    , [(label, newDefinitionEdits)] <- newDefinitionAction ideOptions parsedModule _range name typ
+    = [(label, mkRenameEdit contents _range name : newDefinitionEdits)]
     | otherwise = []
+    where
+      message = unifySpaces _message
 
 newDefinitionAction :: IdeOptions -> ParsedModule -> Range -> T.Text -> T.Text -> [(T.Text, [TextEdit])]
 newDefinitionAction IdeOptions{..} parsedModule Range{_start} name typ

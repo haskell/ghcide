@@ -809,10 +809,9 @@ insertNewDefinitionTests :: TestTree
 insertNewDefinitionTests = testGroup "insert new definition actions"
   [ testSession "insert new function definition" $ do
       let txtB =
-            ["data Person = Person { age :: Int}"
-            ,"foo True = putStrLn $ head $ showByAge [Person{age = Just 10}]"
+            ["foo True = select [True]"
             , ""
-            ,"foo False = show 0"
+            ,"foo False = False"
             ]
           txtB' =
             [""
@@ -823,13 +822,40 @@ insertNewDefinitionTests = testGroup "insert new definition actions"
       CACodeAction action@CodeAction { _title = actionTitle } : _
                   <- sortOn (\(CACodeAction CodeAction{_title=x}) -> x) <$>
                      getCodeActions docB (R 1 0 1 50)
-      liftIO $ actionTitle @?= "Define showByAge :: [Person] -> [String]"
+      liftIO $ actionTitle @?= "Define select :: [Bool] -> Bool"
       executeCodeAction action
       contentAfterAction <- documentContents docB
       liftIO $ contentAfterAction @?= T.unlines (txtB ++
         [ ""
-        , "showByAge :: [Person] -> [String]"
-        , "showByAge = error \"not implemented\""
+        , "select :: [Bool] -> Bool"
+        , "select = error \"not implemented\""
+        ]
+        ++ txtB')
+  , testSession "define a hole" $ do
+      let txtB =
+            ["foo True = _select [True]"
+            , ""
+            ,"foo False = False"
+            ]
+          txtB' =
+            [""
+            ,"someOtherCode = ()"
+            ]
+      docB <- openDoc' "ModuleB.hs" "haskell" (T.unlines $ txtB ++ txtB')
+      _ <- waitForDiagnostics
+      CACodeAction action@CodeAction { _title = actionTitle } : _
+                  <- sortOn (\(CACodeAction CodeAction{_title=x}) -> x) <$>
+                     getCodeActions docB (R 1 0 1 50)
+      liftIO $ actionTitle @?= "Define select :: [Bool] -> Bool"
+      executeCodeAction action
+      contentAfterAction <- documentContents docB
+      liftIO $ contentAfterAction @?= T.unlines (
+        ["foo True = select [True]"
+        , ""
+        ,"foo False = False"
+        , ""
+        , "select :: [Bool] -> Bool"
+        , "select = error \"not implemented\""
         ]
         ++ txtB')
   ]
