@@ -1578,10 +1578,12 @@ findCodeActions doc range expectedTitles = do
           | CACodeAction action@CodeAction { _title = actionTitle } <- actions
           , actionTitle == expectedTitle ]
         | expectedTitle <- expectedTitles]
-  let msg = show $
+  let msg = show
             [ actionTitle
             | CACodeAction CodeAction { _title = actionTitle } <- actions
             ]
+            ++ "is not a superset of "
+            ++ show expectedTitles
   liftIO $ assertBool msg (isJust matches)
   return (fromJust matches)
 
