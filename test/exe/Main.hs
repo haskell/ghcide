@@ -1029,7 +1029,7 @@ findDefinitionAndHoverTests = let
         _ -> liftIO $ assertFailure $ "test not expecting this kind of hover info" <> show hover
 
   extractLineColFromHoverMsg :: T.Text -> [T.Text]
-  extractLineColFromHoverMsg = T.splitOn ":" . head . T.splitOn "**" . last . T.splitOn (sourceFileName <> ":")
+  extractLineColFromHoverMsg = T.splitOn ":" . head . T.splitOn "*" . last . T.splitOn (sourceFileName <> ":")
 
   checkHoverRange :: Range -> Maybe Range -> T.Text -> Session ()
   checkHoverRange expectedRange rangeInHover msg =
