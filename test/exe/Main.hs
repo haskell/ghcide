@@ -1092,14 +1092,14 @@ findDefinitionAndHoverTests = let
   lclL33 = Position 33 22
   mclL36 = Position 36  1  ;  mcl    = [mkR  36  0   36 14]
   mclL37 = Position 37  1
-  spaceL37 = Position 37  24 ; space = [ExpectNoDefinitions, ExpectHoverText [":: Char"]]
+  spaceL37 = Position 37  24 ; space = [ExpectHoverText [":: Char"]]
   docL41 = Position 41  1  ;  doc    = [ExpectHoverText ["Recognizable docs: kpqz"]]
                            ;  constr = [ExpectHoverText ["Monad m =>"]]
   eitL40 = Position 40 28  ;  kindE  = [ExpectHoverText [":: * -> * -> *\n"]]
   intL40 = Position 40 34  ;  kindI  = [ExpectHoverText [":: *\n"]]
   tvrL40 = Position 40 37  ;  kindV  = [ExpectHoverText [":: * -> *\n"]]
   intL41 = Position 41 20  ;  litI   = [ExpectHoverText ["7518"]]
-  chrL36 = Position 36 25  ;  litC   = [ExpectHoverText ["'t'"]]
+  chrL36 = Position 37 24  ;  litC   = [ExpectHoverText ["'f'"]]
   txtL8  = Position  8 14  ;  litT   = [ExpectHoverText ["\"dfgv\""]]
   lstL43 = Position 43 12  ;  litL   = [ExpectHoverText ["[ 8391 :: Int, 6268 ]"]]
   outL45 = Position 45  3  ;  outSig = [ExpectHoverText ["outer", "Bool"], mkR 46 0 46 5]
