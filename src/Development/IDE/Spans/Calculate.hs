@@ -79,11 +79,12 @@ getSpanInfo mods tcm =
           | b `isSubspanOf` a = GT
           | otherwise         = compare (srcSpanStart a) (srcSpanStart b)
 
--- | The locations in the typechecked module are as precise as the ones in the parsed module.
+-- | The locations in the typechecked module are slightly messed up in some cases (e.g. HsMatchContext always
+-- points to the first match) whereas the parsed module has the correct locations.
 -- Therefore we build up a map from OccName to the corresponding definition in the parsed module
 -- to lookup precise locations for things like multi-clause function definitions.
 --
--- For now this only contains FunBinds
+-- For now this only contains FunBinds.
 funBindMap :: ParsedModule -> OccEnv (HsBind GhcPs)
 funBindMap pm = mkOccEnv $ [ (occName $ unLoc f, bnd) | L _ (Compat.ValD bnd@FunBind{fun_id = f}) <- hsmodDecls $ unLoc $ pm_parsed_source pm ]
 
