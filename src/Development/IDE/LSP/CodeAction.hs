@@ -160,9 +160,9 @@ suggestNewDefinition ideOptions parsedModule contents Diagnostic{_message, _rang
 newDefinitionAction :: IdeOptions -> ParsedModule -> Range -> T.Text -> T.Text -> [(T.Text, [TextEdit])]
 newDefinitionAction IdeOptions{..} parsedModule Range{_start} name typ
     | Range _ lastLineP : _ <-
-      [ srcSpanToRange (RealSrcSpan l)
-      | (L (RealSrcSpan l) _) <- hsmodDecls
-      , _start `isInsideRange` l]
+      [ srcSpanToRange l
+      | (L l _) <- hsmodDecls
+      , _start `isInsideSrcSpan` l]
     , nextLineP <- Position{ _line = _line lastLineP + 1, _character = 0}
     = [ ("Define " <> sig
         , [TextEdit (Range nextLineP nextLineP) (T.unlines ["", sig, name <> " = error \"not implemented\""])]

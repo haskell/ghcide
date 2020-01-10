@@ -7,7 +7,6 @@ module Development.IDE.Types.Location
     ( Location(..)
     , noFilePath
     , noRange
-    , isInsideRange
     , Position(..)
     , showPosition
     , Range(..)
@@ -129,24 +128,6 @@ noRange =  Range (Position 0 0) (Position 100000 0)
 
 showPosition :: Position -> String
 showPosition Position{..} = show (_line + 1) ++ ":" ++ show (_character + 1)
-
-isInsideRange :: Position -> RealSrcSpan -> Bool
-p `isInsideRange` r = sp <= p && p <= ep
-  where (sp, ep) = unpackRealSrcSpan r
-
--- | Converts from 1-based tuple
-toPos :: (Int,Int) -> Position
-toPos (l,c) = Position (l-1) (c-1)
-
-unpackRealSrcSpan :: GHC.RealSrcSpan -> (Position, Position)
-unpackRealSrcSpan rspan =
-  (toPos (l1,c1),toPos (l2,c2))
-  where s  = GHC.realSrcSpanStart rspan
-        l1 = GHC.srcLocLine s
-        c1 = GHC.srcLocCol s
-        e  = GHC.realSrcSpanEnd rspan
-        l2 = GHC.srcLocLine e
-        c2 = GHC.srcLocCol e
 
 -- | Parser for the GHC output format
 readSrcSpan :: ReadS SrcSpan

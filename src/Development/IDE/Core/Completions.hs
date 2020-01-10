@@ -34,7 +34,6 @@ import Development.IDE.Core.CompletionsTypes
 import Development.IDE.Spans.Documentation
 import Development.IDE.GHC.Util
 import Development.IDE.GHC.Error
-import Development.IDE.Types.Location
 import Development.IDE.Types.Options
 
 -- From haskell-ide-engine/src/Haskell/Ide/Engine/Support/HieExtras.hs
@@ -70,12 +69,12 @@ data Context = TypeContext
 -- i.e. where are the value decls and the type decls
 getCContext :: Position -> ParsedModule -> Maybe Context
 getCContext pos pm
-  | Just (L (RealSrcSpan r) modName) <- moduleHeader
-  , pos `isInsideRange` r
+  | Just (L r modName) <- moduleHeader
+  , pos `isInsideSrcSpan` r
   = Just (ModuleContext (moduleNameString modName))
 
-  | Just (L (RealSrcSpan r) _) <- exportList
-  , pos `isInsideRange` r
+  | Just (L r _) <- exportList
+  , pos `isInsideSrcSpan` r
   = Just ExportContext
 
   | Just ctx <- something (Nothing `mkQ` go `extQ` goInline) decl
@@ -93,37 +92,34 @@ getCContext pos pm
         imports = hsmodImports $ unLoc $ pm_parsed_source pm
 
         go :: LHsDecl GhcPs -> Maybe Context
-        go (L (RealSrcSpan r) SigD {})
-          | pos `isInsideRange` r = Just TypeContext
+        go (L r SigD {})
+          | pos `isInsideSrcSpan` r = Just TypeContext
           | otherwise = Nothing
-        go (L (GHC.RealSrcSpan r) GHC.ValD {})
-          | pos `isInsideRange` r = Just ValueContext
+        go (L r GHC.ValD {})
+          | pos `isInsideSrcSpan` r = Just ValueContext
           | otherwise = Nothing
         go _ = Nothing
 
         goInline :: GHC.LHsType GhcPs -> Maybe Context
-        goInline (GHC.L (GHC.RealSrcSpan r) _)
-          | pos `isInsideRange` r = Just TypeContext
-          | otherwise = Nothing
+        goInline (GHC.L r _)
+          | pos `isInsideSrcSpan` r = Just TypeContext
         goInline _ = Nothing
 
         importGo :: GHC.LImportDecl GhcPs -> Maybe Context
-        importGo (L (RealSrcSpan r) impDecl)
-          | pos `isInsideRange` r
+        importGo (L r impDecl)
+          | pos `isInsideSrcSpan` r
           = importInline importModuleName (ideclHiding impDecl)
           <|> Just (ImportContext importModuleName)
 
           | otherwise = Nothing
           where importModuleName = moduleNameString $ unLoc $ ideclName impDecl
 
-        importGo _ = Nothing
-
         importInline :: String -> Maybe (Bool,  GHC.Located [LIE GhcPs]) -> Maybe Context
-        importInline modName (Just (True, L (RealSrcSpan r) _))
-          | pos `isInsideRange` r = Just $ ImportHidingContext modName
+        importInline modName (Just (True, L r _))
+          | pos `isInsideSrcSpan` r = Just $ ImportHidingContext modName
           | otherwise = Nothing
-        importInline modName (Just (False, L (RealSrcSpan r) _))
-          | pos `isInsideRange` r = Just $ ImportListContext modName
+        importInline modName (Just (False, L r _))
+          | pos `isInsideSrcSpan` r = Just $ ImportListContext modName
           | otherwise = Nothing
         importInline _ _ = Nothing
 
@@ -134,7 +130,7 @@ occNameToComKind ty oc
                      _               -> CiFunction
   | isTcOcc   oc = case ty of
                      Just t
-                       | "Constraint" `T.isSuffixOf` t 
+                       | "Constraint" `T.isSuffixOf` t
                        -> CiClass
                      _ -> CiStruct
   | isDataOcc oc = CiConstructor
