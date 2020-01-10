@@ -31,6 +31,7 @@ import           Prelude hiding (mod)
 import           TcHsSyn
 import           Var
 import Development.IDE.Core.Compile
+import qualified Development.IDE.GHC.Compat as Compat
 import Development.IDE.GHC.Util
 
 
@@ -84,7 +85,7 @@ getSpanInfo mods tcm =
 --
 -- For now this only contains FunBinds
 funBindMap :: ParsedModule -> OccEnv (HsBind GhcPs)
-funBindMap pm = mkOccEnv $ [ (occName $ unLoc f, bnd) | L _ (ValD _ bnd@FunBind{fun_id = f}) <- hsmodDecls $ unLoc $ pm_parsed_source pm ]
+funBindMap pm = mkOccEnv $ [ (occName $ unLoc f, bnd) | L _ (Compat.ValD bnd@FunBind{fun_id = f}) <- hsmodDecls $ unLoc $ pm_parsed_source pm ]
 
 getExports :: TypecheckedModule -> [(SpanSource, SrcSpan, Maybe Type)]
 getExports m
