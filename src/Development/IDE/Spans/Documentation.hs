@@ -33,8 +33,13 @@ getDocumentationTryGhc
   -> [TypecheckedModule]
   -> Name
   -> IO [T.Text]
+#if MIN_GHC_API_VERSION(8,6,0)
 getDocumentationTryGhc packageState tcs name =
   runGhcEnv packageState $ getDocumentationTryGhc' tcs name
+#else
+getDocumentationTryGhc _packageState tcs name =
+  return $ getDocumentation tcs name
+#endif
 
 getDocumentationTryGhc'
   :: GhcMonad m
@@ -48,7 +53,7 @@ getDocumentationTryGhc' tcs name = do
     Right (Right (Just docs, _)) -> return [T.pack $ haddockToMarkdown $ H.toRegular $ H._doc $ H.parseParas Nothing $ unpackHDS docs]
     _ -> return $ getDocumentation tcs name
 #else
-getDocumentationTryGhc' _packageState tcs name = do
+getDocumentationTryGhc' tcs name = do
   return $ getDocumentation tcs name
 #endif
 
