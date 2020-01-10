@@ -12,7 +12,7 @@
   not enabled. (see #232)
 * Define `__GHCIDE__` when running CPP to allow for `ghcide`-specific
   workarounds. (see #264)
-* Fix some filepah normalization issues. (see #266)
+* Fix some filepath normalization issues. (see #266)
 * Fix build with `shake-0.18.4` (see #272)
 * Fix hover for type constructors and type classes. (see #267)
 * Support custom preprocessors (see #282)
