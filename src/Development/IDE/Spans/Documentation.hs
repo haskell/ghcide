@@ -7,6 +7,7 @@
 module Development.IDE.Spans.Documentation (
     getDocumentation
   , getDocumentationTryGhc
+  , getDocumentationTryGhc'
   ) where
 
 import           Control.Monad
@@ -15,7 +16,7 @@ import qualified Data.Map as M
 import           Data.Maybe
 import qualified Data.Text as T
 import           Development.IDE.GHC.Error
-import           Development.IDE.Spans.Calculate
+import           Development.IDE.Spans.Common
 import           FastString
 import           GHC
 import SrcLoc
@@ -32,9 +33,17 @@ getDocumentationTryGhc
   -> [TypecheckedModule]
   -> Name
   -> IO [T.Text]
+getDocumentationTryGhc packageState tcs name =
+  runGhcEnv packageState $ getDocumentationTryGhc' tcs name
+
+getDocumentationTryGhc'
+  :: GhcMonad m
+  => [TypecheckedModule]
+  -> Name
+  -> m [T.Text]
 #if MIN_GHC_API_VERSION(8,6,0)
-getDocumentationTryGhc packageState tcs name = do
-  res <- runGhcEnv packageState $ catchSrcErrors "docs" $ getDocs name
+getDocumentationTryGhc' tcs name = do
+  res <- catchSrcErrors "docs" $ getDocs name
   case res of
     Right (Right (Just docs, _)) -> return [T.pack $ haddockToMarkdown $ H.toRegular $ H._doc $ H.parseParas Nothing $ unpackHDS docs]
     _ -> return $ getDocumentation tcs name

@@ -24,8 +24,6 @@ import Type
 import Var
 import Packages
 import DynFlags
-import ConLike
-import DataCon
 import SrcLoc as GHC
 
 import Language.Haskell.LSP.Types
@@ -36,19 +34,7 @@ import Development.IDE.Spans.Documentation
 import Development.IDE.GHC.Util
 import Development.IDE.GHC.Error
 import Development.IDE.Types.Options
-
--- From haskell-ide-engine/src/Haskell/Ide/Engine/Support/HieExtras.hs
-
-safeTyThingId :: TyThing -> Maybe Id
-safeTyThingId (AnId i)                    = Just i
-safeTyThingId (AConLike (RealDataCon dc)) = Just $ dataConWrapId dc
-safeTyThingId _                           = Nothing
-
-safeTyThingType :: TyThing -> Maybe Type
-safeTyThingType thing
-  | Just i <- safeTyThingId thing = Just (varType i)
-safeTyThingType (ATyCon tycon)    = Just (tyConKind tycon)
-safeTyThingType _                 = Nothing
+import Development.IDE.Spans.Common
 
 -- From haskell-ide-engine/hie-plugin-api/Haskell/Ide/Engine/Context.hs
 

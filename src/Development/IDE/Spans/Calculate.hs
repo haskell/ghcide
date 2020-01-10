@@ -9,13 +9,11 @@
 
 -- | Get information on modules, identifiers, etc.
 
-module Development.IDE.Spans.Calculate(getSrcSpanInfos,listifyAllSpans) where
+module Development.IDE.Spans.Calculate(getSrcSpanInfos) where
 
 import           ConLike
 import           Control.Monad
 import qualified CoreUtils
-import           Data.Data
-import qualified Data.Generics
 import           Data.List
 import           Data.Maybe
 import           DataCon
@@ -25,13 +23,13 @@ import           GhcMonad
 import           FastString (mkFastString)
 import           Development.IDE.Types.Location
 import           Development.IDE.Spans.Type
-import           Development.IDE.GHC.Error (zeroSpan)
+import           Development.IDE.GHC.Error (zeroSpan, catchSrcErrors)
 import           Prelude hiding (mod)
 import           TcHsSyn
 import           Var
 import Development.IDE.Core.Compile
 import Development.IDE.GHC.Util
-
+import Development.IDE.Spans.Common
 
 -- A lot of things gained an extra X argument in GHC 8.6, which we mostly ignore
 -- this U ignores that arg in 8.6, but is hidden in 8.4
@@ -145,7 +143,16 @@ getLHsType
     => TypecheckedModule
     -> LHsType GhcRn
     -> m [(SpanSource, SrcSpan, Maybe Type)]
-getLHsType _ (L spn (HsTyVar U _ v)) = pure [(Named $ unLoc v, spn, Nothing)]
+getLHsType _ (L spn (HsTyVar U _ v)) = do
+  let n = unLoc v
+  -- docs <- getDocumentationTryGhc' [tm] n
+  ty <- catchSrcErrors "completion" $ do
+          name' <- lookupName n
+          return $ name' >>= safeTyThingType
+  let ty' = case ty of
+              Right (Just x) -> Just x
+              _ -> Nothing
+  pure [(Named n, spn, ty')]
 getLHsType _ _ = pure []
 
 importInfo :: [(Located ModuleName, Maybe NormalizedFilePath)]
@@ -159,19 +166,6 @@ importInfo = mapMaybe (uncurry wrk) where
   -- TODO make this point to the module name
   fpToSpanSource :: FilePath -> SpanSource
   fpToSpanSource fp = SpanS $ RealSrcSpan $ zeroSpan $ mkFastString fp
-
--- | Get ALL source spans in the source.
-listifyAllSpans :: (Typeable a, Data m) => m -> [Located a]
-listifyAllSpans tcs =
-  Data.Generics.listify p tcs
-  where p (L spn _) = isGoodSrcSpan spn
--- This is a version of `listifyAllSpans` specialized on picking out
--- patterns.  It comes about since GHC now defines `type LPat p = Pat
--- p` (no top-level locations).
-listifyAllSpans' :: Typeable a
-                   => TypecheckedSource -> [Pat a]
-listifyAllSpans' tcs = Data.Generics.listify (const True) tcs
-
 
 -- | Pretty print the types into a 'SpanInfo'.
 toSpanInfo :: (SpanSource, SrcSpan, Maybe Type) -> Maybe SpanInfo
