@@ -1092,7 +1092,7 @@ findDefinitionAndHoverTests = let
   lclL33 = Position 33 22
   mclL36 = Position 36  1  ;  mcl    = [mkR  36  0   36 14]
   mclL37 = Position 37  1
-  spaceL37 = Position 37  24 ; space = [ExpectHoverText [":: Char"]]
+  spaceL37 = Position 37  24 ; space = [ExpectNoDefinitions, ExpectHoverText [":: Char"]]
   docL41 = Position 41  1  ;  doc    = [ExpectHoverText ["Recognizable docs: kpqz"]]
                            ;  constr = [ExpectHoverText ["Monad m =>"]]
   eitL40 = Position 40 28  ;  kindE  = [ExpectHoverText [":: * -> * -> *\n"]]

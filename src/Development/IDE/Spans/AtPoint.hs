@@ -114,7 +114,7 @@ locationsAtPoint getHieFile IdeOptions{..} pkgState pos =
   where getSpan :: SpanSource -> m (Maybe SrcSpan)
         getSpan NoSource = pure Nothing
         getSpan (SpanS sp) = pure $ Just sp
-        getSpan (Lit sp _) = pure $ Just sp
+        getSpan (Lit _ _) = pure Nothing
         getSpan (Named name) = case nameSrcSpan name of
             sp@(RealSrcSpan _) -> pure $ Just sp
             sp@(UnhelpfulSpan _) -> runMaybeT $ do
