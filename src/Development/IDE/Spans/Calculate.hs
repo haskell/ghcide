@@ -117,13 +117,17 @@ getTypeLHsExpr tms e = do
   (_, mbe) <- liftIO (deSugarExpr hs_env e)
   case mbe of
     Just expr -> do
-      let ss = getSpanSource (unLoc e)
+      let ss = getSpanSource' e
       docs <- case ss of
                 Named n -> getDocumentationTryGhc' tms n
                 _       -> return []
       return $ Just (ss, getLoc e, Just (CoreUtils.exprType expr), docs)
     Nothing -> return Nothing
   where
+    getSpanSource' :: LHsExpr GhcTc -> SpanSource
+    getSpanSource' (L s xpr)
+      | HsLit U lit <- xpr = Lit s lit
+    getSpanSource' xpr = getSpanSource (unLoc xpr)
     getSpanSource :: HsExpr GhcTc -> SpanSource
     getSpanSource (HsVar U (L _ i)) = Named (getName i)
     getSpanSource (HsConLikeOut U (RealDataCon dc)) = Named (dataConName dc)

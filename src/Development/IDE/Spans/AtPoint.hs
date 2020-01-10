@@ -17,7 +17,8 @@ import Development.Shake
 import Development.IDE.GHC.Util
 import Development.IDE.GHC.Compat
 import Development.IDE.Types.Options
-import           Development.IDE.Spans.Type as SpanInfo
+import Development.IDE.Spans.Type as SpanInfo
+import Development.IDE.Spans.Common
 
 -- GHC API imports
 import Avail
@@ -72,8 +73,11 @@ atPoint IdeOptions{..} _ srcSpans pos = do
      where
        mbName = getNameM spaninfoSource
        typeAnnotation = colon <> showName typ
-       nameOrSource   = [maybe literalSource qualifyNameIfPossible mbName <> "\n" <> typeAnnotation]
-       literalSource = "" -- TODO: literals: display (length-limited) source
+       expr = case spaninfoSource of
+                Named n -> qualifyNameIfPossible n
+                Lit _ l -> T.pack (showGhc l)
+                _       -> ""
+       nameOrSource   = [expr <> "\n" <> typeAnnotation]
        qualifyNameIfPossible name' = modulePrefix <> showName name'
          where modulePrefix = maybe "" (<> ".") (getModuleNameAsText name')
        location = [maybe "" definedAt mbName]
@@ -107,6 +111,7 @@ locationsAtPoint getHieFile IdeOptions{..} pkgState pos =
   where getSpan :: SpanSource -> m (Maybe SrcSpan)
         getSpan NoSource = pure Nothing
         getSpan (SpanS sp) = pure $ Just sp
+        getSpan (Lit sp _) = pure $ Just sp
         getSpan (Named name) = case nameSrcSpan name of
             sp@(RealSrcSpan _) -> pure $ Just sp
             sp@(UnhelpfulSpan _) -> runMaybeT $ do

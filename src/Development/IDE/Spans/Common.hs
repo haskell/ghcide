@@ -1,5 +1,6 @@
 module Development.IDE.Spans.Common (
-  listifyAllSpans
+  showGhc
+, listifyAllSpans
 , listifyAllSpans'
 , safeTyThingId
 , safeTyThingType
@@ -12,6 +13,12 @@ import GHC
 import ConLike
 import Var
 import DataCon
+import Outputable
+import DynFlags
+
+
+showGhc :: Outputable a => a -> String
+showGhc = showPpr unsafeGlobalDynFlags
 
 -- | Get ALL source spans in the source.
 listifyAllSpans :: (Typeable a, Data m) => m -> [Located a]

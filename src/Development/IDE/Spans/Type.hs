@@ -16,6 +16,7 @@ import Control.DeepSeq
 import OccName
 import qualified Data.Text as T
 import Development.IDE.GHC.Util
+import Development.IDE.Spans.Common
 
 -- | Type of some span of source code. Most of these fields are
 -- unboxed but Haddock doesn't show that.
@@ -50,6 +51,7 @@ instance NFData SpanInfo where
 -- we don't always get a name out so sometimes manually annotating source is more appropriate
 data SpanSource = Named Name
                 | SpanS SrcSpan
+                | Lit SrcSpan (HsLit GhcTc)
                 | NoSource
   deriving (Eq)
 
@@ -57,6 +59,7 @@ instance Show SpanSource where
   show = \case
     Named n -> "Named " ++ occNameString (occName n)
     SpanS sp -> "Span " ++ show sp
+    Lit sp lit -> "Lit " ++ show sp ++ " " ++ showGhc lit
     NoSource -> "NoSource"
 
 getNameM :: SpanSource -> Maybe Name

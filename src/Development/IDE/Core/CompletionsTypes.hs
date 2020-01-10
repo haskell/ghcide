@@ -5,15 +5,11 @@ module Development.IDE.Core.CompletionsTypes (
 import           Control.DeepSeq
 import qualified Data.Map  as Map
 import qualified Data.Text as T
-
 import           GHC
-import           Outputable
-import           DynFlags
+
+import Development.IDE.Spans.Common
 
 -- From haskell-ide-engine/src/Haskell/Ide/Engine/LSP/Completions.hs
-
-showGhc :: Outputable a => a -> String
-showGhc = showPpr unsafeGlobalDynFlags
 
 data Backtick = Surrounded | LeftSide deriving Show
 data CompItem = CI
