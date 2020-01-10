@@ -48,7 +48,7 @@ getDocumentationTryGhc' tcs name = do
     Right (Right (Just docs, _)) -> return [T.pack $ haddockToMarkdown $ H.toRegular $ H._doc $ H.parseParas Nothing $ unpackHDS docs]
     _ -> return $ getDocumentation tcs name
 #else
-getDocumentationTryGhc _packageState tcs name = do
+getDocumentationTryGhc' _packageState tcs name = do
   return $ getDocumentation tcs name
 #endif
 

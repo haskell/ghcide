@@ -18,7 +18,6 @@ import Development.IDE.GHC.Util
 import Development.IDE.GHC.Compat
 import Development.IDE.Types.Options
 import Development.IDE.Spans.Type as SpanInfo
-import Development.IDE.Spans.Common
 
 -- GHC API imports
 import Avail
@@ -75,7 +74,7 @@ atPoint IdeOptions{..} _ srcSpans pos = do
        typeAnnotation = colon <> showName typ
        expr = case spaninfoSource of
                 Named n -> qualifyNameIfPossible n
-                Lit _ l -> T.pack (showGhc l)
+                Lit _ l -> crop $ T.pack l
                 _       -> ""
        nameOrSource   = [expr <> "\n" <> typeAnnotation]
        qualifyNameIfPossible name' = modulePrefix <> showName name'
@@ -83,6 +82,10 @@ atPoint IdeOptions{..} _ srcSpans pos = do
        location = [maybe "" definedAt mbName]
 
     definedAt name = "*Defined " <> T.pack (showSDocUnsafe $ pprNameDefnLoc name) <> "*\n"
+
+    crop txt
+      | T.length txt > 50 = T.take 46 txt <> " ..."
+      | otherwise         = txt
 
     range SpanInfo{..} = Range
       (Position spaninfoStartLine spaninfoStartCol)

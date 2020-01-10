@@ -126,7 +126,8 @@ getTypeLHsExpr tms e = do
   where
     getSpanSource' :: LHsExpr GhcTc -> SpanSource
     getSpanSource' (L s xpr)
-      | HsLit U lit <- xpr = Lit s lit
+      | HsLit U lit <- xpr = Lit s (showGhc lit)
+      | HsOverLit U lit <- xpr = Lit s (showGhc lit)
     getSpanSource' xpr = getSpanSource (unLoc xpr)
     getSpanSource :: HsExpr GhcTc -> SpanSource
     getSpanSource (HsVar U (L _ i)) = Named (getName i)
