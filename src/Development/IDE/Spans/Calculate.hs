@@ -16,6 +16,7 @@ import           Control.Monad
 import qualified CoreUtils
 import           Data.List
 import           Data.Maybe
+import qualified Data.Text as T
 import           DataCon
 import           Desugar
 import           GHC
@@ -30,6 +31,7 @@ import           Var
 import Development.IDE.Core.Compile
 import Development.IDE.GHC.Util
 import Development.IDE.Spans.Common
+import Development.IDE.Spans.Documentation
 
 -- A lot of things gained an extra X argument in GHC 8.6, which we mostly ignore
 -- this U ignores that arg in 8.6, but is hidden in 8.4
@@ -44,40 +46,42 @@ getSrcSpanInfos
     :: HscEnv
     -> [(Located ModuleName, Maybe NormalizedFilePath)]
     -> TcModuleResult
+    -> [TcModuleResult]
     -> IO [SpanInfo]
-getSrcSpanInfos env imports tc =
-    runGhcEnv env
-        . getSpanInfo imports
-        $ tmrModule tc
+getSrcSpanInfos env imports tc tms =
+    runGhcEnv env $
+        getSpanInfo imports (tmrModule tc) (map tmrModule tms)
 
 -- | Get ALL source spans in the module.
 getSpanInfo :: GhcMonad m
             => [(Located ModuleName, Maybe NormalizedFilePath)] -- ^ imports
             -> TypecheckedModule
+            -> [TypecheckedModule]
             -> m [SpanInfo]
-getSpanInfo mods tcm =
+getSpanInfo mods tcm tcms =
   do let tcs = tm_typechecked_source tcm
          bs  = listifyAllSpans  tcs :: [LHsBind GhcTc]
          es  = listifyAllSpans  tcs :: [LHsExpr GhcTc]
          ps  = listifyAllSpans' tcs :: [Pat GhcTc]
          ts  = listifyAllSpans $ tm_renamed_source tcm :: [LHsType GhcRn]
-     bts <- mapM (getTypeLHsBind tcm) bs -- binds
-     ets <- mapM (getTypeLHsExpr tcm) es -- expressions
-     pts <- mapM (getTypeLPat tcm)    ps -- patterns
-     tts <- mapM (getLHsType tcm)     ts -- types
+         allModules = tcm:tcms
+     bts <- mapM (getTypeLHsBind allModules) bs -- binds
+     ets <- mapM (getTypeLHsExpr allModules) es -- expressions
+     pts <- mapM (getTypeLPat allModules)    ps -- patterns
+     tts <- mapM (getLHsType allModules)     ts -- types
      let imports = importInfo mods
      let exports = getExports tcm
      let exprs = exports ++ imports ++ concat bts ++ concat tts ++ catMaybes (ets ++ pts)
      return (mapMaybe toSpanInfo (sortBy cmp exprs))
-  where cmp (_,a,_) (_,b,_)
+  where cmp (_,a,_,_) (_,b,_,_)
           | a `isSubspanOf` b = LT
           | b `isSubspanOf` a = GT
           | otherwise         = compare (srcSpanStart a) (srcSpanStart b)
 
-getExports :: TypecheckedModule -> [(SpanSource, SrcSpan, Maybe Type)]
+getExports :: TypecheckedModule -> [(SpanSource, SrcSpan, Maybe Type, [T.Text])]
 getExports m
     | Just (_, _, Just exports, _) <- renamedSource m =
-    [ (Named $ unLoc n, getLoc n, Nothing)
+    [ (Named $ unLoc n, getLoc n, Nothing, [])
     | (e, _) <- exports
     , n <- ieLNames $ unLoc e
     ]
@@ -93,27 +97,32 @@ ieLNames _ = []
 
 -- | Get the name and type of a binding.
 getTypeLHsBind :: (GhcMonad m)
-               => TypecheckedModule
+               => [TypecheckedModule]
                -> LHsBind GhcTc
-               -> m [(SpanSource, SrcSpan, Maybe Type)]
-getTypeLHsBind _ (L _spn FunBind{ fun_id = pid
-                                , fun_matches = MG{mg_alts=(L _ matches)}}) =
-  return [(Named (getName (unLoc pid)), getLoc match, Just (varType (unLoc pid))) | match <- matches ]
+               -> m [(SpanSource, SrcSpan, Maybe Type, [T.Text])]
+getTypeLHsBind tms (L _spn FunBind{ fun_id = pid
+                                , fun_matches = MG{mg_alts=(L _ matches)}}) = do
+  let name = getName (unLoc pid)
+  docs <- getDocumentationTryGhc' tms name
+  return [(Named name, getLoc match, Just (varType (unLoc pid)), docs) | match <- matches ]
 getTypeLHsBind _ _ = return []
 
 -- | Get the name and type of an expression.
 getTypeLHsExpr :: (GhcMonad m)
-               => TypecheckedModule
+               => [TypecheckedModule]
                -> LHsExpr GhcTc
-               -> m (Maybe (SpanSource, SrcSpan, Maybe Type))
-getTypeLHsExpr _ e = do
+               -> m (Maybe (SpanSource, SrcSpan, Maybe Type, [T.Text]))
+getTypeLHsExpr tms e = do
   hs_env <- getSession
   (_, mbe) <- liftIO (deSugarExpr hs_env e)
-  return $
-    case mbe of
-      Just expr ->
-        Just (getSpanSource (unLoc e), getLoc e, Just (CoreUtils.exprType expr))
-      Nothing -> Nothing
+  case mbe of
+    Just expr -> do
+      let ss = getSpanSource (unLoc e)
+      docs <- case ss of
+                Named n -> getDocumentationTryGhc' tms n
+                _       -> return []
+      return $ Just (ss, getLoc e, Just (CoreUtils.exprType expr), docs)
+    Nothing -> return Nothing
   where
     getSpanSource :: HsExpr GhcTc -> SpanSource
     getSpanSource (HsVar U (L _ i)) = Named (getName i)
@@ -125,12 +134,15 @@ getTypeLHsExpr _ e = do
 
 -- | Get the name and type of a pattern.
 getTypeLPat :: (GhcMonad m)
-            => TypecheckedModule
+            => [TypecheckedModule]
             -> Pat GhcTc
-            -> m (Maybe (SpanSource, SrcSpan, Maybe Type))
-getTypeLPat _ pat =
-  let (src, spn) = getSpanSource pat in
-  return $ Just (src, spn, Just (hsPatType pat))
+            -> m (Maybe (SpanSource, SrcSpan, Maybe Type, [T.Text]))
+getTypeLPat tms pat = do
+  let (src, spn) = getSpanSource pat
+  docs <- case src of
+            Named n -> getDocumentationTryGhc' tms n
+            _       -> return []
+  return $ Just (src, spn, Just (hsPatType pat), docs)
   where
     getSpanSource :: Pat GhcTc -> (SpanSource, SrcSpan)
     getSpanSource (VarPat U (L spn vid)) = (Named (getName vid), spn)
@@ -140,36 +152,36 @@ getTypeLPat _ pat =
 
 getLHsType
     :: GhcMonad m
-    => TypecheckedModule
+    => [TypecheckedModule]
     -> LHsType GhcRn
-    -> m [(SpanSource, SrcSpan, Maybe Type)]
-getLHsType _ (L spn (HsTyVar U _ v)) = do
+    -> m [(SpanSource, SrcSpan, Maybe Type, [T.Text])]
+getLHsType tms (L spn (HsTyVar U _ v)) = do
   let n = unLoc v
-  -- docs <- getDocumentationTryGhc' [tm] n
+  docs <- getDocumentationTryGhc' tms n
   ty <- catchSrcErrors "completion" $ do
           name' <- lookupName n
           return $ name' >>= safeTyThingType
   let ty' = case ty of
               Right (Just x) -> Just x
               _ -> Nothing
-  pure [(Named n, spn, ty')]
+  pure [(Named n, spn, ty', docs)]
 getLHsType _ _ = pure []
 
 importInfo :: [(Located ModuleName, Maybe NormalizedFilePath)]
-           -> [(SpanSource, SrcSpan, Maybe Type)]
+           -> [(SpanSource, SrcSpan, Maybe Type, [T.Text])]
 importInfo = mapMaybe (uncurry wrk) where
-  wrk :: Located ModuleName -> Maybe NormalizedFilePath -> Maybe (SpanSource, SrcSpan, Maybe Type)
+  wrk :: Located ModuleName -> Maybe NormalizedFilePath -> Maybe (SpanSource, SrcSpan, Maybe Type, [T.Text])
   wrk modName = \case
     Nothing -> Nothing
-    Just fp -> Just (fpToSpanSource $ fromNormalizedFilePath fp, getLoc modName, Nothing)
+    Just fp -> Just (fpToSpanSource $ fromNormalizedFilePath fp, getLoc modName, Nothing, [])
 
   -- TODO make this point to the module name
   fpToSpanSource :: FilePath -> SpanSource
   fpToSpanSource fp = SpanS $ RealSrcSpan $ zeroSpan $ mkFastString fp
 
 -- | Pretty print the types into a 'SpanInfo'.
-toSpanInfo :: (SpanSource, SrcSpan, Maybe Type) -> Maybe SpanInfo
-toSpanInfo (name,mspan,typ) =
+toSpanInfo :: (SpanSource, SrcSpan, Maybe Type, [T.Text]) -> Maybe SpanInfo
+toSpanInfo (name,mspan,typ,docs) =
   case mspan of
     RealSrcSpan spn ->
       -- GHC’s line and column numbers are 1-based while LSP’s line and column
@@ -179,5 +191,6 @@ toSpanInfo (name,mspan,typ) =
                      (srcSpanEndLine spn - 1)
                      (srcSpanEndCol spn - 1)
                      typ
-                     name)
+                     name
+                     docs)
     _ -> Nothing

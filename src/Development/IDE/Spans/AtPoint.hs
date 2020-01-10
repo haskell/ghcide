@@ -8,7 +8,6 @@ module Development.IDE.Spans.AtPoint (
   , gotoDefinition
   ) where
 
-import           Development.IDE.Spans.Documentation
 import           Development.IDE.GHC.Error
 import Development.IDE.GHC.Orphans()
 import Development.IDE.Types.Location
@@ -54,36 +53,32 @@ atPoint
   -> [SpanInfo]
   -> Position
   -> Maybe (Maybe Range, [T.Text])
-atPoint IdeOptions{..} tcs srcSpans pos = do
+atPoint IdeOptions{..} _ srcSpans pos = do
     firstSpan <- listToMaybe $ deEmpasizeGeneratedEqShow $ spansAtPoint pos srcSpans
     return (Just (range firstSpan), hoverInfo firstSpan)
   where
     -- Hover info for types, classes, type variables
-    hoverInfo SpanInfo{spaninfoType = Nothing , ..} =
-       documentation <> (wrapLanguageSyntax <$> name <> kind) <> location
+    hoverInfo SpanInfo{spaninfoType = Nothing , spaninfoDocs = docs ,  ..} =
+       (wrapLanguageSyntax <$> name) <> location <> docs
      where
-       documentation = findDocumentation mbName
        name     = [maybe shouldNotHappen showName  mbName]
        location = [maybe shouldNotHappen definedAt mbName]
-       kind     = [] -- TODO
        shouldNotHappen = "ghcide: did not expect a type level component without a name"
        mbName = getNameM spaninfoSource
 
     -- Hover info for values/data
-    hoverInfo SpanInfo{spaninfoType = (Just typ), ..} =
-       documentation <> (wrapLanguageSyntax <$> nameOrSource <> typeAnnotation) <> location
+    hoverInfo SpanInfo{spaninfoType = (Just typ), spaninfoDocs = docs , ..} =
+       (wrapLanguageSyntax <$> nameOrSource) <> location <> docs
      where
        mbName = getNameM spaninfoSource
-       documentation  = findDocumentation mbName
-       typeAnnotation = [colon <> showName typ]
-       nameOrSource   = [maybe literalSource qualifyNameIfPossible mbName]
+       typeAnnotation = colon <> showName typ
+       nameOrSource   = [maybe literalSource qualifyNameIfPossible mbName <> "\n" <> typeAnnotation]
        literalSource = "" -- TODO: literals: display (length-limited) source
        qualifyNameIfPossible name' = modulePrefix <> showName name'
          where modulePrefix = maybe "" (<> ".") (getModuleNameAsText name')
        location = [maybe "" definedAt mbName]
 
-    findDocumentation = maybe [] (getDocumentation tcs)
-    definedAt name = "**Defined " <> T.pack (showSDocUnsafe $ pprNameDefnLoc name) <> "**\n"
+    definedAt name = "*Defined " <> T.pack (showSDocUnsafe $ pprNameDefnLoc name) <> "*\n"
 
     range SpanInfo{..} = Range
       (Position spaninfoStartLine spaninfoStartCol)

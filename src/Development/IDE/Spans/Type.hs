@@ -14,6 +14,7 @@ module Development.IDE.Spans.Type(
 import GHC
 import Control.DeepSeq
 import OccName
+import qualified Data.Text as T
 import Development.IDE.GHC.Util
 
 -- | Type of some span of source code. Most of these fields are
@@ -34,9 +35,11 @@ data SpanInfo =
             -- any. This can be useful for accessing a variety of
             -- information about the identifier such as module,
             -- locality, definition location, etc.
+           ,spaninfoDocs :: ![T.Text]
+           -- ^ Documentation for the element
            }
 instance Show SpanInfo where
-  show (SpanInfo sl sc el ec t n) =
+  show (SpanInfo sl sc el ec t n _docs) =
     unwords ["(SpanInfo", show sl, show sc, show el, show ec
             , show $ maybe "NoType" prettyPrint t, "(" <> show n <> "))"]
 
