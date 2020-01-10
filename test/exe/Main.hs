@@ -1612,7 +1612,9 @@ findCodeActions doc range expectedTitles = do
             ]
             ++ "is not a superset of "
             ++ show expectedTitles
-  liftIO $ assertBool msg (isJust matches)
+  liftIO $ case matches of
+    Nothing -> assertFailure msg
+    Just _ -> pure ()
   return (fromJust matches)
 
 findCodeAction :: TextDocumentIdentifier -> Range -> T.Text -> Session CodeAction
