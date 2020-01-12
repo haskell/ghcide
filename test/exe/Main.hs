@@ -14,6 +14,7 @@ import Control.Monad
 import Control.Monad.IO.Class (liftIO)
 import Data.Char (toLower)
 import Data.Foldable
+import Data.Functor
 import Data.List
 import Development.IDE.GHC.Util
 import qualified Data.Text as T
@@ -1532,7 +1533,12 @@ run s = withTempDir $ \dir -> do
   -- HIE calls getXgdDirectory which assumes that HOME is set.
   -- Only sets HOME if it wasn't already set.
   setEnv "HOME" "/homeless-shelter" False
-  runSessionWithConfig conf cmd fullCaps { _window = Just $ WindowClientCapabilities $ Just True } dir s
+  let lspTestCaps =
+        fullCaps
+          { _window = Just $ WindowClientCapabilities $ Just True
+          , _workspace = _workspace (fullCaps :: ClientCapabilities) <&> \x -> x{ _didChangeWatchedFiles = Nothing }
+          }
+  runSessionWithConfig conf cmd lspTestCaps dir s
   where
     conf = defaultConfig
       -- If you uncomment this you can see all logging

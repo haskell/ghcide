@@ -20,7 +20,7 @@ import Fingerprint
 import           StringBuffer
 import Development.IDE.GHC.Orphans()
 import Development.IDE.GHC.Util
-
+import           Development.IDE.Core.Shake
 import Control.Concurrent.Extra
 import qualified Data.Map.Strict as Map
 import Data.Maybe
@@ -29,7 +29,6 @@ import           Control.Monad.Extra
 import qualified System.Directory as Dir
 import           Development.Shake
 import           Development.Shake.Classes
-import           Development.IDE.Core.Shake
 import           Control.Exception
 import           GHC.Generics
 import Data.Either.Extra
@@ -122,16 +121,6 @@ fingerprintSourceRule =
       pure ([], Just fingerprint)
     where fpStringBuffer (StringBuffer buf len cur) = withForeignPtr buf $ \ptr -> fingerprintData (ptr `plusPtr` cur) len
 
-getFileExistsRule :: VFSHandle -> Rules ()
-getFileExistsRule vfs =
-    defineEarlyCutoff $ \GetFileExists file -> do
-        alwaysRerun
-        res <- liftIO $ handle (\(_ :: IOException) -> return False) $
-            (isJust <$> getVirtualFile vfs (filePathToUri' file)) ||^
-            Dir.doesFileExist (fromNormalizedFilePath file)
-        return (Just $ if res then BS.singleton '1' else BS.empty, ([], Just res))
-
-
 getModificationTimeRule :: VFSHandle -> Rules ()
 getModificationTimeRule vfs =
     defineEarlyCutoff $ \GetModificationTime file -> do
@@ -198,20 +187,20 @@ ideTryIOException fp act =
 getFileContents :: NormalizedFilePath -> Action (FileVersion, Maybe StringBuffer)
 getFileContents = use_ GetFileContents
 
-getFileExists :: NormalizedFilePath -> Action Bool
-getFileExists =
+getFileExists :: VFSHandle -> NormalizedFilePath -> IO Bool
+getFileExists vfs file = do
     -- we deliberately and intentionally wrap the file as an FilePath WITHOUT mkAbsolute
     -- so that if the file doesn't exist, is on a shared drive that is unmounted etc we get a properly
     -- cached 'No' rather than an exception in the wrong place
-    use_ GetFileExists
-
+    handle (\(_ :: IOException) -> return False) $
+        (isJust <$> getVirtualFile vfs (filePathToUri' file)) ||^
+        Dir.doesFileExist (fromNormalizedFilePath file)
 
 fileStoreRules :: VFSHandle -> Rules ()
 fileStoreRules vfs = do
     addIdeGlobal vfs
     getModificationTimeRule vfs
     getFileContentsRule vfs
-    getFileExistsRule vfs
     fingerprintSourceRule
 
 
