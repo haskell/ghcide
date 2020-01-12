@@ -143,6 +143,8 @@ getModificationTimeRule vfs =
     -- time spent checking file modifications (which happens on every change)
     -- from > 0.5s to ~0.15s.
     -- We might also want to try speeding this up on Windows at some point.
+    -- TODO leverage DidChangeWatchedFile lsp notifications on clients that
+    -- support them, as done for GetFileExists
     getModTime :: FilePath -> IO BS.ByteString
     getModTime f =
 #ifdef mingw32_HOST_OS
