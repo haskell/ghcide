@@ -222,4 +222,16 @@ test-suite ghcide-tests
         Development.IDE.Test
         Development.IDE.Test.Runfiles
     default-extensions:
+        BangPatterns
+        DeriveFunctor
+        DeriveGeneric
+        GeneralizedNewtypeDeriving
+        LambdaCase
+        NamedFieldPuns
         OverloadedStrings
+        RecordWildCards
+        ScopedTypeVariables
+        StandaloneDeriving
+        TupleSections
+        TypeApplications
+        ViewPatterns
