@@ -23,7 +23,7 @@ import           Control.Concurrent.Async
 import Data.Maybe
 import Development.IDE.Types.Options (IdeOptions(..))
 import Control.Monad
-import           Development.IDE.Core.FileStore  (VFSHandle, fileStoreRules, getFileExists)
+import           Development.IDE.Core.FileStore  (VFSHandle, fileStoreRules)
 import           Development.IDE.Core.FileExists (fileExistsRules)
 import           Development.IDE.Core.OfInterest
 import Development.IDE.Types.Logger
@@ -66,7 +66,7 @@ initialise caps mainRule getLspId toDiags logger options vfs =
             addIdeGlobal $ GlobalIdeOptions options
             fileStoreRules vfs
             ofInterestRules
-            fileExistsRules getLspId caps (liftIO . getFileExists vfs)
+            fileExistsRules getLspId caps vfs
             mainRule
 
 writeProfile :: IdeState -> FilePath -> IO ()
