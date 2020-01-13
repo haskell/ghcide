@@ -131,9 +131,7 @@ fileExistsRulesSlow vfs = do
   defineEarlyCutoff $ \GetFileExists file -> do
     alwaysRerun
     exist <- liftIO $ getFileExistsVFS vfs file
-    pure (createKey exist, ([], Just exist))
- where
-  createKey = Just . BS.toStrict . encode
+    pure (Just $ BS.toStrict $ encode exist, ([], Just exist))
 
 getFileExistsVFS :: VFSHandle -> NormalizedFilePath -> IO Bool
 getFileExistsVFS vfs file = do
