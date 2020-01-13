@@ -54,11 +54,14 @@ modifyFileExists :: IdeState -> [(NormalizedFilePath, Bool)] -> IO ()
 modifyFileExists state changes = do
   FileExistsMapVar var <- getIdeGlobalState state
   changesMap           <- evaluate $ Map.fromList changes
-  modifyVar_ var $ evaluate . Map.union changesMap
-  let flushPreviousValues = do
-        ShakeExtras { state } <- getShakeExtras
-        liftIO $ mapM_ (resetValue state GetFileExists . fst) changes
-  void $ shakeRun state [flushPreviousValues]
+
+  -- Mask to ensure that the previous values are flushed together with the map update
+  mask $ \_ -> do
+    modifyVar_ var $ evaluate . Map.union changesMap
+    let flushPreviousValues = do
+          ShakeExtras { state } <- getShakeExtras
+          liftIO $ mapM_ (resetValue state GetFileExists . fst) changes
+    void $ shakeRun state [flushPreviousValues]
 
 -------------------------------------------------------------------------------------
 
