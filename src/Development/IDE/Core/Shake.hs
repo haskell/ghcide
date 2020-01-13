@@ -39,7 +39,7 @@ module Development.IDE.Core.Shake(
     FileVersion(..),
     Priority(..),
     updatePositionMapping,
-    resetValue,
+    deleteValue,
     OnDiskRule(..),
     ) where
 
@@ -260,13 +260,13 @@ setValues state key file val = modifyVar_ state $ \vals -> do
     evaluate $ HMap.insert (file, Key key) (fmap toDyn val) vals
 
 -- | Delete the value stored for a given ide build key
-resetValue
+deleteValue
   :: (Typeable k, Hashable k, Eq k, Show k)
   => Var Values
   -> k
   -> NormalizedFilePath
   -> IO ()
-resetValue state key file = modifyVar_ state $ \vals ->
+deleteValue state key file = modifyVar_ state $ \vals ->
     evaluate $ HMap.delete (file, Key key) vals
 
 -- | We return Nothing if the rule has not run and Just Failed if it has failed to produce a value.

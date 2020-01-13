@@ -60,7 +60,7 @@ modifyFileExists state changes = do
     modifyVar_ var $ evaluate . Map.union changesMap
     let flushPreviousValues = do
           ShakeExtras { state } <- getShakeExtras
-          liftIO $ mapM_ (resetValue state GetFileExists . fst) changes
+          liftIO $ mapM_ (deleteValue state GetFileExists . fst) changes
     void $ shakeRun state [flushPreviousValues]
 
 -------------------------------------------------------------------------------------
