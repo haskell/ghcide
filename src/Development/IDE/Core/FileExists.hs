@@ -99,11 +99,10 @@ fileExistsRulesFast getFileExists = do
         -- add a listener for VFS Create/Delete file events,
         -- taking the FileExistsMap lock to prevent race conditions
         -- that would lead to multiple listeners for the same path
-        modifyFileExistsAction $ \x -> case Map.lookup file x of
-          Just{}  -> return x
-          Nothing -> do
-            addListener eventer file
-            return x
+        modifyFileExistsAction $ \x -> do
+          unless (Map.member file x) (addListener eventer file)
+          return x
+
         pure (createKey exist, ([], Just exist))
  where
   createKey = Just . BS.toStrict . encode
