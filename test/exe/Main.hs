@@ -14,7 +14,6 @@ import Control.Monad
 import Control.Monad.IO.Class (liftIO)
 import Data.Char (toLower)
 import Data.Foldable
-import Data.Functor
 import Data.List
 import Development.IDE.GHC.Util
 import qualified Data.Text as T
@@ -231,7 +230,8 @@ diagnosticTests = testGroup "diagnostics"
       _ <- openDoc' "ModuleB.hs" "haskell" contentB
       expectDiagnostics [("ModuleB.hs", [(DsError, (1, 7), "Could not find module")])]
       let contentA = T.unlines [ "module ModuleA where" ]
-      _ <- openDoc' "ModuleA.hs" "haskell" contentA
+      TextDocumentIdentifier newModule <- openDoc' "ModuleA.hs" "haskell" contentA
+      sendNotification WorkspaceDidChangeWatchedFiles (DidChangeWatchedFilesParams $ List [FileEvent newModule FcCreated])
       expectDiagnostics [("ModuleB.hs", [])]
   , testSessionWait "cyclic module dependency" $ do
       let contentA = T.unlines
@@ -1533,11 +1533,7 @@ run s = withTempDir $ \dir -> do
   -- HIE calls getXgdDirectory which assumes that HOME is set.
   -- Only sets HOME if it wasn't already set.
   setEnv "HOME" "/homeless-shelter" False
-  let lspTestCaps =
-        fullCaps
-          { _window = Just $ WindowClientCapabilities $ Just True
-          , _workspace = _workspace (fullCaps :: ClientCapabilities) <&> \x -> x{ _didChangeWatchedFiles = Nothing }
-          }
+  let lspTestCaps = fullCaps { _window = Just $ WindowClientCapabilities $ Just True }
   runSessionWithConfig conf cmd lspTestCaps dir s
   where
     conf = defaultConfig
