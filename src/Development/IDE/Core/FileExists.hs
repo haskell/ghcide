@@ -75,17 +75,17 @@ getFileExists fp = use_ GetFileExists fp
 -- | Installs the 'getFileExists' rules.
 --   Provides a fast implementation if client supports dynamic watched files.
 --   Creates a global state as a side effect in that case.
-fileExistsRules :: ClientCapabilities -> (NormalizedFilePath -> Action Bool) -> Rules ()
-fileExistsRules ClientCapabilities{_workspace}
+fileExistsRules :: IO LspId -> ClientCapabilities -> (NormalizedFilePath -> Action Bool) -> Rules ()
+fileExistsRules getLspId ClientCapabilities{_workspace}
   | Just WorkspaceClientCapabilities{_didChangeWatchedFiles} <- _workspace
   , Just DidChangeWatchedFilesClientCapabilities{_dynamicRegistration} <- _didChangeWatchedFiles
   , Just True <- _dynamicRegistration
-  = fileExistsRulesFast
+  = fileExistsRulesFast getLspId
   | otherwise = fileExistsRulesSlow
 
 --   Requires an lsp client that provides WatchedFiles notifications.
-fileExistsRulesFast :: (NormalizedFilePath -> Action Bool) -> Rules ()
-fileExistsRulesFast getFileExists = do
+fileExistsRulesFast :: IO LspId -> (NormalizedFilePath -> Action Bool) -> Rules ()
+fileExistsRulesFast getLspId getFileExists = do
   addIdeGlobal . FileExistsMapVar =<< liftIO (newVar [])
   defineEarlyCutoff $ \GetFileExists file -> do
     fileExistsMap <- getFileExistsMapUntracked
@@ -107,9 +107,9 @@ fileExistsRulesFast getFileExists = do
  where
   createKey = Just . BS.toStrict . encode
   addListener eventer fp = do
+    reqId <- getLspId
     let
       req = RequestMessage "2.0" reqId ClientRegisterCapability regParams
-      reqId        = IdString fpAsId
       fpAsId       = T.pack $ fromNormalizedFilePath fp
       regParams    = RegistrationParams (List [registration])
       registration = Registration fpAsId

@@ -66,7 +66,7 @@ initialise caps mainRule getLspId toDiags logger options vfs =
             addIdeGlobal $ GlobalIdeOptions options
             fileStoreRules vfs
             ofInterestRules
-            fileExistsRules caps (liftIO . getFileExists vfs)
+            fileExistsRules getLspId caps (liftIO . getFileExists vfs)
             mainRule
 
 writeProfile :: IdeState -> FilePath -> IO ()
