@@ -105,8 +105,14 @@ fileExistsRulesFast getLspId vfs = do
         -- taking the FileExistsMap lock to prevent race conditions
         -- that would lead to multiple listeners for the same path
         modifyFileExistsAction $ \x -> do
-          unless (Map.member file x) (addListener eventer file)
-          return x
+          case Map.insertLookupWithKey (\_ x _ -> x) file exist x of
+            (Nothing, x') -> do
+            -- if the listener addition fails, we never recover. This is a bug.
+              addListener eventer file
+              return x'
+            (Just _, _) ->
+              -- if the key was already there, do nothing
+              return x
 
         pure (createKey exist, ([], Just exist))
  where
@@ -126,7 +132,7 @@ fileExistsRulesFast getLspId vfs = do
                                   , kind        = Just 5 -- Create and Delete events only
                                   }
 
-    void $ eventer $ ReqRegisterCapability req
+    eventer $ ReqRegisterCapability req
 
 fileExistsRulesSlow:: VFSHandle -> Rules ()
 fileExistsRulesSlow vfs = do
