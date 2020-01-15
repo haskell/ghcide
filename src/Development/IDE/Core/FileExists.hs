@@ -13,7 +13,7 @@ import           Control.Exception
 import           Control.Monad.Extra
 import qualified Data.Aeson                    as A
 import           Data.Binary
-import qualified Data.ByteString.Lazy          as BS
+import qualified Data.ByteString               as BS
 import           Data.Map.Strict                ( Map )
 import qualified Data.Map.Strict               as Map
 import           Data.Maybe
@@ -104,7 +104,7 @@ fileExistsRulesFast getLspId vfs = do
     fileExistsMap <- getFileExistsMapUntracked
     let mbFilesWatched = Map.lookup file fileExistsMap
     case mbFilesWatched of
-      Just fv -> pure (createKey fv, ([], Just fv))
+      Just fv -> pure (summarizeExists fv, ([], Just fv))
       Nothing -> do
         exist                   <- liftIO $ getFileExistsVFS vfs file
         ShakeExtras { eventer } <- getShakeExtras
@@ -122,9 +122,8 @@ fileExistsRulesFast getLspId vfs = do
               -- if the key was already there, do nothing
               return x
 
-        pure (createKey exist, ([], Just exist))
+        pure (summarizeExists exist, ([], Just exist))
  where
-  createKey = Just . BS.toStrict . encode
   addListener eventer fp = do
     reqId <- getLspId
     let
@@ -142,12 +141,15 @@ fileExistsRulesFast getLspId vfs = do
 
     eventer $ ReqRegisterCapability req
 
+summarizeExists :: Bool -> Maybe BS.ByteString
+summarizeExists x = Just $ if x then BS.singleton 1 else BS.empty
+
 fileExistsRulesSlow:: VFSHandle -> Rules ()
 fileExistsRulesSlow vfs = do
   defineEarlyCutoff $ \GetFileExists file -> do
     alwaysRerun
     exist <- liftIO $ getFileExistsVFS vfs file
-    pure (Just $ BS.toStrict $ encode exist, ([], Just exist))
+    pure (summarizeExists exist, ([], Just exist))
 
 getFileExistsVFS :: VFSHandle -> NormalizedFilePath -> IO Bool
 getFileExistsVFS vfs file = do
