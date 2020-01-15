@@ -61,7 +61,7 @@ setHandlersNotifications = PartialHandlers $ \WithMessage{..} x -> return x
             let events =
                     mapMaybe
                         (\(FileEvent uri ev) ->
-                            (, ev /= FcDeleted) . toNormalizedFilePath
+                            (, ev) . toNormalizedFilePath
                             <$> LSP.uriToFilePath uri
                         )
                         ( F.toList fileEvents )

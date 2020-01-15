@@ -29,8 +29,24 @@ import           Language.Haskell.LSP.Types
 import           Language.Haskell.LSP.Types.Capabilities
 import qualified System.Directory as Dir
 
+data FileExistsVersion = FileExists Int | FileDoesNotExist
+
+isFileExists :: FileExistsVersion -> Bool
+isFileExists FileExists{} = True
+isFileExists _ = False
+
+fileExistsFromDoesFileExist :: Bool -> FileExistsVersion
+fileExistsFromDoesFileExist False = FileDoesNotExist
+fileExistsFromDoesFileExist True  = FileExists 1
+
+instance Semigroup FileExistsVersion where
+  FileExists a <> FileExists b = FileExists (a+b)
+  FileExists a <> FileDoesNotExist = FileExists a
+  FileDoesNotExist <> FileExists a = FileExists a
+  FileDoesNotExist <> FileDoesNotExist = FileDoesNotExist
+
 -- | A map for tracking the file existence
-type FileExistsMap = (Map NormalizedFilePath Bool)
+type FileExistsMap = (Map NormalizedFilePath FileExistsVersion)
 
 -- | A wrapper around a mutable 'FileExistsMap'
 newtype FileExistsMapVar = FileExistsMapVar (Var FileExistsMap)
@@ -49,8 +65,13 @@ modifyFileExistsAction f = do
   FileExistsMapVar var <- getIdeGlobalAction
   liftIO $ modifyVar_ var f
 
+fileChangeToFileExistsVersion :: FileChangeType -> FileExistsVersion
+fileChangeToFileExistsVersion FcCreated = FileExists 1
+fileChangeToFileExistsVersion FcChanged = FileExists 1
+fileChangeToFileExistsVersion FcDeleted = FileDoesNotExist
+
 -- | Modify the global store of file exists
-modifyFileExists :: IdeState -> [(NormalizedFilePath, Bool)] -> IO ()
+modifyFileExists :: IdeState -> [(NormalizedFilePath, FileChangeType)] -> IO ()
 modifyFileExists state changes = do
   FileExistsMapVar var <- getIdeGlobalState state
   changesMap           <- evaluate $ Map.fromList changes
@@ -58,7 +79,7 @@ modifyFileExists state changes = do
   -- Masked to ensure that the previous values are flushed together with the map update
   mask $ \_ -> do
     -- update the map
-    modifyVar_ var $ evaluate . Map.union changesMap
+    modifyVar_ var $ evaluate . Map.unionWith (<>) (fileChangeToFileExistsVersion <$> changesMap)
     -- flush previous values
     mapM_ (deleteValue state GetFileExists . fst) changes
 
@@ -104,16 +125,17 @@ fileExistsRulesFast getLspId vfs = do
     fileExistsMap <- getFileExistsMapUntracked
     let mbFilesWatched = Map.lookup file fileExistsMap
     case mbFilesWatched of
-      Just fv -> pure (summarizeExists fv, ([], Just fv))
+      Just (isFileExists -> fv) -> pure (summarizeExists fv, ([], Just fv))
       Nothing -> do
         exist                   <- liftIO $ getFileExistsVFS vfs file
         ShakeExtras { eventer } <- getShakeExtras
+        let fileExists = fileExistsFromDoesFileExist exist
 
         -- add a listener for VFS Create/Delete file events,
         -- taking the FileExistsMap lock to prevent race conditions
         -- that would lead to multiple listeners for the same path
         modifyFileExistsAction $ \x -> do
-          case Map.insertLookupWithKey (\_ x _ -> x) file exist x of
+          case Map.insertLookupWithKey (\_ x _ -> x) file fileExists x of
             (Nothing, x') -> do
             -- if the listener addition fails, we never recover. This is a bug.
               addListener eventer file
@@ -136,7 +158,7 @@ fileExistsRulesFast getLspId vfs = do
       regOptions =
         DidChangeWatchedFilesRegistrationOptions { watchers = List [watcher] }
       watcher = FileSystemWatcher { globPattern = fromNormalizedFilePath fp
-                                  , kind        = Just 5 -- Create and Delete events only
+                                  , kind        = Nothing -- All event kinds
                                   }
 
     eventer $ ReqRegisterCapability req
