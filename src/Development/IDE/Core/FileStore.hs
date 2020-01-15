@@ -89,16 +89,7 @@ makeLSPVFSHandle lspFuncs = VFSHandle
 -- | Get the contents of a file, either dirty (if the buffer is modified) or Nothing to mean use from disk.
 type instance RuleResult GetFileContents = (FileVersion, Maybe StringBuffer)
 
--- | Does the file exist.
-type instance RuleResult GetFileExists = Bool
-
 type instance RuleResult FingerprintSource = Fingerprint
-
-data GetFileExists = GetFileExists
-    deriving (Eq, Show, Generic)
-instance Hashable GetFileExists
-instance NFData   GetFileExists
-instance Binary   GetFileExists
 
 data GetFileContents = GetFileContents
     deriving (Eq, Show, Generic)
