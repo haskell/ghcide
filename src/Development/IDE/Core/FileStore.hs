@@ -32,22 +32,10 @@ import           Development.Shake.Classes
 import           Control.Exception
 import           GHC.Generics
 import Data.Either.Extra
-import System.IO.Error
-import qualified Data.ByteString.Char8 as BS
 import Development.IDE.Types.Diagnostics
 import Development.IDE.Types.Location
 import qualified Data.Rope.UTF16 as Rope
 
-#ifdef mingw32_HOST_OS
-import Data.Time
-import qualified System.Directory as Dir
-#else
-import Foreign.C.String
-import Foreign.C.Types
-import Foreign.Marshal (alloca)
-import Foreign.Storable
-import qualified System.Posix.Error as Posix
-#endif
 
 import Language.Haskell.LSP.Core
 import Language.Haskell.LSP.VFS
@@ -113,49 +101,6 @@ fingerprintSourceRule =
       pure ([], Just fingerprint)
     where fpStringBuffer (StringBuffer buf len cur) = withForeignPtr buf $ \ptr -> fingerprintData (ptr `plusPtr` cur) len
 
-getModificationTimeRule :: VFSHandle -> Rules ()
-getModificationTimeRule vfs =
-    defineEarlyCutoff $ \GetModificationTime file -> do
-        let file' = fromNormalizedFilePath file
-        let wrap time = (Just time, ([], Just $ ModificationTime time))
-        alwaysRerun
-        mbVirtual <- liftIO $ getVirtualFile vfs $ filePathToUri' file
-        case mbVirtual of
-            Just (virtualFileVersion -> ver) -> pure (Just $ BS.pack $ show ver, ([], Just $ VFSVersion ver))
-            Nothing -> liftIO $ fmap wrap (getModTime file')
-              `catch` \(e :: IOException) -> do
-                let err | isDoesNotExistError e = "File does not exist: " ++ file'
-                        | otherwise = "IO error while reading " ++ file' ++ ", " ++ displayException e
-                return (Nothing, ([ideErrorText file $ T.pack err], Nothing))
-  where
-    -- Dir.getModificationTime is surprisingly slow since it performs
-    -- a ton of conversions. Since we do not actually care about
-    -- the format of the time, we can get away with something cheaper.
-    -- For now, we only try to do this on Unix systems where it seems to get the
-    -- time spent checking file modifications (which happens on every change)
-    -- from > 0.5s to ~0.15s.
-    -- We might also want to try speeding this up on Windows at some point.
-    -- TODO leverage DidChangeWatchedFile lsp notifications on clients that
-    -- support them, as done for GetFileExists
-    getModTime :: FilePath -> IO BS.ByteString
-    getModTime f =
-#ifdef mingw32_HOST_OS
-        do time <- Dir.getModificationTime f
-           pure $! BS.pack $ show (toModifiedJulianDay $ utctDay time, diffTimeToPicoseconds $ utctDayTime time)
-#else
-        withCString f $ \f' ->
-        alloca $ \secPtr ->
-        alloca $ \nsecPtr -> do
-            Posix.throwErrnoPathIfMinus1Retry_ "getmodtime" f $ c_getModTime f' secPtr nsecPtr
-            sec <- peek secPtr
-            nsec <- peek nsecPtr
-            pure $! BS.pack $ show sec <> "." <> show nsec
-
--- Sadly even unix’s getFileStatus + modificationTimeHiRes is still about twice as slow
--- as doing the FFI call ourselves :(.
-foreign import ccall "getmodtime" c_getModTime :: CString -> Ptr CTime -> Ptr CLong -> IO Int
-#endif
-
 getSourceFingerprint :: NormalizedFilePath -> Action Fingerprint
 getSourceFingerprint = use_ FingerprintSource
 
@@ -184,9 +129,8 @@ getFileContents = use_ GetFileContents
 fileStoreRules :: VFSHandle -> Rules ()
 fileStoreRules vfs = do
     addIdeGlobal vfs
-    getModificationTimeRule vfs
-    getFileContentsRule vfs
     fingerprintSourceRule
+    getFileContentsRule vfs
 
 
 -- | Notify the compiler service that a particular file has been modified.
