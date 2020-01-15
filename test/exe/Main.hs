@@ -20,7 +20,8 @@ import qualified Data.Text as T
 import Development.IDE.Test
 import Development.IDE.Test.Runfiles
 import Development.IDE.Types.Location
-import Language.Haskell.LSP.Test
+import qualified Language.Haskell.LSP.Test as LSPTest
+import Language.Haskell.LSP.Test hiding (openDoc')
 import Language.Haskell.LSP.Types
 import Language.Haskell.LSP.Types.Capabilities
 import System.Environment.Blank (setEnv)
@@ -230,8 +231,7 @@ diagnosticTests = testGroup "diagnostics"
       _ <- openDoc' "ModuleB.hs" "haskell" contentB
       expectDiagnostics [("ModuleB.hs", [(DsError, (1, 7), "Could not find module")])]
       let contentA = T.unlines [ "module ModuleA where" ]
-      TextDocumentIdentifier newModule <- openDoc' "ModuleA.hs" "haskell" contentA
-      sendNotification WorkspaceDidChangeWatchedFiles (DidChangeWatchedFilesParams $ List [FileEvent newModule FcCreated])
+      _ <- openDoc' "ModuleA.hs" "haskell" contentA
       expectDiagnostics [("ModuleB.hs", [])]
   , testSessionWait "cyclic module dependency" $ do
       let contentA = T.unlines
@@ -1554,3 +1554,10 @@ unitTests = do
      [ testCase "empty file path" $
          uriToFilePath' (fromNormalizedUri $ filePathToUri' "") @?= Just ""
      ]
+
+-- | Wrapper around 'LSPTest.openDoc'' that sends file creation events
+openDoc' :: FilePath -> String -> T.Text -> Session TextDocumentIdentifier
+openDoc' fp name contents = do
+  res@(TextDocumentIdentifier uri) <- LSPTest.openDoc' fp name contents
+  sendNotification WorkspaceDidChangeWatchedFiles (DidChangeWatchedFilesParams $ List [FileEvent uri FcCreated])
+  return res
