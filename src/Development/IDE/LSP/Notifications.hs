@@ -66,7 +66,7 @@ setHandlersNotifications = PartialHandlers $ \WithMessage{..} x -> return x
                         )
                         ( F.toList fileEvents )
             let msg = Text.pack $ show events
-            logInfo (ideLogger ide) $ "Files created or deleted: " <> msg
+            logInfo (ideLogger ide) $ "Watched file events: " <> msg
             modifyFileExists ide events
             setSomethingModified ide
     }
