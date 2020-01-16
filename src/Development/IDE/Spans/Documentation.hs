@@ -20,7 +20,7 @@ import           FastString
 import           GHC
 import SrcLoc
 
-#if MIN_GHC_API_VERSION(8,6,0)
+#if MIN_GHC_API_VERSION(8,6,0) && !defined(GHC_LIB)
 import           Data.Char (isSpace)
 import           Development.IDE.GHC.Util
 import qualified Documentation.Haddock.Parser as H
@@ -32,7 +32,9 @@ getDocumentationTryGhc
   -> [TypecheckedModule]
   -> Name
   -> IO [T.Text]
-#if MIN_GHC_API_VERSION(8,6,0)
+-- The DAML ghc-lib seems to fall over with “cannot continue after interface file error” if we try to use this.
+-- There might be some way of getting this to work but for now, we disable it.
+#if MIN_GHC_API_VERSION(8,6,0) && !defined(GHC_LIB)
 getDocumentationTryGhc packageState tcs name = do
   res <- runGhcEnv packageState $ catchSrcErrors "docs" $ getDocs name
   case res of
@@ -116,7 +118,7 @@ docHeaders = mapMaybe (\(L _ x) -> wrk x)
                             else Nothing
     _ -> Nothing
 
-#if MIN_GHC_API_VERSION(8,6,0)
+#if MIN_GHC_API_VERSION(8,6,0) && !defined(GHC_LIB)
 -- Simple (and a bit hacky) conversion from Haddock markup to Markdown
 haddockToMarkdown
   :: H.DocH String String -> String

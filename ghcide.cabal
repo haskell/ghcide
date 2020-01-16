@@ -41,7 +41,6 @@ library
         extra,
         fuzzy,
         filepath,
-        haddock-library,
         hashable,
         haskell-lsp-types == 0.19.*,
         haskell-lsp == 0.19.*,
@@ -70,6 +69,7 @@ library
       cpp-options: -DGHC_LIB
     else
       build-depends:
+        haddock-library,
         ghc-boot-th,
         ghc-boot,
         ghc >= 8.4

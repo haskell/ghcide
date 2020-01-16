@@ -311,7 +311,7 @@ produceCompletions =
         deps <- maybe (TransitiveDependencies [] []) fst <$> useWithStale GetDependencies file
         tms <- mapMaybe (fmap fst) <$> usesWithStale TypeCheck (transitiveModuleDeps deps)
         tm <- fmap fst <$> useWithStale TypeCheck file
-        packageState <- fmap (hscEnv . fst) <$> useWithStale GhcSession file
+        packageState <- fmap hscEnv <$> use GhcSession file
         case (tm, packageState) of
             (Just tm', Just packageState') -> do
                 cdata <- liftIO $ cacheDataProducer packageState' (hsc_dflags packageState')
