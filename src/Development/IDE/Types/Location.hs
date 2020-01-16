@@ -34,6 +34,7 @@ import Data.Hashable
 import Data.String
 import qualified Data.Text as T
 import FastString
+import GHC.Generics (Generic)
 import Network.URI
 import System.FilePath
 import qualified System.FilePath.Posix as FPP
@@ -52,19 +53,25 @@ import Text.ParserCombinators.ReadP as ReadP
 
 
 -- | Newtype wrapper around FilePath that always has normalized slashes.
-newtype NormalizedFilePath = NormalizedFilePath FilePath
-    deriving (Eq, Ord, Show, Hashable, NFData, Binary)
+data NormalizedFilePath = NormalizedFilePath Int !FilePath
+    deriving (Eq, Ord, Show, Generic)
+
+instance Hashable NormalizedFilePath where
+  hash (NormalizedFilePath h _) = h
+
+instance NFData NormalizedFilePath
+instance Binary NormalizedFilePath
 
 instance IsString NormalizedFilePath where
     fromString = toNormalizedFilePath
 
 toNormalizedFilePath :: FilePath -> NormalizedFilePath
 -- We want to keep empty paths instead of normalising them to "."
-toNormalizedFilePath "" = NormalizedFilePath ""
-toNormalizedFilePath fp = NormalizedFilePath $ normalise fp
+toNormalizedFilePath "" = NormalizedFilePath (hash (""::String)) ""
+toNormalizedFilePath fp = NormalizedFilePath (hash fp) $ normalise fp
 
 fromNormalizedFilePath :: NormalizedFilePath -> FilePath
-fromNormalizedFilePath (NormalizedFilePath fp) = fp
+fromNormalizedFilePath (NormalizedFilePath _ fp) = fp
 
 -- | We use an empty string as a filepath when we don’t have a file.
 -- However, haskell-lsp doesn’t support that in uriToFilePath and given
@@ -79,7 +86,7 @@ emptyPathUri :: NormalizedUri
 emptyPathUri = filePathToUri' ""
 
 filePathToUri' :: NormalizedFilePath -> NormalizedUri
-filePathToUri' (NormalizedFilePath fp) = toNormalizedUri $ Uri $ T.pack $ LSP.fileScheme <> "//" <> platformAdjustToUriPath fp
+filePathToUri' (NormalizedFilePath _ fp) = toNormalizedUri $ Uri $ T.pack $ LSP.fileScheme <> "//" <> platformAdjustToUriPath fp
   where
     -- The definitions below are variants of the corresponding functions in Language.Haskell.LSP.Types.Uri that assume that
     -- the filepath has already been normalised. This is necessary since normalising the filepath has a nontrivial cost.
