@@ -18,6 +18,7 @@ import Development.IDE.GHC.Util
 import Development.IDE.GHC.Compat
 import Development.IDE.Types.Options
 import Development.IDE.Spans.Type as SpanInfo
+import Development.IDE.Spans.Common (spanDocToMarkdown)
 
 -- GHC API imports
 import Avail
@@ -49,17 +50,16 @@ gotoDefinition getHieFile ideOpts pkgState srcSpans pos =
 -- | Synopsis for the name at a given position.
 atPoint
   :: IdeOptions
-  -> [TypecheckedModule]
   -> [SpanInfo]
   -> Position
   -> Maybe (Maybe Range, [T.Text])
-atPoint IdeOptions{..} _ srcSpans pos = do
+atPoint IdeOptions{..} srcSpans pos = do
     firstSpan <- listToMaybe $ deEmpasizeGeneratedEqShow $ spansAtPoint pos srcSpans
     return (Just (range firstSpan), hoverInfo firstSpan)
   where
     -- Hover info for types, classes, type variables
     hoverInfo SpanInfo{spaninfoType = Nothing , spaninfoDocs = docs ,  ..} =
-       (wrapLanguageSyntax <$> name) <> location <> docs
+       (wrapLanguageSyntax <$> name) <> location <> spanDocToMarkdown docs
      where
        name     = [maybe shouldNotHappen showName  mbName]
        location = [maybe shouldNotHappen definedAt mbName]
@@ -68,13 +68,13 @@ atPoint IdeOptions{..} _ srcSpans pos = do
 
     -- Hover info for values/data
     hoverInfo SpanInfo{spaninfoType = (Just typ), spaninfoDocs = docs , ..} =
-       (wrapLanguageSyntax <$> nameOrSource) <> location <> docs
+       (wrapLanguageSyntax <$> nameOrSource) <> location <> spanDocToMarkdown docs
      where
        mbName = getNameM spaninfoSource
        typeAnnotation = colon <> showName typ
        expr = case spaninfoSource of
                 Named n -> qualifyNameIfPossible n
-                Lit _ l -> crop $ T.pack l
+                Lit   l -> crop $ T.pack l
                 _       -> ""
        nameOrSource   = [expr <> "\n" <> typeAnnotation]
        qualifyNameIfPossible name' = modulePrefix <> showName name'
@@ -114,7 +114,7 @@ locationsAtPoint getHieFile IdeOptions{..} pkgState pos =
   where getSpan :: SpanSource -> m (Maybe SrcSpan)
         getSpan NoSource = pure Nothing
         getSpan (SpanS sp) = pure $ Just sp
-        getSpan (Lit _ _) = pure Nothing
+        getSpan (Lit _) = pure Nothing
         getSpan (Named name) = case nameSrcSpan name of
             sp@(RealSrcSpan _) -> pure $ Just sp
             sp@(UnhelpfulSpan _) -> runMaybeT $ do

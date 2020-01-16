@@ -19,7 +19,7 @@ data CompItem = CI
   , label        :: T.Text         -- ^ Label to display to the user.
   , isInfix      :: Maybe Backtick -- ^ Did the completion happen
                                    -- in the context of an infix notation.
-  , docs         :: [T.Text]       -- ^ Available documentation.
+  , docs         :: SpanDoc        -- ^ Available documentation.
   }
 instance Show CompItem where
   show CI { .. } = "CompItem { origName = \"" ++ showGhc origName ++ "\""

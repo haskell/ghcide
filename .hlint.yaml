@@ -84,6 +84,7 @@
     - Development.IDE.LSP.CodeAction
     - Development.IDE.Spans.Calculate
     - Development.IDE.Spans.Documentation
+    - Development.IDE.Spans.Common
     - Main
 
 - flags:

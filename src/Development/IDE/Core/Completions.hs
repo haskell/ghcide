@@ -139,7 +139,7 @@ mkCompl IdeOptions{..} CI{origName,importedFrom,thingType,label,isInfix,docs} =
         typeText
           | Just t <- thingType = Just . stripForall $ T.pack (showGhc t)
           | otherwise = Nothing
-        docs' = ("*Defined in '" <> importedFrom <> "'*\n") : docs
+        docs' = ("*Defined in '" <> importedFrom <> "'*\n") : spanDocToMarkdown docs
         colon = if optNewColonConvention then ": " else ":: "
 
 stripForall :: T.Text -> T.Text
@@ -256,12 +256,12 @@ cacheDataProducer packageState dflags tm tcs = do
         let typ = Just $ varType var
             name = Var.varName var
             label = T.pack $ showGhc name
-        docs <- getDocumentationTryGhc packageState (tm:tcs) name
+        docs <- runGhcEnv packageState $ getDocumentationTryGhc (tm:tcs) name
         return $ CI name (showModName curMod) typ label Nothing docs
 
       toCompItem :: ModuleName -> Name -> IO CompItem
       toCompItem mn n = do
-        docs <- getDocumentationTryGhc packageState (tm:tcs) n
+        docs <- runGhcEnv packageState $ getDocumentationTryGhc (tm:tcs) n
         ty <- runGhcEnv packageState $ catchSrcErrors "completion" $ do
                 name' <- lookupName n
                 return $ name' >>= safeTyThingType

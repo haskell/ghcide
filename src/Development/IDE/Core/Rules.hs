@@ -104,9 +104,7 @@ getAtPoint :: NormalizedFilePath -> Position -> Action (Maybe (Maybe Range, [T.T
 getAtPoint file pos = fmap join $ runMaybeT $ do
   opts <- lift getIdeOptions
   spans <- useE GetSpanInfo file
-  files <- transitiveModuleDeps <$> useE GetDependencies file
-  tms   <- usesE TypeCheck (file : files)
-  return $ AtPoint.atPoint opts (map tmrModule tms) spans pos
+  return $ AtPoint.atPoint opts spans pos
 
 -- | Goto Definition.
 getDefinition :: NormalizedFilePath -> Position -> Action (Maybe Location)

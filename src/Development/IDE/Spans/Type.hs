@@ -14,8 +14,8 @@ module Development.IDE.Spans.Type(
 import GHC
 import Control.DeepSeq
 import OccName
-import qualified Data.Text as T
 import Development.IDE.GHC.Util
+import Development.IDE.Spans.Common
 
 -- | Type of some span of source code. Most of these fields are
 -- unboxed but Haddock doesn't show that.
@@ -35,13 +35,14 @@ data SpanInfo =
             -- any. This can be useful for accessing a variety of
             -- information about the identifier such as module,
             -- locality, definition location, etc.
-           ,spaninfoDocs :: ![T.Text]
+           ,spaninfoDocs :: !SpanDoc
            -- ^ Documentation for the element
            }
 instance Show SpanInfo where
-  show (SpanInfo sl sc el ec t n _docs) =
+  show (SpanInfo sl sc el ec t n docs) =
     unwords ["(SpanInfo", show sl, show sc, show el, show ec
-            , show $ maybe "NoType" prettyPrint t, "(" <> show n <> "))"]
+            , show $ maybe "NoType" prettyPrint t, "(" <> show n <> "))"
+            , "docs(" <> show docs <> ")"]
 
 instance NFData SpanInfo where
     rnf = rwhnf
@@ -50,7 +51,7 @@ instance NFData SpanInfo where
 -- we don't always get a name out so sometimes manually annotating source is more appropriate
 data SpanSource = Named Name
                 | SpanS SrcSpan
-                | Lit SrcSpan String
+                | Lit String
                 | NoSource
   deriving (Eq)
 
@@ -58,7 +59,7 @@ instance Show SpanSource where
   show = \case
     Named n -> "Named " ++ occNameString (occName n)
     SpanS sp -> "Span " ++ show sp
-    Lit sp lit -> "Lit " ++ show sp ++ " " ++ lit
+    Lit lit -> "Lit " ++ lit
     NoSource -> "NoSource"
 
 getNameM :: SpanSource -> Maybe Name
