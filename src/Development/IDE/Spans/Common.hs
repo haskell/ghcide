@@ -23,9 +23,11 @@ import DataCon
 import Outputable
 import DynFlags
 
+#if MIN_GHC_API_VERSION(8,6,0)
 import           Data.Char (isSpace)
 import qualified Documentation.Haddock.Parser as H
 import qualified Documentation.Haddock.Types as H
+#endif
 
 showGhc :: Outputable a => a -> String
 showGhc = showPpr unsafeGlobalDynFlags
@@ -65,10 +67,11 @@ emptySpanDoc :: SpanDoc
 emptySpanDoc = SpanDocText []
 
 spanDocToMarkdown :: SpanDoc -> [T.Text]
-spanDocToMarkdown (SpanDocString docs)
 #if MIN_GHC_API_VERSION(8,6,0)
+spanDocToMarkdown (SpanDocString docs)
   = [T.pack $ haddockToMarkdown $ H.toRegular $ H._doc $ H.parseParas Nothing $ unpackHDS docs]
 #else
+spanDocToMarkdown (SpanDocString _)
   = []
 #endif
 spanDocToMarkdown (SpanDocText txt) = txt
