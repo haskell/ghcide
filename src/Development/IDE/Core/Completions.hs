@@ -7,7 +7,7 @@ module Development.IDE.Core.Completions (
 ) where
 
 import Control.Applicative
-import Data.Char (isSpace)
+import Data.Char (isSpace, isUpper)
 import Data.Generics
 import Data.List as List hiding (stripPrefix)
 import qualified Data.Map  as Map
@@ -33,6 +33,9 @@ import Language.Haskell.LSP.Types.Capabilities
 import qualified Language.Haskell.LSP.VFS as VFS
 import Development.IDE.Core.CompletionsTypes
 import Development.IDE.Spans.Documentation
+import Development.IDE.GHC.Util
+import Development.IDE.GHC.Error
+import Development.IDE.Types.Options
 
 -- From haskell-ide-engine/src/Haskell/Ide/Engine/Support/HieExtras.hs
 
