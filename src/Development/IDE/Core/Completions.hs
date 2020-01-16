@@ -44,6 +44,12 @@ safeTyThingId (AnId i)                    = Just i
 safeTyThingId (AConLike (RealDataCon dc)) = Just $ dataConWrapId dc
 safeTyThingId _                           = Nothing
 
+safeTyThingType :: TyThing -> Maybe Type
+safeTyThingType thing
+  | Just i <- safeTyThingId thing = Just (varType i)
+safeTyThingType (ATyCon tycon)    = Just (tyConKind tycon)
+safeTyThingType _                 = Nothing
+
 -- From haskell-ide-engine/hie-plugin-api/Haskell/Ide/Engine/Context.hs
 
 -- | A context of a declaration in the program
@@ -218,8 +224,8 @@ mkPragmaCompl label insertText =
     Nothing Nothing Nothing Nothing Nothing (Just insertText) (Just Snippet)
     Nothing Nothing Nothing Nothing Nothing
 
-cacheDataProducer :: DynFlags -> TypecheckedModule -> [TypecheckedModule] -> IO CachedCompletions
-cacheDataProducer dflags tm tcs = do
+cacheDataProducer :: HscEnv -> DynFlags -> TypecheckedModule -> [TypecheckedModule] -> IO CachedCompletions
+cacheDataProducer packageState dflags tm tcs = do
   let parsedMod = tm_parsed_module tm
       curMod = moduleName $ ms_mod $ pm_mod_summary parsedMod
       Just (_,limports,_,_) = tm_renamed_source tm
