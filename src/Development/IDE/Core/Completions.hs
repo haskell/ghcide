@@ -297,8 +297,8 @@ toggleSnippets ClientCapabilities { _textDocument } (WithSnippets with) x
   where supported = fromMaybe False (_textDocument >>= _completion >>= _completionItem >>= _snippetSupport)
 
 -- | Returns the cached completions for the given module and position.
-getCompletions :: CachedCompletions -> TypecheckedModule -> VFS.PosPrefixInfo -> ClientCapabilities -> WithSnippets -> IO [CompletionItem]
-getCompletions CC { allModNamesAsNS, unqualCompls, qualCompls, importableModules }
+getCompletions :: IdeOptions -> CachedCompletions -> TypecheckedModule -> VFS.PosPrefixInfo -> ClientCapabilities -> WithSnippets -> IO [CompletionItem]
+getCompletions ideOpts CC { allModNamesAsNS, unqualCompls, qualCompls, importableModules }
                tm prefixInfo caps withSnippets = do
   let VFS.PosPrefixInfo { VFS.fullLine, VFS.prefixModule, VFS.prefixText } = prefixInfo
       enteredQual = if T.null prefixModule then "" else prefixModule <> "."
