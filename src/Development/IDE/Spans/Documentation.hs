@@ -6,6 +6,7 @@
 
 module Development.IDE.Spans.Documentation (
     getDocumentation
+  , getDocumentationTryGhc
   ) where
 
 import           Control.Monad
@@ -26,6 +27,8 @@ import qualified Documentation.Haddock.Parser as H
 import qualified Documentation.Haddock.Types as H
 #endif
 
+getDocumentationTryGhc _packageState tcs name = do
+  return $ getDocumentation tcs name
 
 getDocumentation
  :: [TypecheckedModule] -- ^ All of the possible modules it could be defined in.
