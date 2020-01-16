@@ -144,10 +144,16 @@ getCContext pos pm
           | otherwise = Nothing
         importInline _ _ = Nothing
 
-occNameToComKind :: OccName -> CompletionItemKind
-occNameToComKind oc
-  | isVarOcc  oc = CiFunction
-  | isTcOcc   oc = CiClass
+occNameToComKind :: Maybe T.Text -> OccName -> CompletionItemKind
+occNameToComKind ty oc
+  | isVarOcc  oc = case occNameString oc of
+                     i:_ | isUpper i -> CiConstructor
+                     _               -> CiFunction
+  | isTcOcc   oc = case ty of
+                     Just t
+                       | "Constraint" `T.isSuffixOf` t 
+                       -> CiClass
+                     _ -> CiStruct
   | isDataOcc oc = CiConstructor
   | otherwise    = CiVariable
 
@@ -157,7 +163,7 @@ mkCompl IdeOptions{..} CI{origName,importedFrom,thingType,label,isInfix,docs} =
     (Just $ CompletionDocMarkup $ MarkupContent MkMarkdown $ T.intercalate sectionSeparator docs')
     Nothing Nothing Nothing Nothing (Just insertText) (Just Snippet)
     Nothing Nothing Nothing Nothing Nothing
-  where kind = Just $ occNameToComKind {- typeText -} $ occName origName
+  where kind = Just $ occNameToComKind typeText $ occName origName
         insertText = case isInfix of
             Nothing -> case getArgText <$> thingType of
                             Nothing -> label
