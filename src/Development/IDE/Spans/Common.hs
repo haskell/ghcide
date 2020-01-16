@@ -1,4 +1,6 @@
 {-# LANGUAGE CPP #-}
+#include "ghc-api-version.h"
+
 module Development.IDE.Spans.Common (
   showGhc
 , listifyAllSpans
@@ -64,9 +66,14 @@ emptySpanDoc = SpanDocText []
 
 spanDocToMarkdown :: SpanDoc -> [T.Text]
 spanDocToMarkdown (SpanDocString docs)
+#if MIN_GHC_API_VERSION(8,6,0)
   = [T.pack $ haddockToMarkdown $ H.toRegular $ H._doc $ H.parseParas Nothing $ unpackHDS docs]
+#else
+  = []
+#endif
 spanDocToMarkdown (SpanDocText txt) = txt
 
+#if MIN_GHC_API_VERSION(8,6,0)
 -- Simple (and a bit hacky) conversion from Haddock markup to Markdown
 haddockToMarkdown
   :: H.DocH String String -> String
@@ -142,3 +149,4 @@ haddockToMarkdown (H.DocTable _t)
 -- things I don't really know how to handle
 haddockToMarkdown (H.DocProperty _)
   = ""  -- don't really know what to do
+#endif
