@@ -259,9 +259,8 @@ cacheDataProducer packageState dflags tm tcs = do
       rdrEnv = tcg_rdr_env $ fst $ tm_internals_ tm
       rdrElts = globalRdrEnvElts rdrEnv
 
-      foldMapM :: (Foldable f, Monad m, Monoid b) => (a -> m b) -> f a -> m b
-      foldMapM f xs = foldr step return xs mempty where
-        step x r z = f x >>= \y -> r $! z `mappend` y
+      foldMapM :: (Traversable f, Monad m, Monoid b) => (a -> m b) -> f a -> m b
+      foldMapM f xs = foldMap id <$> traverse f xs
 
       getCompls :: [GlobalRdrElt] -> IO ([CompItem],QualCompls)
       getCompls = foldMapM getComplsForOne
