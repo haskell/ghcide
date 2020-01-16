@@ -151,13 +151,13 @@ occNameToComKind oc
   | isDataOcc oc = CiConstructor
   | otherwise    = CiVariable
 
-mkCompl :: CompItem -> CompletionItem
-mkCompl CI{origName,importedFrom,thingType,label,isInfix,docs} =
-  CompletionItem label kind (Just $ maybe "" (<>"\n") typeText <> importedFrom)
-    (Just $ CompletionDocMarkup $ MarkupContent MkMarkdown $ T.intercalate sectionSeparator docs)
+mkCompl :: IdeOptions -> CompItem -> CompletionItem
+mkCompl IdeOptions{..} CI{origName,importedFrom,thingType,label,isInfix,docs} =
+  CompletionItem label kind (Just $ maybe "" (<>"\n") typeText <> importedFrom) -- ((colon <>) <$> typeText)
+    (Just $ CompletionDocMarkup $ MarkupContent MkMarkdown $ T.intercalate sectionSeparator docs')
     Nothing Nothing Nothing Nothing (Just insertText) (Just Snippet)
     Nothing Nothing Nothing Nothing Nothing
-  where kind = Just $ occNameToComKind $ occName origName
+  where kind = Just $ occNameToComKind {- typeText -} $ occName origName
         insertText = case isInfix of
             Nothing -> case getArgText <$> thingType of
                             Nothing -> label
@@ -168,6 +168,8 @@ mkCompl CI{origName,importedFrom,thingType,label,isInfix,docs} =
         typeText
           | Just t <- thingType = Just . stripForall $ T.pack (showGhc t)
           | otherwise = Nothing
+        docs' = ("*Defined in '" <> importedFrom <> "'*\n") : docs
+        colon = if optNewColonConvention then ": " else ":: "
 
 stripForall :: T.Text -> T.Text
 stripForall t
