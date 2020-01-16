@@ -298,7 +298,7 @@ cacheDataProducer packageState dflags tm tcs = do
       toCompItem mn n = do
         docs <- getDocumentationTryGhc packageState (tm:tcs) n
         ty <- runGhcEnv packageState $ catchSrcErrors "completion" $ do
-                name' <- lookupName n
+                name' <- pure Nothing -- lookupName n
                 return $ name' >>= safeTyThingType
         return $ CI n (showModName mn) (either (const Nothing) id ty) (T.pack $ showGhc n) Nothing docs
 
