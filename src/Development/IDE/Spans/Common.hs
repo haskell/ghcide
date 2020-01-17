@@ -44,6 +44,7 @@ listifyAllSpans' :: Typeable a
                    => TypecheckedSource -> [Pat a]
 listifyAllSpans' tcs = Data.Generics.listify (const True) tcs
 
+#ifndef GHC_LIB
 -- From haskell-ide-engine/src/Haskell/Ide/Engine/Support/HieExtras.hs
 
 safeTyThingId :: TyThing -> Maybe Id
@@ -56,6 +57,7 @@ safeTyThingType thing
   | Just i <- safeTyThingId thing = Just (varType i)
 safeTyThingType (ATyCon tycon)    = Just (tyConKind tycon)
 safeTyThingType _                 = Nothing
+#endif
 
 -- Possible documentation for an element in the code
 data SpanDoc
