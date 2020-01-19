@@ -43,6 +43,7 @@ setHandlersNotifications = PartialHandlers $ \WithMessage{..} x -> return x
     ,LSP.didChangeTextDocumentNotificationHandler = withNotification (LSP.didChangeTextDocumentNotificationHandler x) $
         \_ ide (DidChangeTextDocumentParams identifier@VersionedTextDocumentIdentifier{_uri} changes) -> do
             updatePositionMapping ide identifier changes
+            whenUriFile _uri $ \file -> modifyFileExists ide [(file, FcChanged)]
             setSomethingModified ide
             logInfo (ideLogger ide) $ "Modified text document: " <> getUri _uri
 
