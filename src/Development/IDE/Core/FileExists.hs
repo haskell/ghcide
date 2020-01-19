@@ -96,7 +96,9 @@ modifyFileExists state changes = do
     -- update the map
     modifyVar_ var $ evaluate . Map.unionWith (<>) (fileChangeToFileExistsVersion <$> changesMap)
     -- flush previous values
-    mapM_ (deleteValue state GetFileExists . fst) changes
+    forM_ changes $ \(fp,_) -> do
+      deleteValue state GetFileExists fp
+      deleteValue state GetModificationTime fp
 
 -------------------------------------------------------------------------------------
 
@@ -135,7 +137,10 @@ fileExistsRules getLspId ClientCapabilities{_workspace} vfs
     getModificationTimeRule (\f _ -> getModTimeFromEvents f) vfs
   | otherwise = do
     fileExistsRulesSlow vfs
-    getModificationTimeRule (\f f' -> liftIO $ getModTimeIO f f') vfs
+    let getModTimeIOAlwaysRerun f f' = do
+          alwaysRerun
+          liftIO $ getModTimeIO f f'
+    getModificationTimeRule getModTimeIOAlwaysRerun vfs
 
 -------------------------------------------------------------------------------------
 --   Requires an lsp client that provides WatchedFiles notifications.
@@ -211,7 +216,6 @@ getFileExistsVFS vfs file = do
 getModificationTimeRule :: (NormalizedFilePath -> FilePath -> Action (Maybe BS.ByteString, IdeResult FileVersion)) -> VFSHandle -> Rules ()
 getModificationTimeRule getModTime vfs =
     defineEarlyCutoff $ \GetModificationTime file -> do
-        alwaysRerun
         let file' = fromNormalizedFilePath file
         mbVirtual <- liftIO $ getVirtualFile vfs $ filePathToUri' file
         case mbVirtual of
