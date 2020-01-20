@@ -34,10 +34,7 @@ import Development.IDE.Spans.Documentation
 import Development.IDE.GHC.Error
 import Development.IDE.Types.Options
 import Development.IDE.Spans.Common
-
-#ifndef GHC_LIB
 import Development.IDE.GHC.Util
-#endif
 
 -- From haskell-ide-engine/hie-plugin-api/Haskell/Ide/Engine/Context.hs
 

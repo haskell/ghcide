@@ -5,8 +5,8 @@ module Development.IDE.Spans.Common (
   showGhc
 , listifyAllSpans
 , listifyAllSpans'
-#ifndef GHC_LIB
 , safeTyThingId
+#ifndef GHC_LIB
 , safeTyThingType
 #endif
 , SpanDoc(..)
@@ -50,18 +50,17 @@ listifyAllSpans' tcs = Data.Generics.listify (const True) tcs
 
 #ifndef GHC_LIB
 -- From haskell-ide-engine/src/Haskell/Ide/Engine/Support/HieExtras.hs
-
-safeTyThingId :: TyThing -> Maybe Id
-safeTyThingId (AnId i)                    = Just i
-safeTyThingId (AConLike (RealDataCon dc)) = Just $ dataConWrapId dc
-safeTyThingId _                           = Nothing
-
 safeTyThingType :: TyThing -> Maybe Type
 safeTyThingType thing
   | Just i <- safeTyThingId thing = Just (varType i)
 safeTyThingType (ATyCon tycon)    = Just (tyConKind tycon)
 safeTyThingType _                 = Nothing
 #endif
+
+safeTyThingId :: TyThing -> Maybe Id
+safeTyThingId (AnId i)                    = Just i
+safeTyThingId (AConLike (RealDataCon dc)) = Just $ dataConWrapId dc
+safeTyThingId _                           = Nothing
 
 -- Possible documentation for an element in the code
 data SpanDoc
