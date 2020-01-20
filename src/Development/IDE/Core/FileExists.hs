@@ -55,12 +55,12 @@ modifyFileExists state changes = do
   FileExistsMapVar var <- getIdeGlobalState state
   changesMap           <- evaluate $ Map.fromList changes
 
-  -- Mask to ensure that the previous values are flushed together with the map update
+  -- Masked to ensure that the previous values are flushed together with the map update
   mask $ \_ -> do
+    -- update the map
     modifyVar_ var $ evaluate . Map.union changesMap
-    let flushPreviousValues = do
-          liftIO $ mapM_ (deleteValue state GetFileExists . fst) changes
-    void $ shakeRun state [flushPreviousValues]
+    -- flush previous values
+    mapM_ (deleteValue state GetFileExists . fst) changes
 
 -------------------------------------------------------------------------------------
 
