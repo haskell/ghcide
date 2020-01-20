@@ -5,8 +5,10 @@ module Development.IDE.Spans.Common (
   showGhc
 , listifyAllSpans
 , listifyAllSpans'
+#ifndef GHC_LIB
 , safeTyThingId
 , safeTyThingType
+#endif
 , SpanDoc(..)
 , emptySpanDoc
 , spanDocToMarkdown
