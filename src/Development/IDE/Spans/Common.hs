@@ -21,8 +21,8 @@ import qualified Data.Text as T
 import GHC
 import Outputable
 import DynFlags
-#ifndef GHC_LIB
 import ConLike
+#ifndef GHC_LIB
 import Var
 import DataCon
 #endif
