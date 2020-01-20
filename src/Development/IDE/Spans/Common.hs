@@ -19,11 +19,13 @@ import qualified Data.Generics
 import qualified Data.Text as T
 
 import GHC
+import Outputable
+import DynFlags
+#ifndef GHC_LIB
 import ConLike
 import Var
 import DataCon
-import Outputable
-import DynFlags
+#endif
 
 #if MIN_GHC_API_VERSION(8,6,0)
 import           Data.Char (isSpace)
