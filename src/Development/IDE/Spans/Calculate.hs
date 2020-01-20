@@ -179,9 +179,13 @@ getLHsType
 getLHsType tms (L spn (HsTyVar U _ v)) = do
   let n = unLoc v
   docs <- getDocumentationTryGhc tms n
+#ifdef GHC_LIB
+  let ty = Right Nothing
+#else
   ty <- catchSrcErrors "completion" $ do
           name' <- lookupName n
           return $ name' >>= safeTyThingType
+#endif
   let ty' = case ty of
               Right (Just x) -> Just x
               _ -> Nothing

@@ -22,9 +22,9 @@ import GHC
 import Outputable
 import DynFlags
 import ConLike
+import DataCon
 #ifndef GHC_LIB
 import Var
-import DataCon
 #endif
 
 #if MIN_GHC_API_VERSION(8,6,0)
