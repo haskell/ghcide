@@ -158,14 +158,28 @@ getTypeLHsExpr tms e = do
     Nothing -> return Nothing
   where
     getSpanSource :: HsExpr GhcTc -> SpanSource
-    getSpanSource (HsLit U lit) = Lit (showGhc lit)
-    getSpanSource (HsOverLit U lit) = Lit (showGhc lit)
+    getSpanSource xpr | isLit xpr = Lit (showGhc xpr)
     getSpanSource (HsVar U (L _ i)) = Named (getName i)
     getSpanSource (HsConLikeOut U (RealDataCon dc)) = Named (dataConName dc)
     getSpanSource RecordCon {rcon_con_name} = Named (getName rcon_con_name)
     getSpanSource (HsWrap U _ xpr) = getSpanSource xpr
     getSpanSource (HsPar U xpr) = getSpanSource (unLoc xpr)
     getSpanSource _ = NoSource
+
+    isLit :: HsExpr GhcTc -> Bool
+    isLit (HsLit U _)     = True
+    isLit (HsOverLit U _) = True
+    isLit (ExplicitTuple U args _) = all (isTupLit . unLoc) args
+      where
+        isTupLit (Present U xpr) = isLit (unLoc xpr)
+        isTupLit (Missing U)     = True
+        isTupLit _               = False
+    isLit (ExplicitSum U _ _ xpr) = isLit (unLoc xpr)
+    isLit (ExplicitList U _ xprs) = all (isLit . unLoc) xprs
+    isLit (HsWrap U _ xpr) = isLit xpr
+    isLit (HsPar U xpr)    = isLit (unLoc xpr)
+    isLit (ExprWithTySig U xpr) = isLit (unLoc xpr)
+    isLit _                = False
 
 -- | Get the name and type of a pattern.
 getTypeLPat :: (GhcMonad m)
