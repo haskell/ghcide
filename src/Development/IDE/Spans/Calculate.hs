@@ -158,7 +158,7 @@ getTypeLHsExpr tms e = do
     Nothing -> return Nothing
   where
     getSpanSource :: HsExpr GhcTc -> SpanSource
-    getSpanSource xpr | isLit xpr = Lit (showGhc xpr)
+    getSpanSource xpr | isLit True xpr = Lit (showGhc xpr)
     getSpanSource (HsVar U (L _ i)) = Named (getName i)
     getSpanSource (HsConLikeOut U (RealDataCon dc)) = Named (dataConName dc)
     getSpanSource RecordCon {rcon_con_name} = Named (getName rcon_con_name)
@@ -166,34 +166,29 @@ getTypeLHsExpr tms e = do
     getSpanSource (HsPar U xpr) = getSpanSource (unLoc xpr)
     getSpanSource _ = NoSource
 
-    isLit :: HsExpr GhcTc -> Bool
-    isLit (HsLit U _)     = True
-    isLit (HsOverLit U _) = True
-    isLit (ExplicitTuple U args _) = all (isTupLit . unLoc) args
+    isLit :: Bool -- ^ is a "root" literal?
+          -> HsExpr GhcTc -> Bool
+    isLit _ (HsLit U _)     = True
+    isLit _ (HsOverLit U _) = True
+    isLit _ (ExplicitTuple U args _) = all (isTupLit . unLoc) args
       where
-        isTupLit (Present U xpr) = isLit (unLoc xpr)
--- the following #if is there
--- to please HLint in all versions
-#if MIN_GHC_API_VERSION(8,6,0)
-        isTupLit (Missing U)     = True
-#else
-        isTupLit (Missing _)     = True
-#endif
+        isTupLit (Present U xpr) = isLit False (unLoc xpr)
         isTupLit _               = False
 #if MIN_GHC_API_VERSION(8,6,0)
-    isLit (ExplicitSum U _ _ xpr) = isLit (unLoc xpr)
+    isLit _ (ExplicitSum U _ _ xpr) = isLit False (unLoc xpr)
+    isLit _ (ExplicitList U _ xprs) = all (isLit False . unLoc) xprs
 #else
-    isLit (ExplicitSum U _ _ xpr _) = isLit (unLoc xpr)
+    isLit _ (ExplicitSum  _ _ xpr _) = isLit False (unLoc xpr)
+    isLit _ (ExplicitList _ _ xprs)  = all (isLit False . unLoc) xprs
 #endif
-    isLit (ExplicitList U _ xprs) = all (isLit . unLoc) xprs
-    isLit (HsWrap U _ xpr) = isLit xpr
-    isLit (HsPar U xpr)    = isLit (unLoc xpr)
+    isLit isRoot (HsWrap U _ xpr) = not isRoot && isLit isRoot xpr
+    isLit isRoot (HsPar U xpr)    = not isRoot && isLit isRoot (unLoc xpr)
 #if MIN_GHC_API_VERSION(8,8,0)
-    isLit (ExprWithTySig U xpr _) = isLit (unLoc xpr)
+    isLit isRoot (ExprWithTySig U xpr _) = not isRoot && isLit isRoot (unLoc xpr)
 #else
-    isLit (ExprWithTySig U xpr) = isLit (unLoc xpr)
+    isLit isRoot (ExprWithTySig U xpr)   = not isRoot && isLit isRoot (unLoc xpr)
 #endif
-    isLit _                = False
+    isLit _ _ = False
 
 -- | Get the name and type of a pattern.
 getTypeLPat :: (GhcMonad m)
