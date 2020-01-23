@@ -175,8 +175,8 @@ getTypeLHsExpr tms e = do
         isTupLit (Present U xpr) = isLit False (unLoc xpr)
         isTupLit _               = False
 #if MIN_GHC_API_VERSION(8,6,0)
-    isLit _ (ExplicitSum U _ _ xpr) = isLit False (unLoc xpr)
-    isLit _ (ExplicitList U _ xprs) = all (isLit False . unLoc) xprs
+    isLit _ (ExplicitSum  U _ _ xpr) = isLit False (unLoc xpr)
+    isLit _ (ExplicitList U _ xprs)  = all (isLit False . unLoc) xprs
 #else
     isLit _ (ExplicitSum  _ _ xpr _) = isLit False (unLoc xpr)
     isLit _ (ExplicitList _ _ xprs)  = all (isLit False . unLoc) xprs
@@ -186,7 +186,7 @@ getTypeLHsExpr tms e = do
 #if MIN_GHC_API_VERSION(8,8,0)
     isLit isRoot (ExprWithTySig U xpr _) = not isRoot && isLit isRoot (unLoc xpr)
 #else
-    isLit isRoot (ExprWithTySig U xpr)   = not isRoot && isLit isRoot (unLoc xpr)
+    isLit isRoot (ExprWithTySig _ xpr)   = not isRoot && isLit isRoot (unLoc xpr)
 #endif
     isLit _ _ = False
 
