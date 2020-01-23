@@ -185,8 +185,10 @@ getTypeLHsExpr tms e = do
     isLit isRoot (HsPar U xpr)    = not isRoot && isLit isRoot (unLoc xpr)
 #if MIN_GHC_API_VERSION(8,8,0)
     isLit isRoot (ExprWithTySig U xpr _) = not isRoot && isLit isRoot (unLoc xpr)
+#elif MIN_GHC_API_VERSION(8,6,0)
+    isLit isRoot (ExprWithTySig U xpr)   = not isRoot && isLit isRoot (unLoc xpr)
 #else
-    isLit isRoot (ExprWithTySig _ xpr)   = not isRoot && isLit isRoot (unLoc xpr)
+    isLit isRoot (ExprWithTySig xpr _)   = not isRoot && isLit isRoot (unLoc xpr)
 #endif
     isLit _ _ = False
 
