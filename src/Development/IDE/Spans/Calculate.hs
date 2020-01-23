@@ -177,10 +177,14 @@ getTypeLHsExpr tms e = do
 #if MIN_GHC_API_VERSION(8,6,0)
         isTupLit (Missing U)     = True
 #else
-        isTupLit Missing         = True
+        isTupLit (Missing _)     = True
 #endif
         isTupLit _               = False
+#if MIN_GHC_API_VERSION(8,6,0)
     isLit (ExplicitSum U _ _ xpr) = isLit (unLoc xpr)
+#else
+    isLit (ExplicitSum U _ _ xpr _) = isLit (unLoc xpr)
+#endif
     isLit (ExplicitList U _ xprs) = all (isLit . unLoc) xprs
     isLit (HsWrap U _ xpr) = isLit xpr
     isLit (HsPar U xpr)    = isLit (unLoc xpr)
