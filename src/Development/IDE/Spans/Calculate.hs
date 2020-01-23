@@ -184,7 +184,11 @@ getTypeLHsExpr tms e = do
     isLit (ExplicitList U _ xprs) = all (isLit . unLoc) xprs
     isLit (HsWrap U _ xpr) = isLit xpr
     isLit (HsPar U xpr)    = isLit (unLoc xpr)
+#if MIN_GHC_API_VERSION(8,8,0)
+    isLit (ExprWithTySig U xpr _) = isLit (unLoc xpr)
+#else
     isLit (ExprWithTySig U xpr) = isLit (unLoc xpr)
+#endif
     isLit _                = False
 
 -- | Get the name and type of a pattern.
