@@ -172,7 +172,13 @@ getTypeLHsExpr tms e = do
     isLit (ExplicitTuple U args _) = all (isTupLit . unLoc) args
       where
         isTupLit (Present U xpr) = isLit (unLoc xpr)
+-- the following #if is there
+-- to please HLint in all versions
+#if MIN_GHC_API_VERSION(8,6,0)
         isTupLit (Missing U)     = True
+#else
+        isTupLit Missing         = True
+#endif
         isTupLit _               = False
     isLit (ExplicitSum U _ _ xpr) = isLit (unLoc xpr)
     isLit (ExplicitList U _ xprs) = all (isLit . unLoc) xprs
