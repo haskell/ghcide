@@ -69,9 +69,10 @@ parseModule
     -> Maybe SB.StringBuffer
     -> IO ([FileDiagnostic], Maybe ParsedModule)
 parseModule IdeOptions{..} env file =
+    let env' = env { hsc_dflags = hsc_dflags env `gopt_set` Opt_Haddock } in
     fmap (either (, Nothing) (second Just)) .
     -- We need packages since imports fail to resolve otherwise.
-    runGhcEnv env . runExceptT . parseFileContents optPreprocessor file
+    runGhcEnv env' . runExceptT . parseFileContents optPreprocessor file
 
 
 -- | Given a package identifier, what packages does it depend on
