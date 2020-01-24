@@ -361,7 +361,7 @@ getCompletions ideOpts CC { allModNamesAsNS, unqualCompls, qualCompls, importabl
       filtImportCompls = filtListWith (mkImportCompl enteredQual) importableModules
       filtPragmaCompls = filtListWithSnippet mkPragmaCompl validPragmas
       filtOptsCompls   = filtListWith mkExtCompl
-      filtKeywrdCompls = if T.null prefixModule then filtListWith mkExtCompl keywords else []
+      filtKeywordCompls = if T.null prefixModule then filtListWith mkExtCompl keywords else []
 
       stripLeading :: Char -> String -> String
       stripLeading _ [] = []
