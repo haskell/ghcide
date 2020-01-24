@@ -89,7 +89,7 @@ haddockToMarkdown
 haddockToMarkdown H.DocEmpty
   = ""
 haddockToMarkdown (H.DocAppend d1 d2)
-  = haddockToMarkdown d1 Prelude.<> haddockToMarkdown d2
+  = haddockToMarkdown d1 ++ " " ++ haddockToMarkdown d2
 haddockToMarkdown (H.DocString s)
   = s
 haddockToMarkdown (H.DocParagraph p)
@@ -138,9 +138,9 @@ haddockToMarkdown (H.DocHeader (H.Header level title))
   = replicate level '#' ++ " " ++ haddockToMarkdown title
 
 haddockToMarkdown (H.DocUnorderedList things)
-  = '\n' : (unlines $ map (\thing -> "+ " ++ dropWhile isSpace (haddockToMarkdown thing)) things)
+  = '\n' : (unlines $ map (("+ " ++) . dropWhile isSpace . splitForList . haddockToMarkdown) things)
 haddockToMarkdown (H.DocOrderedList things)
-  = '\n' : (unlines $ map (\thing -> "1. " ++ dropWhile isSpace (haddockToMarkdown thing)) things)
+  = '\n' : (unlines $ map (("1. " ++) . dropWhile isSpace . splitForList . haddockToMarkdown) things)
 haddockToMarkdown (H.DocDefList things)
   = '\n' : (unlines $ map (\(term, defn) -> "+ **" ++ haddockToMarkdown term ++ "**: " ++ haddockToMarkdown defn) things)
 
@@ -157,4 +157,10 @@ haddockToMarkdown (H.DocTable _t)
 -- things I don't really know how to handle
 haddockToMarkdown (H.DocProperty _)
   = ""  -- don't really know what to do
+
+splitForList :: String -> String
+splitForList s
+  = case lines s of
+      [] -> ""
+      (first:rest) -> unlines $ first : (map (("  " ++) . dropWhile isSpace) rest)
 #endif
