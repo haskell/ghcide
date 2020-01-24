@@ -216,6 +216,7 @@ test-suite ghcide-tests
         --------------------------------------------------------------
         ghcide,
         ghc-typelits-knownnat,
+        haddock-library,
         haskell-lsp-types,
         lens,
         lsp-test >= 0.8,
