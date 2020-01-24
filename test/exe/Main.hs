@@ -17,6 +17,7 @@ import Data.Foldable
 import Data.List
 import Development.IDE.GHC.Util
 import qualified Data.Text as T
+import Development.IDE.Spans.Common
 import Development.IDE.Test
 import Development.IDE.Test.Runfiles
 import Development.IDE.Types.Location
@@ -53,6 +54,7 @@ main = defaultMain $ testGroup "HIE"
   , preprocessorTests
   , thTests
   , unitTests
+  , haddockTests
   ]
 
 initializeResponseTests :: TestTree
@@ -1546,6 +1548,19 @@ data Expect
 
 mkR :: Int -> Int -> Int -> Int -> Expect
 mkR startLine startColumn endLine endColumn = ExpectRange $ mkRange startLine startColumn endLine endColumn
+
+haddockTests :: TestTree
+haddockTests
+  = testGroup "haddock"
+      [ testCase "Num" $ checkHaddock
+          "However, '(+)' and '(*)' are\ncustomarily expected to define a ring and have the following properties:\n\n[__Associativity of (+)__]: @(x + y) + z@ = @x + (y + z)@\n[__Commutativity of (+)__]: @x + y@ = @y + x@\n[__@fromInteger 0@ is the additive identity__]: @x + fromInteger 0@ = @x@"
+          "\n\nHowever, '(+)' and '(*)' are\ncustomarily expected to define a ring and have the following properties: \n+ ****Associativity of (+)****: `(x + y) + z`  =  `x + (y + z)`\n+ ****Commutativity of (+)****: `x + y`  =  `y + x`\n+ ****`fromInteger 0`  is the additive identity****: `x + fromInteger 0`  =  `x`\n"
+      , testCase "unsafePerformIO" $ checkHaddock
+          "may require\ndifferent precautions:\n\n  * Use @{\\-\\# NOINLINE foo \\#-\\}@ as a pragma on any function @foo@\n        that calls 'unsafePerformIO'.  If the call is inlined,\n        the I\\/O may be performed more than once.\n\n  * Use the compiler flag @-fno-cse@ to prevent common sub-expression\n        elimination being performed on the module."
+          "\n\nmay require\ndifferent precautions: \n+ Use  `{-# NOINLINE foo #-}`  as a pragma on any function  `foo` \n  that calls  `unsafePerformIO` .  If the call is inlined,\n  the I/O may be performed more than once.\n\n+ Use the compiler flag  `-fno-cse`  to prevent common sub-expression\n  elimination being performed on the module.\n\n"]
+  where
+    checkHaddock s txt = spanDocToMarkdownForTest s @?= txt
+
 ----------------------------------------------------------------------
 -- Utils
 

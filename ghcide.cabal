@@ -113,6 +113,7 @@ library
         Development.IDE.LSP.LanguageServer
         Development.IDE.LSP.Protocol
         Development.IDE.LSP.Server
+        Development.IDE.Spans.Common
         Development.IDE.Types.Diagnostics
         Development.IDE.Types.Location
         Development.IDE.Types.Logger
@@ -135,7 +136,6 @@ library
         Development.IDE.LSP.Outline
         Development.IDE.Spans.AtPoint
         Development.IDE.Spans.Calculate
-        Development.IDE.Spans.Common
         Development.IDE.Spans.Documentation
         Development.IDE.Spans.Type
     ghc-options: -Wall -Wno-name-shadowing

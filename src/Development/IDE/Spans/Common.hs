@@ -12,6 +12,7 @@ module Development.IDE.Spans.Common (
 , SpanDoc(..)
 , emptySpanDoc
 , spanDocToMarkdown
+, spanDocToMarkdownForTest
 ) where
 
 import Data.Data
@@ -81,7 +82,10 @@ spanDocToMarkdown (SpanDocString _)
 #endif
 spanDocToMarkdown (SpanDocText txt) = txt
 
-#if MIN_GHC_API_VERSION(8,6,0)
+spanDocToMarkdownForTest :: String -> String
+spanDocToMarkdownForTest
+  = haddockToMarkdown . H.toRegular . H._doc . H.parseParas Nothing
+
 -- Simple (and a bit hacky) conversion from Haddock markup to Markdown
 haddockToMarkdown
   :: H.DocH String String -> String
@@ -163,4 +167,3 @@ splitForList s
   = case lines s of
       [] -> ""
       (first:rest) -> unlines $ first : (map (("  " ++) . dropWhile isSpace) rest)
-#endif
