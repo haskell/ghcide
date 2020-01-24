@@ -1554,7 +1554,11 @@ haddockTests
   = testGroup "haddock"
       [ testCase "Num" $ checkHaddock
           "However, '(+)' and '(*)' are\ncustomarily expected to define a ring and have the following properties:\n\n[__Associativity of (+)__]: @(x + y) + z@ = @x + (y + z)@\n[__Commutativity of (+)__]: @x + y@ = @y + x@\n[__@fromInteger 0@ is the additive identity__]: @x + fromInteger 0@ = @x@"
+#if MIN_VERSION_haddock_library(1,8,0)
+          "\n\nHowever,  `(+)`  and  `(*)`  are\ncustomarily expected to define a ring and have the following properties: \n+ ****Associativity of (+)****: `(x + y) + z`  =  `x + (y + z)`\n+ ****Commutativity of (+)****: `x + y`  =  `y + x`\n+ ****`fromInteger 0`  is the additive identity****: `x + fromInteger 0`  =  `x`\n"
+#else
           "\n\nHowever, '(+)' and '(*)' are\ncustomarily expected to define a ring and have the following properties: \n+ ****Associativity of (+)****: `(x + y) + z`  =  `x + (y + z)`\n+ ****Commutativity of (+)****: `x + y`  =  `y + x`\n+ ****`fromInteger 0`  is the additive identity****: `x + fromInteger 0`  =  `x`\n"
+#endif
       , testCase "unsafePerformIO" $ checkHaddock
           "may require\ndifferent precautions:\n\n  * Use @{\\-\\# NOINLINE foo \\#-\\}@ as a pragma on any function @foo@\n        that calls 'unsafePerformIO'.  If the call is inlined,\n        the I\\/O may be performed more than once.\n\n  * Use the compiler flag @-fno-cse@ to prevent common sub-expression\n        elimination being performed on the module."
           "\n\nmay require\ndifferent precautions: \n+ Use  `{-# NOINLINE foo #-}`  as a pragma on any function  `foo` \n  that calls  `unsafePerformIO` .  If the call is inlined,\n  the I/O may be performed more than once.\n\n+ Use the compiler flag  `-fno-cse`  to prevent common sub-expression\n  elimination being performed on the module.\n\n"]
