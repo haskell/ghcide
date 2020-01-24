@@ -28,11 +28,9 @@ import DataCon
 import Var
 #endif
 
-#if MIN_GHC_API_VERSION(8,6,0)
 import           Data.Char (isSpace)
 import qualified Documentation.Haddock.Parser as H
 import qualified Documentation.Haddock.Types as H
-#endif
 
 showGhc :: Outputable a => a -> String
 showGhc = showPpr unsafeGlobalDynFlags
