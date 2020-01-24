@@ -166,4 +166,4 @@ splitForList :: String -> String
 splitForList s
   = case lines s of
       [] -> ""
-      (first:rest) -> unlines $ first : (map (("  " ++) . dropWhile isSpace) rest)
+      (first:rest) -> unlines $ first : map (("  " ++) . dropWhile isSpace) rest
