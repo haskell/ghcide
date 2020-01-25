@@ -14,16 +14,16 @@ import           Data.List.Extra
 import qualified Data.Map as M
 import           Data.Maybe
 import qualified Data.Text as T
+import           Development.IDE.GHC.Compat
 import           Development.IDE.GHC.Error
 import           Development.IDE.Spans.Common
 import           FastString
-import           GHC
 import SrcLoc
 
 
 getDocumentationTryGhc
   :: GhcMonad m
-  => [TypecheckedModule]
+  => [ParsedModule]
   -> Name
   -> m SpanDoc
 -- getDocs goes through the GHCi codepaths which cause problems on ghc-lib.
@@ -40,7 +40,7 @@ getDocumentationTryGhc tcs name = do
 #endif
 
 getDocumentation
- :: [TypecheckedModule] -- ^ All of the possible modules it could be defined in.
+ :: [ParsedModule] -- ^ All of the possible modules it could be defined in.
  ->  Name -- ^ The name you want documentation for.
  -> [T.Text]
 -- This finds any documentation between the name you want
@@ -56,10 +56,12 @@ getDocumentation tcs targetName = fromMaybe [] $ do
   tc <-
     find ((==) (Just $ srcSpanFile targetNameSpan) . annotationFileName)
       $ reverse tcs -- TODO : Is reversing the list here really neccessary?
-  -- Names bound by the module (we want to exclude non-"top-level"
-  -- bindings but unfortunately we get all here).
-  let bs = mapMaybe name_of_bind
-               (listifyAllSpans (tm_typechecked_source tc) :: [LHsBind GhcTc])
+
+  -- Top level names bound by the module
+  let bs = [ n | let L _ HsModule{hsmodDecls} = pm_parsed_source tc
+           , L _ (ValD hsbind) <- hsmodDecls
+           , Just n <- [name_of_bind hsbind]
+           ]
   -- Sort the names' source spans.
   let sortedSpans = sortedNameSpans bs
   -- Now go ahead and extract the docs.
@@ -81,16 +83,16 @@ getDocumentation tcs targetName = fromMaybe [] $ do
   where
     -- Get the name bound by a binding. We only concern ourselves with
     -- @FunBind@ (which covers functions and variables).
-    name_of_bind :: LHsBind GhcTc -> Maybe Name
-    name_of_bind (L _ FunBind {fun_id}) = Just (getName (unLoc fun_id))
+    name_of_bind :: HsBind GhcPs -> Maybe (Located RdrName)
+    name_of_bind FunBind {fun_id} = Just fun_id
     name_of_bind _ = Nothing
     -- Get source spans from names, discard unhelpful spans, remove
     -- duplicates and sort.
-    sortedNameSpans :: [Name] -> [RealSrcSpan]
-    sortedNameSpans ls = nubSort (mapMaybe (realSpan . nameSrcSpan) ls)
+    sortedNameSpans :: [Located RdrName] -> [RealSrcSpan]
+    sortedNameSpans ls = nubSort (mapMaybe (realSpan . getLoc) ls)
     isBetween target before after = before <= target && target <= after
-    ann = snd . pm_annotations . tm_parsed_module
-    annotationFileName :: TypecheckedModule -> Maybe FastString
+    ann = snd . pm_annotations
+    annotationFileName :: ParsedModule -> Maybe FastString
     annotationFileName = fmap srcSpanFile . listToMaybe . realSpans . ann
     realSpans :: M.Map SrcSpan [Located a] -> [RealSrcSpan]
     realSpans =

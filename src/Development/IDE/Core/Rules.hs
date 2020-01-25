@@ -266,7 +266,7 @@ getSpanInfoRule =
     define $ \GetSpanInfo file -> do
         tc <- use_ TypeCheck file
         deps <- maybe (TransitiveDependencies [] []) fst <$> useWithStale GetDependencies file
-        tms <- mapMaybe (fmap fst) <$> usesWithStale TypeCheck (transitiveModuleDeps deps)
+        tms <- mapMaybe (fmap fst) <$> usesWithStale GetParsedModule (transitiveModuleDeps deps)
         (fileImports, _) <- use_ GetLocatedImports file
         packageState <- hscEnv <$> use_ GhcSession file
         x <- liftIO $ getSrcSpanInfos packageState fileImports tc tms
