@@ -300,7 +300,7 @@ generateCore file = do
     (tm:tms) <- uses_ TypeCheck (file:transitiveModuleDeps deps)
     setPriority priorityGenerateCore
     packageState <- hscEnv <$> use_ GhcSession file
-    liftIO $ compileModule packageState tms tm
+    liftIO $ compileModule packageState [(tmrModSummary x, tmrModInfo x) | x <- tms] tm
 
 generateCoreRule :: Rules ()
 generateCoreRule =
@@ -313,7 +313,7 @@ generateByteCodeRule =
       (tm : tms) <- uses_ TypeCheck (file: transitiveModuleDeps deps)
       session <- hscEnv <$> use_ GhcSession file
       (_, guts, _) <- use_ GenerateCore file
-      liftIO $ generateByteCode session tms tm guts
+      liftIO $ generateByteCode session [(tmrModSummary x, tmrModInfo x) | x <- tms] tm guts
 
 -- A local rule type to get caching. We want to use newCache, but it has
 -- thread killed exception issues, so we lift it to a full rule.
