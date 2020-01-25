@@ -99,8 +99,6 @@ library
     include-dirs:
         include
     exposed-modules:
-        Development.IDE.Core.Completions
-        Development.IDE.Core.CompletionsTypes
         Development.IDE.Core.FileStore
         Development.IDE.Core.OfInterest
         Development.IDE.Core.PositionMapping
@@ -118,6 +116,8 @@ library
         Development.IDE.Types.Logger
         Development.IDE.Types.Options
     other-modules:
+        Development.IDE.Core.Completions
+        Development.IDE.Core.CompletionsTypes
         Development.IDE.Core.Debouncer
         Development.IDE.Core.Compile
         Development.IDE.Core.Preprocessor
