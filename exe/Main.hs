@@ -1,14 +1,17 @@
 -- Copyright (c) 2019 The DAML Authors. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
 {-# OPTIONS_GHC -Wno-dodgy-imports #-} -- GHC no longer exports def in GHC 8.6 and above
+{-# OPTIONS_GHC -Wno-orphans #-}
 {-# LANGUAGE CPP #-} -- To get precise GHC version
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE StandaloneDeriving #-}
 
 module Main(main) where
 
 import Arguments
 import Data.Maybe
 import Data.List.Extra
+import Data.Void
 import System.FilePath
 import Control.Concurrent.Extra
 import Control.Exception
@@ -125,7 +128,7 @@ main = do
             cradle <- maybe (loadImplicitCradle $ addTrailingPathSeparator dir) loadCradle x
             when (isNothing x) $ print cradle
             putStrLn $ "\nStep 4/6, Cradle " ++ show i ++ "/" ++ show n ++ ": Loading GHC Session"
-            cradleToSession cradle
+            optsToSession =<< cradleToSessionOpts cradle ""
 
         putStrLn "\nStep 5/6: Initializing the IDE"
         vfs <- makeVFSHandle
@@ -175,15 +178,19 @@ showEvent lock (EventFileDiagnostics (toNormalizedFilePath -> file) diags) =
 showEvent lock e = withLock lock $ print e
 
 
-cradleToSession :: Cradle -> IO HscEnvEq
-cradleToSession cradle = do
-    cradleRes <- getCompilerOptions "" cradle
+cradleToSessionOpts :: Cradle Void -> FilePath -> IO ComponentOptions
+cradleToSessionOpts cradle file = do
+    cradleRes <- getCompilerOptions file cradle
     opts <- case cradleRes of
         CradleSuccess r -> pure r
         CradleFail err -> throwIO err
         -- TODO Rather than failing here, we should ignore any files that use this cradle.
         -- That will require some more changes.
         CradleNone -> fail "'none' cradle is not yet supported"
+    pure opts
+
+optsToSession :: ComponentOptions -> IO HscEnvEq
+optsToSession opts = do
     libdir <- getLibdir
     env <- runGhc (Just libdir) $ do
         _targets <- initSession opts
@@ -191,9 +198,11 @@ cradleToSession cradle = do
     initDynLinker env
     newHscEnvEq env
 
+deriving instance Ord ComponentOptions
 
 loadSession :: FilePath -> IO (FilePath -> Action HscEnvEq)
 loadSession dir = do
+    -- This caches the mapping from Mod.hs -> hie.yaml
     cradleLoc <- memoIO $ \v -> do
         res <- findCradle v
         -- Sometimes we get C:, sometimes we get c:, and sometimes we get a relative path
@@ -201,11 +210,18 @@ loadSession dir = do
         -- e.g. see https://github.com/digital-asset/ghcide/issues/126
         res' <- traverse makeAbsolute res
         return $ normalise <$> res'
-    session <- memoIO $ \file -> do
-        c <- maybe (loadImplicitCradle $ addTrailingPathSeparator dir) loadCradle file
-        cradleToSession c
-    return $ \file -> liftIO $ session =<< cradleLoc file
-
+    -- This caches the mapping from hie.yaml + Mod.hs -> [String]
+    sessionOpts <- memoIO $ \(hieYaml, file) -> do
+        print ("getting opts for " <> show (hieYaml, file))
+        cradle <- maybe (loadImplicitCradle $ addTrailingPathSeparator dir) loadCradle hieYaml
+        cradleToSessionOpts cradle file
+    session <- memoIO $ \opts -> do
+        putStrLn $ "setting up opts for " <> show opts
+        optsToSession opts
+    return $ \file -> liftIO $ do
+        hieYaml <- cradleLoc file
+        opts <- sessionOpts (hieYaml, file)
+        session opts
 
 -- | Memoize an IO function, with the characteristics:
 --
