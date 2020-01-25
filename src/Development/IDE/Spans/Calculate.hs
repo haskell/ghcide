@@ -51,17 +51,17 @@ getSrcSpanInfos
     :: HscEnv
     -> [(Located ModuleName, Maybe NormalizedFilePath)]
     -> TcModuleResult
-    -> [TcModuleResult]
+    -> [ParsedModule]
     -> IO SpansInfo
 getSrcSpanInfos env imports tc tms =
     runGhcEnv env $
-        getSpanInfo imports (tmrModule tc) (map tmrModule tms)
+        getSpanInfo imports (tmrModule tc) tms
 
 -- | Get ALL source spans in the module.
 getSpanInfo :: GhcMonad m
             => [(Located ModuleName, Maybe NormalizedFilePath)] -- ^ imports
             -> TypecheckedModule
-            -> [TypecheckedModule]
+            -> [ParsedModule]
             -> m SpansInfo
 getSpanInfo mods tcm tcms =
   do let tcs = tm_typechecked_source tcm
@@ -69,7 +69,7 @@ getSpanInfo mods tcm tcms =
          es  = listifyAllSpans  tcs :: [LHsExpr GhcTc]
          ps  = listifyAllSpans' tcs :: [Pat GhcTc]
          ts  = listifyAllSpans $ tm_renamed_source tcm :: [LHsType GhcRn]
-         allModules = tcm:tcms
+         allModules = tm_parsed_module tcm : tcms
          funBinds = funBindMap $ tm_parsed_module tcm
      bts <- mapM (getTypeLHsBind allModules funBinds) bs   -- binds
      ets <- mapM (getTypeLHsExpr allModules) es -- expressions
@@ -117,7 +117,7 @@ ieLNames _ = []
 
 -- | Get the name and type of a binding.
 getTypeLHsBind :: (GhcMonad m)
-               => [TypecheckedModule]
+               => [ParsedModule]
                -> OccEnv (HsBind GhcPs)
                -> LHsBind GhcTc
                -> m [(SpanSource, SrcSpan, Maybe Type, SpanDoc)]
@@ -142,7 +142,7 @@ getConstraintsLHsBind _ = []
 
 -- | Get the name and type of an expression.
 getTypeLHsExpr :: (GhcMonad m)
-               => [TypecheckedModule]
+               => [ParsedModule]
                -> LHsExpr GhcTc
                -> m (Maybe (SpanSource, SrcSpan, Maybe Type, SpanDoc))
 getTypeLHsExpr tms e = do
@@ -169,7 +169,7 @@ getTypeLHsExpr tms e = do
 
 -- | Get the name and type of a pattern.
 getTypeLPat :: (GhcMonad m)
-            => [TypecheckedModule]
+            => [ParsedModule]
             -> Pat GhcTc
             -> m (Maybe (SpanSource, SrcSpan, Maybe Type, SpanDoc))
 getTypeLPat tms pat = do
@@ -187,7 +187,7 @@ getTypeLPat tms pat = do
 
 getLHsType
     :: GhcMonad m
-    => [TypecheckedModule]
+    => [ParsedModule]
     -> LHsType GhcRn
     -> m [(SpanSource, SrcSpan, Maybe Type, SpanDoc)]
 getLHsType tms (L spn (HsTyVar U _ v)) = do

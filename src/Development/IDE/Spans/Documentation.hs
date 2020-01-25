@@ -23,7 +23,7 @@ import SrcLoc
 
 getDocumentationTryGhc
   :: GhcMonad m
-  => [TypecheckedModule]
+  => [ParsedModule]
   -> Name
   -> m SpanDoc
 -- getDocs goes through the GHCi codepaths which cause problems on ghc-lib.
@@ -33,7 +33,7 @@ getDocumentationTryGhc tcs name = do
   res <- catchSrcErrors "docs" $ getDocs name
   case res of
     Right (Right (Just docs, _)) -> return $ SpanDocString docs
-    _ -> return $ SpanDocText $ getDocumentation (map tm_parsed_module tcs) name
+    _ -> return $ SpanDocText $ getDocumentation tcs name
 #else
 getDocumentationTryGhc tcs name = do
   return $ SpanDocText $ getDocumentation tcs name
