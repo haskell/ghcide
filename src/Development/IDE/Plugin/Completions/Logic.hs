@@ -183,7 +183,7 @@ mkImportCompl enteredQual label =
   CompletionItem m (Just CiModule) (Just label)
     Nothing Nothing Nothing Nothing Nothing Nothing Nothing
     Nothing Nothing Nothing Nothing Nothing
-  where 
+  where
     m = fromMaybe "" (T.stripPrefix enteredQual label)
 
 mkExtCompl :: T.Text -> CompletionItem
@@ -294,15 +294,15 @@ toggleSnippets ClientCapabilities { _textDocument } (WithSnippets with) x
   where supported = fromMaybe False (_textDocument >>= _completion >>= _completionItem >>= _snippetSupport)
 
 -- | Returns the cached completions for the given module and position.
-getCompletions :: IdeOptions -> CachedCompletions -> TypecheckedModule -> VFS.PosPrefixInfo -> ClientCapabilities -> WithSnippets -> IO [CompletionItem]
+getCompletions :: IdeOptions -> CachedCompletions -> ParsedModule -> VFS.PosPrefixInfo -> ClientCapabilities -> WithSnippets -> IO [CompletionItem]
 getCompletions ideOpts CC { allModNamesAsNS, unqualCompls, qualCompls, importableModules }
-               tm prefixInfo caps withSnippets = do
+               pm prefixInfo caps withSnippets = do
   let VFS.PosPrefixInfo { VFS.fullLine, VFS.prefixModule, VFS.prefixText } = prefixInfo
       enteredQual = if T.null prefixModule then "" else prefixModule <> "."
       fullPrefix  = enteredQual <> prefixText
 
       -- default to value context if no explicit context
-      context = fromMaybe ValueContext $ getCContext pos (tm_parsed_module tm)
+      context = fromMaybe ValueContext $ getCContext pos pm
 
       {- correct the position by moving 'foo :: Int -> String ->    '
                                                                     ^
