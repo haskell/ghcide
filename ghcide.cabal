@@ -116,6 +116,7 @@ library
         Development.IDE.Types.Logger
         Development.IDE.Types.Options
         Development.IDE.Plugin.Completions
+        Development.IDE.Plugin.CodeAction
     other-modules:
         Development.IDE.Core.Debouncer
         Development.IDE.Core.Compile
@@ -127,7 +128,6 @@ library
         Development.IDE.GHC.Orphans
         Development.IDE.GHC.Warnings
         Development.IDE.Import.FindImports
-        Development.IDE.LSP.CodeAction
         Development.IDE.LSP.HoverDefinition
         Development.IDE.LSP.Notifications
         Development.IDE.LSP.Outline
