@@ -61,6 +61,7 @@ import qualified Data.Text as T
 import Data.Traversable (for)
 import Data.Tuple.Extra
 import Data.Unique
+import Development.IDE.Core.Abortable
 import Development.IDE.Core.Debouncer
 import Development.IDE.Core.PositionMapping
 import Development.IDE.Types.Logger hiding (Priority)
@@ -394,29 +395,28 @@ shakeRun IdeState{shakeExtras=ShakeExtras{..}, ..} acts =
         (\stop -> do
               (stopTime,_) <- duration stop
               logDebug logger $ T.pack $ "Starting shakeRun (aborting the previous one took " ++ showDuration stopTime ++ ")"
-              bar <- newBarrier
-              start <- offsetTime
-              pure (start, bar))
+        )
         -- It is crucial to be masked here, otherwise we can get killed
         -- between spawning the new thread and updating shakeAbort.
         -- See https://github.com/digital-asset/ghcide/issues/79
-        (\(start, bar) -> do
-              thread <- forkFinally (shakeRunDatabaseProfile shakeProfileDir shakeDb acts) $ \res -> do
-                  runTime <- start
-                  let res' = case res of
-                          Left e -> "exception: " <> displayException e
-                          Right _ -> "completed"
-                      profile = case res of
-                          Right (_, Just fp) -> 
-                              let link = case filePathToUri' $ toNormalizedFilePath fp of
-                                            NormalizedUri x -> x
-                              in ", profile saved at " <> T.unpack link
-                          _ -> ""
-                  logDebug logger $ T.pack $
-                      "Finishing shakeRun (took " ++ showDuration runTime ++ ", " ++ res' ++ profile ++ ")"
-                  signalBarrier bar (fst <$> res)
-              -- important: we send an async exception to the thread, then wait for it to die, before continuing
-              pure (killThread thread >> void (waitBarrier bar), either throwIO return =<< waitBarrier bar))
+        (\() -> do
+              start <- offsetTime
+              let h res = do
+                    runTime <- start
+                    let res' = case res of
+                            Left e -> "exception: " <> displayException e
+                            Right _ -> "completed"
+                        profile = case res of
+                            Right (_, Just fp) ->
+                                let link = case filePathToUri' $ toNormalizedFilePath fp of
+                                                NormalizedUri x -> x
+                                in ", profile saved at " <> T.unpack link
+                            _ -> ""
+                    logDebug logger $ T.pack $
+                        "Finishing shakeRun (took " ++ showDuration runTime ++ ", " ++ res' ++ profile ++ ")"
+                    return $ fst <$> res
+              Abortable{..} <- spawnWithContinuation h (shakeRunDatabaseProfile shakeProfileDir shakeDb acts)
+              pure (abort, either (throwIO @SomeException) return =<< wait))
 
 getDiagnostics :: IdeState -> IO [FileDiagnostic]
 getDiagnostics IdeState{shakeExtras = ShakeExtras{diagnostics}} = do
