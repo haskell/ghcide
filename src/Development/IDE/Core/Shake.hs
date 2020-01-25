@@ -413,10 +413,13 @@ shakeRun IdeState{shakeExtras=ShakeExtras{..}, ..} acts =
                                                 NormalizedUri x -> x
                                 in ", profile saved at " <> T.unpack link
                             _ -> ""
-                   logDebug logger $ T.pack $
+                   let logMsg = logDebug logger $ T.pack $
                         "Finishing shakeRun (took " ++ showDuration runTime ++ ", " ++ res' ++ profile ++ ")"
-                   return $ fst <$> res
-              pure (cancel aThread, either (throwIO @SomeException) return =<< wait aThread))
+                   return (fst <$> res, logMsg)
+              let wrapUp (res, logMsg) = do
+                    () <- logMsg
+                    either (throwIO @SomeException) return res
+              pure (cancel aThread, wrapUp =<< wait aThread))
 
 getDiagnostics :: IdeState -> IO [FileDiagnostic]
 getDiagnostics IdeState{shakeExtras = ShakeExtras{diagnostics}} = do
