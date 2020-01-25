@@ -308,6 +308,8 @@ transitiveDeps DependencyInformation{..} file = do
 
 data TransitiveDependencies = TransitiveDependencies
   { transitiveModuleDeps :: [NormalizedFilePath]
+  -- ^ Transitive module dependencies in topological order.
+  -- The module itself is not included.
   , transitiveNamedModuleDeps :: [NamedModuleDep]
   -- ^ Transitive module dependencies in topological order.
   -- The module itself is not included.

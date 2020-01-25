@@ -17,6 +17,9 @@ module Development.IDE.Core.Compile
   , mkTcModuleResult
   , generateByteCode
   , loadHieFile
+  , loadInterface
+  , loadDepModule
+  , loadModuleHome
   ) where
 
 import Development.IDE.Core.RuleTypes
@@ -49,10 +52,13 @@ import           GhcMonad
 import           GhcPlugins                     as GHC hiding (fst3, (<>))
 import qualified HeaderInfo                     as Hdr
 import           HscMain                        (hscInteractive, hscSimplify)
+import           LoadIface                      (readIface)
+import qualified Maybes
 import           MkIface
 import           NameCache
 import           StringBuffer                   as SB
-import           TcRnMonad (tcg_th_coreplugins)
+import           TcRnMonad (initIfaceLoad, tcg_th_coreplugins)
+import           TcIface                        (typecheckIface)
 import           TidyPgm
 
 import Control.Monad.Extra
@@ -67,6 +73,7 @@ import           Data.Maybe
 import           Data.Tuple.Extra
 import qualified Data.Map.Strict                          as Map
 import           System.FilePath
+import           System.IO
 
 
 -- | Given a string buffer, return the string (after preprocessing) and the 'ParsedModule'.
@@ -255,7 +262,7 @@ setupEnv tmsIn = do
 
     session <- getSession
 
-    let mss = map (pm_mod_summary . tm_parsed_module . tmrModule) tms
+    let mss = map tmrModSummary tms
 
     -- set the target and module graph in the session
     let graph = mkModuleGraph mss
@@ -276,7 +283,7 @@ setupEnv tmsIn = do
     modifySession $ \s -> s { hsc_FC = newFinderCacheVar }
 
     -- load dependent modules, which must be in topological order.
-    mapM_ loadModuleHome tms
+    mapM_ (modifySession . loadModuleHome . tmrModInfo) tms
 
 
 -- | Load a module, quickly. Input doesn't need to be desugared.
@@ -284,17 +291,30 @@ setupEnv tmsIn = do
 -- This variant of loadModuleHome will *never* cause recompilation, it just
 -- modifies the session.
 loadModuleHome
-    :: (GhcMonad m)
-    => TcModuleResult
-    -> m ()
-loadModuleHome tmr = modifySession $ \e ->
-    e { hsc_HPT = addToHpt (hsc_HPT e) mod mod_info }
-  where
-    ms       = pm_mod_summary . tm_parsed_module . tmrModule $ tmr
-    mod_info = tmrModInfo tmr
-    mod      = ms_mod_name ms
+    :: HomeModInfo
+    -> HscEnv
+    -> HscEnv
+loadModuleHome mod_info e =
+    e { hsc_HPT = addToHpt (hsc_HPT e) mod_name mod_info }
+    where
+      mod_name = moduleName $ mi_module $ hm_iface mod_info
 
+-- | Load module interface.
+loadDepModuleIO :: ModIface -> Maybe Linkable -> HscEnv -> IO HscEnv
+loadDepModuleIO iface linkable hsc = do
+    details <- liftIO $ fixIO $ \details -> do
+        let hsc' = hsc { hsc_HPT = addToHpt (hsc_HPT hsc) mod (HomeModInfo iface details linkable) }
+        initIfaceLoad hsc' (typecheckIface iface)
+    let mod_info = HomeModInfo iface details linkable
+    return $ loadModuleHome mod_info hsc
+    where
+      mod = moduleName $ mi_module iface
 
+loadDepModule :: GhcMonad m => ModIface -> Maybe Linkable -> m ()
+loadDepModule iface linkable = do
+  e <- getSession
+  e' <- liftIO $ loadDepModuleIO iface linkable e
+  setSession e'
 
 -- | GhcMonad function to chase imports of a module given as a StringBuffer. Returns given module's
 -- name and its imports.
@@ -414,3 +434,30 @@ loadHieFile f = do
         u <- mkSplitUniqSupply 'a'
         let nameCache = initNameCache u []
         fmap (GHC.hie_file_result . fst) $ GHC.readHieFile nameCache f
+
+-- | Retuns an up-to-date module interface if available.
+--   Assumes file exists.
+--   Requires the 'HscEnv' to be set up with dependencies
+loadInterface
+  :: HscEnv
+  -> ModSummary
+  -> [HiFileResult]
+  -> IO (Either String ModIface)
+loadInterface session ms deps = do
+  let hiFile = ml_hi_file $ ms_location ms
+  r <- initIfaceLoad session $ readIface (ms_mod ms) hiFile
+  case r of
+    Maybes.Succeeded iface -> do
+      session' <- foldM (\e d -> loadDepModuleIO (hirModIface d) Nothing e) session deps
+      (reason, iface') <- checkOldIface session' ms SourceUnmodified (Just iface)
+      case iface' of
+        Just iface' -> return $ Right iface'
+        Nothing -> return $ Left (showReason reason)
+    Maybes.Failed err -> do
+      let errMsg = showSDoc (hsc_dflags session) err
+      return $ Left errMsg
+
+showReason :: RecompileRequired -> String
+showReason MustCompile = "Stale"
+showReason (RecompBecause reason) = "Stale (" ++ reason ++ ")"
+showReason UpToDate = "Up to date"
