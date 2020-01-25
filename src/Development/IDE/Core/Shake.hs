@@ -379,11 +379,11 @@ shakeShut IdeState{..} = withMVar shakeAbort $ \stop -> do
 
 -- | This is a variant of withMVar where the first argument is run unmasked and if it throws
 -- an exception, the previous value is restored while the second argument is executed masked.
-withMVar' :: MVar a -> (a -> IO b) -> (b -> IO (a, c)) -> IO c
+withMVar' :: MVar a -> (a -> IO ()) -> IO (a, c) -> IO c
 withMVar' var unmasked masked = mask $ \restore -> do
     a <- takeMVar var
-    b <- restore (unmasked a) `onException` putMVar var a
-    (a', c) <- masked b
+    restore (unmasked a) `onException` putMVar var a
+    (a', c) <- masked
     putMVar var a'
     pure c
 
@@ -399,7 +399,7 @@ shakeRun IdeState{shakeExtras=ShakeExtras{..}, ..} acts =
         -- It is crucial to be masked here, otherwise we can get killed
         -- between spawning the new thread and updating shakeAbort.
         -- See https://github.com/digital-asset/ghcide/issues/79
-        (\() -> do
+        (do
               start <- offsetTime
               aThread <- asyncWithUnmask $ \restore -> do
                    res <- try (restore $ shakeRunDatabaseProfile shakeProfileDir shakeDb acts)
