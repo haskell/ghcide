@@ -146,16 +146,15 @@ compileModule packageState deps tmr =
             (guts, details) <- liftIO $ tidyProgram session desugar
             return (map snd warnings, (mg_safe_haskell desugar, guts, details))
 
-generateByteCode :: HscEnv -> [(ModSummary, HomeModInfo)] -> TcModuleResult -> CgGuts -> IO ([FileDiagnostic], Maybe Linkable)
-generateByteCode hscEnv deps tmr guts =
+generateByteCode :: HscEnv -> [(ModSummary, HomeModInfo)] -> (ModSummary, HomeModInfo) -> CgGuts -> IO ([FileDiagnostic], Maybe Linkable)
+generateByteCode hscEnv deps tmr@(summary, _) guts =
     fmap (either (, Nothing) (second Just)) $
     runGhcEnv hscEnv $
       catchSrcErrors "bytecode" $ do
-          setupEnv (deps ++ [(tmrModSummary tmr, tmrModInfo tmr)])
+          setupEnv (deps ++ [tmr])
           session <- getSession
           (warnings, (_, bytecode, sptEntries)) <- withWarnings "bytecode" $ \tweak ->
-              liftIO $ hscInteractive session guts (tweak $ GHC.pm_mod_summary $ GHC.tm_parsed_module $ tmrModule tmr)
-          let summary = pm_mod_summary $ tm_parsed_module $ tmrModule tmr
+              liftIO $ hscInteractive session guts (tweak summary)
           let unlinked = BCOs bytecode sptEntries
           let linkable = LM (ms_hs_date summary) (ms_mod summary) [unlinked]
           pure (map snd warnings, linkable)
