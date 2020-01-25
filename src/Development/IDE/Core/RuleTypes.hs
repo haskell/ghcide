@@ -51,6 +51,7 @@ type instance RuleResult GetDependencies = TransitiveDependencies
 data TcModuleResult = TcModuleResult
     { tmrModule     :: TypecheckedModule
     , tmrModInfo    :: HomeModInfo
+    , tmrModSummary :: ModSummary
     }
 instance Show TcModuleResult where
     show = show . pm_mod_summary . tm_parsed_module . tmrModule

@@ -216,7 +216,8 @@ mkTcModuleResult tcm = do
     session <- getSession
     (iface, _) <- liftIO $ mkIfaceTc session Nothing Sf_None details tcGblEnv
     let mod_info = HomeModInfo iface details Nothing
-    return $ TcModuleResult tcm mod_info
+        mod_summary = pm_mod_summary $ tm_parsed_module tcm
+    return $ TcModuleResult tcm mod_info mod_summary
   where
     (tcGblEnv, details) = tm_internals_ tcm
 
@@ -231,7 +232,7 @@ setupEnv tmsIn = do
 
     session <- getSession
 
-    let mss = map (pm_mod_summary . tm_parsed_module . tmrModule) tms
+    let mss = map tmrModSummary tms
 
     -- set the target and module graph in the session
     let graph = mkModuleGraph mss
