@@ -32,7 +32,6 @@ import           Development.IDE.GHC.Error (zeroSpan, catchSrcErrors)
 import           Prelude hiding (mod)
 import           TcHsSyn
 import           Var
-import Development.IDE.Core.Compile
 import qualified Development.IDE.GHC.Compat as Compat
 import Development.IDE.GHC.Util
 import Development.IDE.Spans.Common
@@ -50,12 +49,12 @@ import Development.IDE.Spans.Documentation
 getSrcSpanInfos
     :: HscEnv
     -> [(Located ModuleName, Maybe NormalizedFilePath)]
-    -> TcModuleResult
+    -> TypecheckedModule
     -> [ParsedModule]
     -> IO SpansInfo
 getSrcSpanInfos env imports tc tms =
     runGhcEnv env $
-        getSpanInfo imports (tmrModule tc) tms
+        getSpanInfo imports tc tms
 
 -- | Get ALL source spans in the module.
 getSpanInfo :: GhcMonad m

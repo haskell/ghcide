@@ -265,7 +265,7 @@ getSpanInfoRule =
         tms <- mapMaybe (fmap fst) <$> usesWithStale GetParsedModule (transitiveModuleDeps deps)
         (fileImports, _) <- use_ GetLocatedImports file
         packageState <- hscEnv <$> use_ GhcSession file
-        x <- liftIO $ getSrcSpanInfos packageState fileImports tc tms
+        x <- liftIO $ getSrcSpanInfos packageState fileImports (tmrModule tc) tms
         return ([], Just x)
 
 -- Typechecks a module.
