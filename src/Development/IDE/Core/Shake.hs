@@ -61,7 +61,6 @@ import qualified Data.Text as T
 import Data.Traversable (for)
 import Data.Tuple.Extra
 import Data.Unique
-import Development.IDE.Core.Abortable
 import Development.IDE.Core.Debouncer
 import Development.IDE.Core.PositionMapping
 import Development.IDE.Types.Logger hiding (Priority)
@@ -73,6 +72,7 @@ import qualified Data.SortedList as SL
 import           Development.IDE.Types.Diagnostics
 import Development.IDE.Types.Location
 import Development.IDE.Types.Options
+import           Control.Concurrent.Async
 import           Control.Concurrent.Extra
 import           Control.Exception
 import           Control.DeepSeq
@@ -401,22 +401,22 @@ shakeRun IdeState{shakeExtras=ShakeExtras{..}, ..} acts =
         -- See https://github.com/digital-asset/ghcide/issues/79
         (\() -> do
               start <- offsetTime
-              let h res = do
-                    runTime <- start
-                    let res' = case res of
+              aThread <- asyncWithUnmask $ \restore -> do
+                   res <- try (restore $ shakeRunDatabaseProfile shakeProfileDir shakeDb acts)
+                   runTime <- start
+                   let res' = case res of
                             Left e -> "exception: " <> displayException e
                             Right _ -> "completed"
-                        profile = case res of
+                       profile = case res of
                             Right (_, Just fp) ->
                                 let link = case filePathToUri' $ toNormalizedFilePath fp of
                                                 NormalizedUri x -> x
                                 in ", profile saved at " <> T.unpack link
                             _ -> ""
-                    logDebug logger $ T.pack $
+                   logDebug logger $ T.pack $
                         "Finishing shakeRun (took " ++ showDuration runTime ++ ", " ++ res' ++ profile ++ ")"
-                    return $ fst <$> res
-              Abortable{..} <- spawnWithContinuation h (shakeRunDatabaseProfile shakeProfileDir shakeDb acts)
-              pure (abort, either (throwIO @SomeException) return =<< wait))
+                   return $ fst <$> res
+              pure (cancel aThread, either (throwIO @SomeException) return =<< wait aThread))
 
 getDiagnostics :: IdeState -> IO [FileDiagnostic]
 getDiagnostics IdeState{shakeExtras = ShakeExtras{diagnostics}} = do
