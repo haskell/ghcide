@@ -42,6 +42,7 @@ import           Development.IDE.Core.FileExists
 import           Development.IDE.Core.FileStore        (getFileContents)
 import           Development.IDE.Types.Diagnostics
 import Development.IDE.Types.Location
+import Development.IDE.Types.Logger (logDebug)
 import Development.IDE.GHC.Compat hiding (parseModule, typecheckModule)
 import Development.IDE.GHC.Util
 import Data.Coerce
@@ -57,7 +58,6 @@ import qualified Data.Text                                as T
 import           Development.IDE.GHC.Error
 import           Development.Shake                        hiding (Diagnostic)
 import Development.IDE.Core.RuleTypes
-import Development.IDE.Types.Logger (logDebug)
 import Development.IDE.Spans.Type
 
 import qualified GHC.LanguageExtensions as LangExt
@@ -331,29 +331,30 @@ getSpanInfoRule =
 
 -- Typechecks a module.
 typeCheckRule :: Rules ()
-typeCheckRule =
-    define $ \TypeCheck file -> do
-        pm <- use_ GetParsedModule file
-        deps <- use_ GetDependencies file
-        packageState <- hscEnv <$> use_ GhcSession file
-        -- Figure out whether we need TemplateHaskell or QuasiQuotes support
-        let graph_needs_th_qq = needsTemplateHaskellOrQQ $ hsc_mod_graph packageState
-            file_uses_th_qq = uses_th_qq $ ms_hspp_opts (pm_mod_summary pm)
-            any_uses_th_qq = graph_needs_th_qq || file_uses_th_qq
-        tms <- if any_uses_th_qq
-                  -- If we use TH or QQ, we must obtain the bytecode
-                  then do
-                    bytecodes <- uses_ GenerateByteCode (transitiveModuleDeps deps)
-                    tmrs <- uses_ TypeCheck (transitiveModuleDeps deps)
-                    pure (zipWith addByteCode bytecodes tmrs)
-                  else uses_ TypeCheck (transitiveModuleDeps deps)
-        setPriority priorityTypeCheck
-        IdeOptions{ optDefer = defer} <- getIdeOptions
-        liftIO $ typecheckModule defer packageState tms pm
-    where
-        uses_th_qq dflags = xopt LangExt.TemplateHaskell dflags || xopt LangExt.QuasiQuotes dflags
-        addByteCode :: Linkable -> TcModuleResult -> TcModuleResult
-        addByteCode lm tmr = tmr { tmrModInfo = (tmrModInfo tmr) { hm_linkable = Just lm } }
+typeCheckRule = define $ \TypeCheck file -> do
+  pm   <- use_ GetParsedModule file
+  deps <- use_ GetDependencies file
+  hsc  <- hscEnv <$> use_ GhcSession file
+  -- Figure out whether we need TemplateHaskell or QuasiQuotes support
+  let graph_needs_th_qq = needsTemplateHaskellOrQQ $ hsc_mod_graph hsc
+      file_uses_th_qq   = uses_th_qq $ ms_hspp_opts (pm_mod_summary pm)
+      any_uses_th_qq    = graph_needs_th_qq || file_uses_th_qq
+  mirs      <- uses_ GetModIface (transitiveModuleDeps deps)
+  bytecodes <- if any_uses_th_qq
+    then -- If we use TH or QQ, we must obtain the bytecode
+      fmap Just <$> uses_ GenerateByteCode (transitiveModuleDeps deps)
+    else
+      pure $ repeat Nothing
+
+  setPriority priorityTypeCheck
+  IdeOptions { optDefer = defer } <- getIdeOptions
+
+  liftIO $ typecheckModule defer hsc (zipWith unpack mirs bytecodes) pm
+ where
+  unpack HiFileResult{..} bc = (hirModSummary, (hirModIface, bc))
+  uses_th_qq dflags =
+    xopt LangExt.TemplateHaskell dflags || xopt LangExt.QuasiQuotes dflags
+
 
 generateCore :: NormalizedFilePath -> Action (IdeResult (SafeHaskellMode, CgGuts, ModDetails))
 generateCore file = do
@@ -361,7 +362,7 @@ generateCore file = do
     (tm:tms) <- uses_ TypeCheck (file:transitiveModuleDeps deps)
     setPriority priorityGenerateCore
     packageState <- hscEnv <$> use_ GhcSession file
-    liftIO $ compileModule packageState tms tm
+    liftIO $ compileModule packageState [(tmrModSummary x, tmrModInfo x) | x <- tms] tm
 
 generateCoreRule :: Rules ()
 generateCoreRule =
@@ -374,7 +375,7 @@ generateByteCodeRule =
       (tm : tms) <- uses_ TypeCheck (file: transitiveModuleDeps deps)
       session <- hscEnv <$> use_ GhcSession file
       (_, guts, _) <- use_ GenerateCore file
-      liftIO $ generateByteCode session tms tm guts
+      liftIO $ generateByteCode session [(tmrModSummary x, tmrModInfo x) | x <- tms] tm guts
 
 -- A local rule type to get caching. We want to use newCache, but it has
 -- thread killed exception issues, so we lift it to a full rule.

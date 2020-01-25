@@ -103,30 +103,32 @@ computePackageDeps env pkg = do
             T.pack $ "unknown package: " ++ show pkg]
         Just pkgInfo -> return $ Right $ depends pkgInfo
 
-
--- | Typecheck a single module using the supplied dependencies and packages.
-typecheckModule
-    :: IdeDefer
-    -> HscEnv
-    -> [TcModuleResult]
-    -> ParsedModule
-    -> IO (IdeResult TcModuleResult)
-typecheckModule (IdeDefer defer) packageState deps pm =
-    let demoteIfDefer = if defer then demoteTypeErrorsToWarnings else id
-    in
+typecheckModule :: IdeDefer
+                -> HscEnv
+                -> [(ModSummary, (ModIface, Maybe Linkable))]
+                -> ParsedModule
+                -> IO (IdeResult TcModuleResult)
+typecheckModule (IdeDefer defer) hsc depsIn pm = do
     fmap (either (, Nothing) (second Just)) $
-    runGhcEnv packageState $
-        catchSrcErrors "typecheck" $ do
-            setupEnv deps
-            let modSummary = pm_mod_summary pm
-                dflags = ms_hspp_opts modSummary
-            modSummary' <- initPlugins modSummary
-            (warnings, tcm) <- withWarnings "typecheck" $ \tweak ->
-                GHC.typecheckModule $ enableTopLevelWarnings
-                                    $ demoteIfDefer pm{pm_mod_summary = tweak modSummary'}
-            tcm2 <- mkTcModuleResult tcm
-            let errorPipeline = unDefer . hideDiag dflags
-            return (map errorPipeline warnings, tcm2)
+      runGhcEnv hsc $
+      catchSrcErrors "typecheck" $ do
+        -- Currently GetDependencies returns things in topological order so A comes before B if A imports B.
+        -- We need to reverse this as GHC gets very unhappy otherwise and complains about broken interfaces.
+        -- Long-term we might just want to change the order returned by GetDependencies
+        deps <- setupEnv' $ reverse depsIn
+        mapM_ (uncurry loadDepModule . snd) deps
+
+        let modSummary = pm_mod_summary pm
+            dflags = ms_hspp_opts modSummary
+        modSummary' <- initPlugins modSummary
+        (warnings, tcm) <- withWarnings "typecheck" $ \tweak ->
+            GHC.typecheckModule $ enableTopLevelWarnings
+                                $ demoteIfDefer pm{pm_mod_summary = tweak modSummary'}
+        tcm2 <- mkTcModuleResult tcm
+        let errorPipeline = unDefer . hideDiag dflags
+        return (map errorPipeline warnings, tcm2)
+    where
+        demoteIfDefer = if defer then demoteTypeErrorsToWarnings else id
 
 initPlugins :: GhcMonad m => ModSummary -> m ModSummary
 initPlugins modSummary = do
@@ -142,14 +144,14 @@ initPlugins modSummary = do
 -- provide errors.
 compileModule
     :: HscEnv
-    -> [TcModuleResult]
+    -> [(ModSummary, HomeModInfo)]
     -> TcModuleResult
     -> IO (IdeResult (SafeHaskellMode, CgGuts, ModDetails))
 compileModule packageState deps tmr =
     fmap (either (, Nothing) (second Just)) $
     runGhcEnv packageState $
         catchSrcErrors "compile" $ do
-            setupEnv (deps ++ [tmr])
+            setupEnv (deps ++ [(tmrModSummary tmr, tmrModInfo tmr)])
 
             let tm = tmrModule tmr
             session <- getSession
@@ -168,12 +170,12 @@ compileModule packageState deps tmr =
             (guts, details) <- liftIO $ tidyProgram session desugared_guts
             return (map snd warnings, (mg_safe_haskell desugar, guts, details))
 
-generateByteCode :: HscEnv -> [TcModuleResult] -> TcModuleResult -> CgGuts -> IO (IdeResult Linkable)
+generateByteCode :: HscEnv -> [(ModSummary, HomeModInfo)] -> TcModuleResult -> CgGuts -> IO (IdeResult Linkable)
 generateByteCode hscEnv deps tmr guts =
     fmap (either (, Nothing) (second Just)) $
     runGhcEnv hscEnv $
       catchSrcErrors "bytecode" $ do
-          setupEnv (deps ++ [tmr])
+          setupEnv (deps ++ [(tmrModSummary tmr, tmrModInfo tmr)])
           session <- getSession
           (warnings, (_, bytecode, sptEntries)) <- withWarnings "bytecode" $ \tweak ->
 #if MIN_GHC_API_VERSION(8,10,0)
@@ -253,16 +255,23 @@ mkTcModuleResult tcm = do
 
 -- | Setup the environment that GHC needs according to our
 -- best understanding (!)
-setupEnv :: GhcMonad m => [TcModuleResult] -> m ()
+setupEnv :: GhcMonad m => [(ModSummary, HomeModInfo)] -> m ()
 setupEnv tmsIn = do
+    tms <- setupEnv' tmsIn
+    -- load dependent modules, which must be in topological order.
+    modifySession $ \e ->
+      foldl' (\e (_, hmi) -> loadModuleHome hmi e) e tms
+
+setupEnv' :: GhcMonad m => [(ModSummary, b)] -> m [(ModSummary, b)]
+setupEnv' tmsIn = do
     -- if both a .hs-boot file and a .hs file appear here, we want to make sure that the .hs file
     -- takes precedence, so put the .hs-boot file earlier in the list
-    let isSourceFile = (==HsBootFile) . ms_hsc_src . pm_mod_summary . tm_parsed_module . tmrModule
-        tms = sortBy (compare `on` Down . isSourceFile) tmsIn
+    let isSourceFile = (==HsBootFile) . ms_hsc_src
+        tms = sortBy (compare `on` Down . isSourceFile . fst) tmsIn
 
     session <- getSession
 
-    let mss = map tmrModSummary tms
+    let mss = map fst tms
 
     -- set the target and module graph in the session
     let graph = mkModuleGraph mss
@@ -282,9 +291,7 @@ setupEnv tmsIn = do
     newFinderCacheVar <- liftIO $ newIORef $! newFinderCache
     modifySession $ \s -> s { hsc_FC = newFinderCacheVar }
 
-    -- load dependent modules, which must be in topological order.
-    mapM_ (modifySession . loadModuleHome . tmrModInfo) tms
-
+    return tms
 
 -- | Load a module, quickly. Input doesn't need to be desugared.
 -- A module must be loaded before dependent modules can be typechecked.
