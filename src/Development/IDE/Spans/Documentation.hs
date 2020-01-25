@@ -52,7 +52,7 @@ getDocumentation
 -- more accurately.
 getDocumentation tcs targetName = fromMaybe [] $ do
   -- Find the module the target is defined in.
-  targetNameSpan <- realSpan $ getLoc targetName
+  targetNameSpan <- realSpan $ nameSrcSpan targetName
   tc <-
     find ((==) (Just $ srcSpanFile targetNameSpan) . annotationFileName)
       $ reverse tcs -- TODO : Is reversing the list here really neccessary?
@@ -86,7 +86,7 @@ getDocumentation tcs targetName = fromMaybe [] $ do
     name_of_bind _ = Nothing
     -- Get source spans from names, discard unhelpful spans, remove
     -- duplicates and sort.
-    sortedNameSpans :: HasSrcSpan a => [a] -> [RealSrcSpan]
+    sortedNameSpans :: [Located RdrName] -> [RealSrcSpan]
     sortedNameSpans ls = nubSort (mapMaybe (realSpan . getLoc) ls)
     isBetween target before after = before <= target && target <= after
     ann = snd . pm_annotations
