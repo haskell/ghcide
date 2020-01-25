@@ -81,10 +81,10 @@
     - Development.IDE.GHC.Compat
     - Development.IDE.GHC.Util
     - Development.IDE.Import.FindImports
-    - Development.IDE.LSP.CodeAction
     - Development.IDE.Spans.Calculate
     - Development.IDE.Spans.Documentation
     - Development.IDE.Spans.Common
+    - Development.IDE.Plugin.CodeAction
     - Development.IDE.Plugin.Completions.Logic
     - Main
 
