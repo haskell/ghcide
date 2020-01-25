@@ -28,6 +28,7 @@ import Development.IDE.Types.Diagnostics
 import Development.IDE.Types.Options
 import Development.IDE.Types.Logger
 import Development.IDE.GHC.Util
+import Development.IDE.Plugin.Completions
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import Language.Haskell.LSP.Messages
@@ -87,7 +88,7 @@ main = do
         t <- offsetTime
         hPutStrLn stderr "Starting LSP server..."
         hPutStrLn stderr "If you are seeing this in a terminal, you probably should have run ghcidie WITHOUT the --lsp option!"
-        runLanguageServer def def $ \getLspId event vfs caps -> do
+        runLanguageServer def (def <> setHandlersCompletion) $ \getLspId event vfs caps -> do
             t <- t
             hPutStrLn stderr $ "Started LSP server in " ++ showDuration t
             -- very important we only call loadSession once, and it's fast, so just do it before starting
@@ -96,7 +97,7 @@ main = do
                     { optReportProgress = clientSupportsProgress caps
                     , optShakeProfiling = argsShakeProfiling
                     }
-            initialise caps (mainRule >> action kick) getLspId event (logger minBound) options vfs
+            initialise caps (mainRule >> produceCompletions >> action kick) getLspId event (logger minBound) options vfs
     else do
         putStrLn $ "Ghcide setup tester in " ++ dir ++ "."
         putStrLn "Report bugs at https://github.com/digital-asset/ghcide/issues"
