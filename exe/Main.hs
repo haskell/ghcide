@@ -122,24 +122,12 @@ main = do
         let ucradles = nubOrd cradles
         let n = length ucradles
         putStrLn $ "Found " ++ show n ++ " cradle" ++ ['s' | n /= 1]
-        sessions <- forM (zipFrom (1 :: Int) ucradles) $ \(i, x) -> do
-            let msg = maybe ("Implicit cradle for " ++ dir) ("Loading " ++) x
-            putStrLn $ "\nStep 3/6, Cradle " ++ show i ++ "/" ++ show n ++ ": " ++ msg
-            cradle <- maybe (loadImplicitCradle $ addTrailingPathSeparator dir) loadCradle x
-            when (isNothing x) $ print cradle
-            putStrLn $ "\nStep 4/6, Cradle " ++ show i ++ "/" ++ show n ++ ": Loading GHC Session"
-            optsToSession =<< cradleToSessionOpts cradle ""
-
-        putStrLn "\nStep 5/6: Initializing the IDE"
+        putStrLn "\nStep 3/6: Initializing the IDE"
         vfs <- makeVFSHandle
-        let cradlesToSessions = Map.fromList $ zip ucradles sessions
-        let filesToCradles = Map.fromList $ zip files cradles
-        let grab file = fromMaybe (head sessions) $ do
-                cradle <- Map.lookup file filesToCradles
-                Map.lookup cradle cradlesToSessions
-        ide <- initialise def mainRule (pure $ IdInt 0) (showEvent lock) (logger Info) (defaultIdeOptions $ return $ return . grab) vfs
+        grab <- loadSession dir
+        ide <- initialise def mainRule (pure $ IdInt 0) (showEvent lock) (logger Info) (defaultIdeOptions $ return grab) vfs
 
-        putStrLn "\nStep 6/6: Type checking the files"
+        putStrLn "\nStep 4/6: Type checking the files"
         setFilesOfInterest ide $ Set.fromList $ map toNormalizedFilePath files
         results <- runActionSync ide $ uses TypeCheck $ map toNormalizedFilePath files
         let (worked, failed) = partition fst $ zip (map isJust results) files
@@ -212,12 +200,9 @@ loadSession dir = do
         return $ normalise <$> res'
     -- This caches the mapping from hie.yaml + Mod.hs -> [String]
     sessionOpts <- memoIO $ \(hieYaml, file) -> do
-        print ("getting opts for " <> show (hieYaml, file))
         cradle <- maybe (loadImplicitCradle $ addTrailingPathSeparator dir) loadCradle hieYaml
         cradleToSessionOpts cradle file
-    session <- memoIO $ \opts -> do
-        putStrLn $ "setting up opts for " <> show opts
-        optsToSession opts
+    session <- memoIO optsToSession
     return $ \file -> liftIO $ do
         hieYaml <- cradleLoc file
         opts <- sessionOpts (hieYaml, file)
