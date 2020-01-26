@@ -38,6 +38,7 @@ import qualified Data.Rope.UTF16 as Rope
 import Data.Time
 import qualified System.Directory as Dir
 #else
+import Foreign.Ptr
 import Foreign.C.String
 import Foreign.C.Types
 import Foreign.Marshal (alloca)
