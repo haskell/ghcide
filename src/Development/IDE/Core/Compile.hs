@@ -61,17 +61,19 @@ import qualified Data.Map.Strict                          as Map
 import           System.FilePath
 
 
--- | Given a string buffer, return a pre-processed @ParsedModule@.
+-- | Given a string buffer, return the string (after preprocessing) and the 'ParsedModule'.
 parseModule
     :: IdeOptions
     -> HscEnv
     -> FilePath
     -> Maybe SB.StringBuffer
     -> IO ([FileDiagnostic], Maybe (StringBuffer, ParsedModule))
-parseModule IdeOptions{..} env file =
-    fmap (either (, Nothing) (second Just)) .
-    -- We need packages since imports fail to resolve otherwise.
-    runGhcEnv env . runExceptT . parseFileContents optPreprocessor file
+parseModule IdeOptions{..} env filename mbContents =
+    fmap (either (, Nothing) id) $
+    runGhcEnv env $ runExceptT $ do
+        (contents, dflags) <- preprocessor filename mbContents
+        (diag, modu) <- parseFileContents optPreprocessor dflags filename contents
+        return (diag, Just (contents, modu))
 
 
 -- | Given a package identifier, what packages does it depend on
@@ -347,16 +349,15 @@ getModSummaryFromBuffer fp contents dflags parsed = do
 
 
 -- | Given a buffer, flags, file path and module summary, produce a
--- parsed module (or errors) and any parse warnings.
+-- parsed module (or errors) and any parse warnings. Does not run any preprocessors
 parseFileContents
        :: GhcMonad m
        => (GHC.ParsedSource -> IdePreprocessedSource)
+       -> DynFlags -- ^ flags to use
        -> FilePath  -- ^ the filename (for source locations)
-       -> Maybe SB.StringBuffer -- ^ Haskell module source text (full Unicode is supported)
-       -> ExceptT [FileDiagnostic] m ([FileDiagnostic], (SB.StringBuffer, ParsedModule))
-            -- ^ Return the String that was used for parsing (after preprocessing)
-parseFileContents customPreprocessor filename mbContents = do
-   (contents, dflags) <- preprocessor filename mbContents
+       -> SB.StringBuffer -- ^ Haskell module source text (full Unicode is supported)
+       -> ExceptT [FileDiagnostic] m ([FileDiagnostic], ParsedModule)
+parseFileContents customPreprocessor dflags filename contents = do
    let loc  = mkRealSrcLoc (mkFastString filename) 1 1
    case unP Parser.parseModule (mkPState dflags contents loc) of
      PFailed _ locErr msgErr ->
@@ -394,4 +395,4 @@ parseFileContents customPreprocessor filename mbContents = do
                        , pm_annotations = hpm_annotations
                       }
                    warnings = diagFromErrMsgs "parser" dflags warns
-               pure (warnings ++ preproc_warnings, (contents, pm))
+               pure (warnings ++ preproc_warnings, pm)
