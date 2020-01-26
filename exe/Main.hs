@@ -50,6 +50,7 @@ import qualified Data.Map.Strict as Map
 import GHC hiding (def)
 import qualified GHC.Paths
 
+import HIE.Bios.Environment
 import HIE.Bios
 
 -- Set the GHC libdir to the nix libdir if it's present.
@@ -178,7 +179,7 @@ showEvent lock e = withLock lock $ print e
 cradleToSession :: Cradle -> IO HscEnvEq
 cradleToSession cradle = do
     cradleRes <- getCompilerOptions "" cradle
-    opts <- case cradleRes of
+    ComponentOptions opts _deps <- case cradleRes of
         CradleSuccess r -> pure r
         CradleFail err -> throwIO err
         -- TODO Rather than failing here, we should ignore any files that use this cradle.
@@ -186,7 +187,11 @@ cradleToSession cradle = do
         CradleNone -> fail "'none' cradle is not yet supported"
     libdir <- getLibdir
     env <- runGhc (Just libdir) $ do
-        _targets <- initSession opts
+        dflags <- getSessionDynFlags
+        -- Perhaps need to enable -fignore-interface-pragmas to not
+        -- recompie due to changes to unfoldings and so on
+        (dflags', _targets) <- addCmdOpts opts dflags
+        _ <- setSessionDynFlags dflags'
         getSession
     initDynLinker env
     newHscEnvEq env
