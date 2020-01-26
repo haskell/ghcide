@@ -55,7 +55,7 @@ codeAction lsp state (TextDocumentIdentifier uri) _range CodeActionContext{_diag
     (ideOptions, parsedModule) <- runAction state $
       (,) <$> getIdeOptions
           <*> (getParsedModule . toNormalizedFilePath) `traverse` uriToFilePath uri
-    pure $
+    pure
         [ CACodeAction $ CodeAction title (Just CodeActionQuickFix) (Just $ List [x]) (Just edit) Nothing
         | x <- xs, (title, tedit) <- suggestAction ideOptions ( join parsedModule ) text x
         , let edit = WorkspaceEdit (Just $ Map.singleton uri $ List tedit) Nothing
