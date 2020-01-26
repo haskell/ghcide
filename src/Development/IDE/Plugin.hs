@@ -1,9 +1,15 @@
 
-module Development.IDE.Plugin(Plugin(..)) where
+module Development.IDE.Plugin(Plugin(..), codeActionPlugin) where
 
 import Data.Default
 import Development.Shake
 import Development.IDE.LSP.Server
+
+import           Language.Haskell.LSP.Types
+import Development.IDE.Core.Rules
+import qualified Language.Haskell.LSP.Core as LSP
+import Language.Haskell.LSP.Messages
+
 
 data Plugin = Plugin
     {pluginRules :: Rules ()
@@ -18,3 +24,10 @@ instance Semigroup Plugin where
 
 instance Monoid Plugin where
     mempty = def
+
+
+codeActionPlugin :: (LSP.LspFuncs () -> IdeState -> TextDocumentIdentifier -> Range -> CodeActionContext -> IO [CAResult]) -> Plugin
+codeActionPlugin f = Plugin mempty $ PartialHandlers $ \WithMessage{..} x -> return x{
+    LSP.codeActionHandler = withResponse RspCodeAction g
+    }
+    where g lsp state (CodeActionParams a b c _) = List <$> f lsp state a b c
