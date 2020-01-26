@@ -50,6 +50,9 @@ import Development.Shake (Action, action)
 import qualified Data.Set as Set
 import qualified Data.Map.Strict as Map
 
+import GhcMonad
+import HscTypes (HscEnv(..), ic_dflags)
+import DynFlags (parseDynamicFlagsFull, flagsPackage, flagsDynamic)
 import GHC hiding (def)
 import qualified GHC.Paths
 
@@ -177,13 +180,34 @@ cradleToSessionOpts cradle file = do
         CradleNone -> fail "'none' cradle is not yet supported"
     pure opts
 
+emptyHscEnv :: IO HscEnv
+emptyHscEnv = do
+    libdir <- getLibdir
+    env <- runGhc (Just libdir) getSession
+    initDynLinker env
+    pure env
+
+addPackageOpts :: HscEnv -> ComponentOptions -> IO HscEnv
+addPackageOpts hscEnv opts = do
+    runGhcEnv hscEnv $ do
+        df <- getSessionDynFlags
+        (df', _, _) <- parseDynamicFlagsFull flagsPackage True df (map noLoc $ componentOptions opts)
+        _targets <- setSessionDynFlags df'
+        getSession
+
+tweakHscEnv :: HscEnv -> ComponentOptions -> IO HscEnv
+tweakHscEnv hscEnv opts = do
+    runGhcEnv hscEnv $ do
+        df <- getSessionDynFlags
+        (df', _, _) <- parseDynamicFlagsFull flagsDynamic True df (map noLoc $ componentOptions opts)
+        modifySession $ \h -> h { hsc_dflags = df', hsc_IC = (hsc_IC h) { ic_dflags = df' } }
+        getSession
+
 optsToSession :: ComponentOptions -> IO HscEnvEq
 optsToSession opts = do
-    libdir <- getLibdir
-    env <- runGhc (Just libdir) $ do
-        _targets <- initSession opts
-        getSession
-    initDynLinker env
+    env <- emptyHscEnv
+    env <- addPackageOpts env opts
+    env <- tweakHscEnv env opts
     newHscEnvEq env
 
 deriving instance Ord ComponentOptions
