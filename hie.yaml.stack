@@ -1,0 +1,14 @@
+# This is a sample hie.yaml file for opening ghcide in
+# ghcide/hie/ide, using stack as the build system.
+# To use is, copy it to a file called 'hie.yaml'
+
+cradle:
+  stack:
+    - path: "./test"
+      component: "ghcide:ghcide-tests"
+
+    - path: "./exe"
+      component: "ghcide:exe:ghcide"
+
+    - path: "./src"
+      component: "ghcide:lib"
