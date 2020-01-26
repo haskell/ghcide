@@ -378,6 +378,17 @@ getHiFileRule =
 
                 return ([(f, ShowDiag, d)], Nothing)
 
+getModIfaceRule :: Rules ()
+getModIfaceRule = define $ \GetModIface f -> do
+    mbHiFile <- use GetHiFile f
+    case mbHiFile of
+        Just x ->
+            return ([], Just x)
+        Nothing -> do
+            TcModuleResult{tmrModInfo, tmrModSummary} <- use_ TypeCheck f
+            let iface = hm_iface tmrModInfo
+            return ([], Just $ HiFileResult tmrModSummary iface)
+
 -- | A rule that wires per-file rules together
 mainRule :: Rules ()
 mainRule = do
@@ -393,6 +404,7 @@ mainRule = do
     loadGhcSession
     getHieFileRule
     getHiFileRule
+    getModIfaceRule
 
 ------------------------------------------------------------
 
