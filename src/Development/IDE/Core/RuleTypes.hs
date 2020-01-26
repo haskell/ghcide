@@ -56,6 +56,17 @@ data TcModuleResult = TcModuleResult
 instance Show TcModuleResult where
     show = show . pm_mod_summary . tm_parsed_module . tmrModule
 
+data HiFileResult = HiFileResult
+    { hirModSummary :: ModSummary
+    , hirModIface :: ModIface
+    }
+
+instance NFData HiFileResult where
+    rnf = rwhnf
+
+instance Show HiFileResult where
+    show = show . hirModSummary
+
 instance NFData TcModuleResult where
     rnf = rwhnf
 
@@ -87,7 +98,7 @@ type instance RuleResult ReportImportCycles = ()
 type instance RuleResult GetHieFile = HieFile
 
 -- | Read the module interface file
-type instance RuleResult GetHiFile = ModIface
+type instance RuleResult GetHiFile = HiFileResult
 
 -- | Get a module interface, either from an interface file or a typechecked module
 type instance RuleResult GetModIface = ModIface

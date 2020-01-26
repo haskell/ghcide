@@ -287,16 +287,16 @@ typeCheckRule =
                   -- If we use TH or QQ, we must obtain the bytecode
                   then do
                     bytecodes <- uses_ GenerateByteCode (transitiveModuleDeps deps)
-                    tmrs <- uses_ TypeCheck (transitiveModuleDeps deps)
-                    pure (zipWith addByteCode bytecodes tmrs)
-                  else uses_ TypeCheck (transitiveModuleDeps deps)
+                    tmrs <- uses_ GetHiFile (transitiveModuleDeps deps)
+                    pure tmrs --(zipWith addByteCode bytecodes tmrs)
+                  else uses_ GetHiFile (transitiveModuleDeps deps)
         setPriority priorityTypeCheck
         IdeOptions{ optDefer = defer} <- getIdeOptions
-        liftIO $ typecheckModule defer packageState tms pm
+        liftIO $ ondiskTypeCheck packageState tms pm
     where
         uses_th_qq dflags = xopt LangExt.TemplateHaskell dflags || xopt LangExt.QuasiQuotes dflags
-        addByteCode :: Linkable -> TcModuleResult -> TcModuleResult
-        addByteCode lm tmr = tmr { tmrModInfo = (tmrModInfo tmr) { hm_linkable = Just lm } }
+--        addByteCode :: Linkable -> (ModSummary, ModIface) -> (ModSummary, ModIface)
+--        addByteCode lm tmr = tmr { tmrModInfo = (tmrModInfo tmr) { hm_linkable = Just lm } }
 
 generateCore :: NormalizedFilePath -> Action (IdeResult (SafeHaskellMode, CgGuts, ModDetails))
 generateCore file = do

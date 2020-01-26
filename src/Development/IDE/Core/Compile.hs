@@ -12,6 +12,7 @@ module Development.IDE.Core.Compile
   , compileModule
   , parseModule
   , typecheckModule
+  , ondiskTypeCheck
   , computePackageDeps
   , addRelativeImport
   , mkTcModuleResult
@@ -28,6 +29,10 @@ import Development.IDE.GHC.Util
 import qualified GHC.LanguageExtensions.Type as GHC
 import Development.IDE.Types.Options
 import Development.IDE.Types.Location
+
+import System.IO
+import TcRnMonad
+import TcIface
 
 #if MIN_GHC_API_VERSION(8,6,0)
 import           DynamicLoading (initializePlugins)
@@ -85,6 +90,53 @@ computePackageDeps env pkg = do
         Nothing -> return $ Left [ideErrorText (toNormalizedFilePath noFilePath) $
             T.pack $ "unknown package: " ++ show pkg]
         Just pkgInfo -> return $ Right $ depends pkgInfo
+
+-- TODO Share code with typecheckModule in ghcide. The environment needs to be setup
+-- slightly differently but we can probably factor out shared code here.
+ondiskTypeCheck :: HscEnv
+                -> [HiFileResult]
+                -> ParsedModule
+                -> IO ([FileDiagnostic], Maybe TcModuleResult)
+ondiskTypeCheck hsc deps pm = do
+    fmap (either (, Nothing) (second Just)) $
+      runGhcEnv hsc $
+      catchSrcErrors "typecheck" $ do
+        let mss = map hirModSummary deps
+        session <- getSession
+        setSession session { hsc_mod_graph = mkModuleGraph mss }
+        let installedModules  = map (GHC.InstalledModule (thisInstalledUnitId $ hsc_dflags session) . moduleName . ms_mod) mss
+            installedFindResults = zipWith (\ms im -> InstalledFound (ms_location ms) im) mss installedModules
+        -- We have to create a new IORef here instead of modifying the existing IORef as
+        -- it is shared between concurrent compilations.
+        prevFinderCache <- liftIO $ readIORef $ hsc_FC session
+        let newFinderCache =
+                foldl'
+                    (\fc (im, ifr) -> GHC.extendInstalledModuleEnv fc im ifr) prevFinderCache
+                    $ zip installedModules installedFindResults
+        newFinderCacheVar <- liftIO $ newIORef $! newFinderCache
+        modifySession $ \s -> s { hsc_FC = newFinderCacheVar }
+        -- Currently GetDependencies returns things in topological order so A comes before B if A imports B.
+        -- We need to reverse this as GHC gets very unhappy otherwise and complains about broken interfaces.
+        -- Long-term we might just want to change the order returned by GetDependencies
+        mapM_ loadDepModule (reverse deps)
+        (warnings, tcm) <- withWarnings "typecheck" $ \tweak ->
+            GHC.typecheckModule pm { pm_mod_summary = tweak (pm_mod_summary pm) }
+        tcm <- mkTcModuleResult tcm
+        pure (map snd warnings, tcm)
+
+loadDepModule :: GhcMonad m => HiFileResult -> m ()
+loadDepModule (HiFileResult ms iface) = do
+    hsc <- getSession
+    -- The fixIO here is crucial and matches what GHC does. Otherwise GHC will fail
+    -- to find identifiers in the interface and explode.
+    -- For more details, look at hscIncrementalCompile and Note [Knot-tying typecheckIface] in GHC.
+    details <- liftIO $ fixIO $ \details -> do
+        let hsc' = hsc { hsc_HPT = addToHpt (hsc_HPT hsc) (moduleName mod) (HomeModInfo iface details Nothing) }
+        initIfaceLoad hsc' (typecheckIface iface)
+    let mod_info = HomeModInfo iface details Nothing
+    modifySession $ \e ->
+        e { hsc_HPT = addToHpt (hsc_HPT e) (moduleName mod) mod_info }
+    where mod = ms_mod ms
 
 
 -- | Typecheck a single module using the supplied dependencies and packages.
@@ -201,7 +253,7 @@ upgradeWarningToError (nfp, sh, fd) =
 hideDiag :: DynFlags -> (WarnReason, FileDiagnostic) -> (WarnReason, FileDiagnostic)
 hideDiag originalFlags (Reason warning, (nfp, _sh, fd))
   | not (wopt warning originalFlags) = (Reason warning, (nfp, HideDiag, fd))
-hideDiag _originalFlags t = t 
+hideDiag _originalFlags t = t
 
 addRelativeImport :: NormalizedFilePath -> ParsedModule -> DynFlags -> DynFlags
 addRelativeImport fp modu dflags = dflags
