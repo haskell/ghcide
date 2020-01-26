@@ -47,7 +47,7 @@ import HieAst
 import HieBin
 import HieTypes
 #else
-import GhcPlugins
+import GhcPlugins hiding (ModLocation)
 import NameCache
 import Avail
 import TcRnTypes
@@ -160,5 +160,5 @@ pattern ModLocation a b c <-
 #if MIN_GHC_API_VERSION(8,8,0)
     GHC.ModLocation a b c _ where ModLocation a b c = GHC.ModLocation a b c ""
 #else
-    GHC.ModLocation a b c where ModLocation a b c d = GHC.ModLocation a b c
+    GHC.ModLocation a b c where ModLocation a b c = GHC.ModLocation a b c
 #endif
