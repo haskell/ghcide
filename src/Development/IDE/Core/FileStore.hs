@@ -107,7 +107,7 @@ fingerprintSourceRule =
     define $ \FingerprintSource file -> do
       (_, mbContent) <- getFileContents file
       content <- liftIO $ maybe (hGetStringBuffer $ fromNormalizedFilePath file) pure mbContent
-      fingerprint <- liftIO $ fingerprintFromStringBuffer content
+      fingerprint <- return $ fingerprintFromStringBuffer content
       pure ([], Just fingerprint)
 
 getModificationTimeRule :: VFSHandle -> Rules ()

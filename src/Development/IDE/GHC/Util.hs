@@ -56,6 +56,7 @@ import qualified Data.Text.Encoding.Error as T
 import qualified Data.ByteString          as BS
 import StringBuffer
 import System.FilePath
+import System.IO.Unsafe
 
 import Development.IDE.Types.Location
 
@@ -191,9 +192,9 @@ fingerprintToBS (Fingerprint a b) = BS.unsafeCreate 8 $ \ptr -> do
     pokeElemOff ptr 0 a
     pokeElemOff ptr 1 b
 
--- | Take the 'Fingerprint' of a 'StringBuffer'. Morally pure.
-fingerprintFromStringBuffer :: StringBuffer -> IO Fingerprint
-fingerprintFromStringBuffer (StringBuffer buf len cur) =
+-- | Take the 'Fingerprint' of a 'StringBuffer'.
+fingerprintFromStringBuffer :: StringBuffer -> Fingerprint
+fingerprintFromStringBuffer (StringBuffer buf len cur) = unsafePerformIO $
     withForeignPtr buf $ \ptr -> fingerprintData (ptr `plusPtr` cur) len
 
 
