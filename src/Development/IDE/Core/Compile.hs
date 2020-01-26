@@ -129,7 +129,9 @@ ondiskTypeCheck (IdeDefer defer) hsc deps pm = do
                 demoteIfDefer $
                     pm { pm_mod_summary = tweak modSummary' }
         tcm <- mkTcModuleResult tcm
-        pure (map snd warnings, tcm)
+        let errorPipeline = unDefer . hideDiag dflags
+            dflags = ms_hspp_opts modSummary'
+        return (map errorPipeline warnings, tcm)
     where
         demoteIfDefer = if defer then demoteTypeErrorsToWarnings else id
 
