@@ -376,24 +376,26 @@ getHiFileRule =
         let mod = ms_mod $ pm_mod_summary pm
         -- TODO find the hi file without relying on the parsed module
         let hiFile = ml_hi_file $ ms_location $ pm_mod_summary pm
-        r <- liftIO $ initIfaceLoad session $ readIface mod hiFile
-        case r of
-            Maybes.Succeeded iface -> do
-                -- TODO it should be possible to construct a ModSummary from a ModIface
-                let modSummary = pm_mod_summary pm
-                    result = HiFileResult modSummary iface
-                return ([], Just result)
-            Maybes.Failed err -> do
-                let d = Diagnostic
-                            { _range = noRange,
-                            _severity = Nothing,
-                            _code = Nothing,
-                            _source = Just "CPP",
-                            _message = T.pack $ showSDoc (hsc_dflags session) err,
-                            _relatedInformation = Nothing
-                            }
+        gotHiFile <- getFileExists $ toNormalizedFilePath hiFile
+        if not gotHiFile then pure ([], Nothing) else do
+            r <- liftIO $ initIfaceLoad session $ readIface mod hiFile
+            case r of
+                Maybes.Succeeded iface -> do
+                    -- TODO it should be possible to construct a ModSummary from a ModIface
+                    let modSummary = pm_mod_summary pm
+                        result = HiFileResult modSummary iface
+                    return ([], Just result)
+                Maybes.Failed err -> do
+                    let d = Diagnostic
+                                { _range = noRange,
+                                _severity = Nothing,
+                                _code = Nothing,
+                                _source = Just "CPP",
+                                _message = T.pack $ showSDoc (hsc_dflags session) err,
+                                _relatedInformation = Nothing
+                                }
 
-                return ([(f, ShowDiag, d)], Nothing)
+                    return ([(f, ShowDiag, d)], Nothing)
 
 getModIfaceRule :: Rules ()
 getModIfaceRule = define $ \GetModIface f -> do
