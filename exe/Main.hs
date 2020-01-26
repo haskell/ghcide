@@ -203,17 +203,11 @@ tweakHscEnv hscEnv opts = do
         modifySession $ \h -> h { hsc_dflags = df', hsc_IC = (hsc_IC h) { ic_dflags = df' } }
         getSession
 
-optsToSession :: ComponentOptions -> IO HscEnvEq
-optsToSession opts = do
-    env <- emptyHscEnv
-    env <- addPackageOpts env opts
-    env <- tweakHscEnv env opts
-    newHscEnvEq env
-
 deriving instance Ord ComponentOptions
 
 loadSession :: FilePath -> IO (FilePath -> Action HscEnvEq)
 loadSession dir = do
+    hscEnvs <- newVar Map.empty
     -- This caches the mapping from Mod.hs -> hie.yaml
     cradleLoc <- memoIO $ \v -> do
         res <- findCradle v
@@ -222,15 +216,29 @@ loadSession dir = do
         -- e.g. see https://github.com/digital-asset/ghcide/issues/126
         res' <- traverse makeAbsolute res
         return $ normalise <$> res'
+
+    packageSetup <- memoIO $ \(hieYaml, opts) ->
+        modifyVar_ hscEnvs $ \m -> do
+            oldHscEnv <- case Map.lookup hieYaml m of
+                Nothing -> emptyHscEnv
+                Just hscEnv -> pure hscEnv
+            newHscEnv <- addPackageOpts oldHscEnv opts
+            pure (Map.insert hieYaml newHscEnv m)
+
+    session <- memoIO $ \(hieYaml, opts) -> do
+        packageSetup (hieYaml, opts)
+        hscEnv <- fmap (Map.lookup hieYaml) $ readVar hscEnvs
+        -- TODO Handle the case where there is no hie.yaml
+        newHscEnvEq =<< tweakHscEnv (fromJust hscEnv) opts
+
     -- This caches the mapping from hie.yaml + Mod.hs -> [String]
     sessionOpts <- memoIO $ \(hieYaml, file) -> do
         cradle <- maybe (loadImplicitCradle $ addTrailingPathSeparator dir) loadCradle hieYaml
         cradleToSessionOpts cradle file
-    session <- memoIO optsToSession
     return $ \file -> liftIO $ do
         hieYaml <- cradleLoc file
         opts <- sessionOpts (hieYaml, file)
-        session opts
+        session (hieYaml, opts)
 
 -- | Memoize an IO function, with the characteristics:
 --
