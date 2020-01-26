@@ -128,9 +128,6 @@ ondiskTypeCheck hsc deps pm = do
 loadDepModule :: GhcMonad m => HomeModInfo -> m ()
 loadDepModule HomeModInfo{hm_iface} = do
     hsc <- getSession
-    -- The fixIO here is crucial and matches what GHC does. Otherwise GHC will fail
-    -- to find identifiers in the interface and explode.
-    -- For more details, look at hscIncrementalCompile and Note [Knot-tying typecheckIface] in GHC.
     details <- liftIO $ fixIO $ \details -> do
         let hsc' = hsc { hsc_HPT = addToHpt (hsc_HPT hsc) (moduleName mod) (HomeModInfo hm_iface details Nothing) }
         initIfaceLoad hsc' (typecheckIface hm_iface)

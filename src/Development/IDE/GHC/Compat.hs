@@ -24,6 +24,8 @@ module Development.IDE.GHC.Compat(
     pattern ValD,
     pattern ClassOpSig,
     pattern IEThingWith,
+    GHC.ModLocation,
+    pattern ModLocation,
 
     module GHC
     ) where
@@ -38,7 +40,7 @@ import Data.List.Extra (enumerate)
 #endif
 
 import qualified GHC
-import GHC hiding (ClassOpSig, DerivD, ForD, IEThingWith, InstD, TyClD, ValD)
+import GHC hiding (ClassOpSig, DerivD, ForD, IEThingWith, InstD, TyClD, ValD, ModLocation)
 
 #if MIN_GHC_API_VERSION(8,8,0)
 import HieAst
@@ -151,4 +153,12 @@ pattern IEThingWith a b c d <-
     GHC.IEThingWith _ a b c d
 #else
     GHC.IEThingWith a b c d
+#endif
+
+pattern ModLocation :: Maybe FilePath -> FilePath -> FilePath -> GHC.ModLocation
+pattern ModLocation a b c <-
+#if MIN_GHC_API_VERSION(8,8,0)
+    GHC.ModLocation a b c _ where ModLocation a b c = GHC.ModLocation a b c ""
+#else
+    GHC.ModLocation a b c where ModLocation a b c d = GHC.ModLocation a b c
 #endif

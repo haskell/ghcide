@@ -4,6 +4,7 @@
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE PatternSynonyms       #-}
 
 -- | A Shake implementation of the compiler service, built
 --   using the "Shaker" abstraction layer for in-memory use.
@@ -41,6 +42,7 @@ import           Development.IDE.Core.FileExists
 import           Development.IDE.Core.FileStore        (getFileContents, getSourceFingerprint)
 import           Development.IDE.Types.Diagnostics
 import Development.IDE.Types.Location
+import Development.IDE.GHC.Compat hiding (parseModule, typecheckModule)
 import Development.IDE.GHC.Util
 import Data.Coerce
 import Data.Either.Extra
@@ -57,7 +59,6 @@ import Development.IDE.Core.RuleTypes
 import Development.IDE.Spans.Type
 import System.IO (fixIO)
 
-import           GHC hiding (parseModule, typecheckModule)
 import qualified GHC.LanguageExtensions as LangExt
 import Development.IDE.GHC.Compat (hie_file_result, readHieFile)
 import           UniqSupply
