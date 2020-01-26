@@ -301,7 +301,7 @@ typeCheckRule =
     -- For more details, look at hscIncrementalCompile and Note [Knot-tying typecheckIface] in GHC.
             d <- fixIO $ \details -> do
                 let hsc' = hsc { hsc_HPT = addToHpt (hsc_HPT hsc) (moduleName $ mi_module hirModIface) hmi }
-                    hmi = HomeModInfo hirModIface details Nothing
+                    hmi = HomeModInfo hirModIface details bc
                 details <- initIfaceLoad hsc' (typecheckIface hirModIface)
                 return $ details
             return (HomeModInfo hirModIface d bc, hirModSummary)
