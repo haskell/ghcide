@@ -11,11 +11,9 @@ module Development.IDE.Core.FileStore(
     fileStoreRules,
     VFSHandle,
     makeVFSHandle,
-    makeLSPVFSHandle,
-    getSourceFingerprint
+    makeLSPVFSHandle
     ) where
 
-import Fingerprint
 import           StringBuffer
 import Development.IDE.GHC.Orphans()
 import Development.IDE.GHC.Util
@@ -88,27 +86,11 @@ makeLSPVFSHandle lspFuncs = VFSHandle
 -- | Get the contents of a file, either dirty (if the buffer is modified) or Nothing to mean use from disk.
 type instance RuleResult GetFileContents = (FileVersion, Maybe StringBuffer)
 
-type instance RuleResult FingerprintSource = Fingerprint
-
 data GetFileContents = GetFileContents
     deriving (Eq, Show, Generic)
 instance Hashable GetFileContents
 instance NFData   GetFileContents
 instance Binary   GetFileContents
-
-data FingerprintSource = FingerprintSource
-    deriving (Eq, Show, Generic)
-instance Hashable FingerprintSource
-instance NFData   FingerprintSource
-instance Binary   FingerprintSource
-
-fingerprintSourceRule :: Rules ()
-fingerprintSourceRule =
-    define $ \FingerprintSource file -> do
-      (_, mbContent) <- getFileContents file
-      content <- liftIO $ maybe (hGetStringBuffer $ fromNormalizedFilePath file) pure mbContent
-      fingerprint <- return $ fingerprintFromStringBuffer content
-      pure ([], Just fingerprint)
 
 getModificationTimeRule :: VFSHandle -> Rules ()
 getModificationTimeRule vfs =
@@ -153,9 +135,6 @@ getModificationTimeRule vfs =
 foreign import ccall "getmodtime" c_getModTime :: CString -> Ptr CTime -> Ptr CLong -> IO Int
 #endif
 
-getSourceFingerprint :: NormalizedFilePath -> Action Fingerprint
-getSourceFingerprint = use_ FingerprintSource
-
 getFileContentsRule :: VFSHandle -> Rules ()
 getFileContentsRule vfs =
     define $ \GetFileContents file -> do
@@ -183,7 +162,6 @@ fileStoreRules vfs = do
     addIdeGlobal vfs
     getModificationTimeRule vfs
     getFileContentsRule vfs
-    fingerprintSourceRule
 
 
 -- | Notify the compiler service that a particular file has been modified.
