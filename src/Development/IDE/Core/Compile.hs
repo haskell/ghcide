@@ -39,6 +39,7 @@ import qualified Parser
 import           Lexer
 import ErrUtils
 
+import           Finder
 import qualified GHC
 import           GhcMonad
 import           GhcPlugins                     as GHC hiding (fst3, (<>))
@@ -306,18 +307,8 @@ getModSummaryFromBuffer
 getModSummaryFromBuffer fp contents dflags parsed = do
   (modName, imports) <- liftEither $ getImportsParsed dflags parsed
 
-  let modLoc = ModLocation
-          { ml_hs_file  = Just fp
-          , ml_hi_file  = derivedFile "hi"
-          , ml_obj_file = derivedFile "o"
-#if MIN_GHC_API_VERSION(8,8,0)
-          , ml_hie_file = derivedFile "hie"
-#endif
-          -- This does not consider the dflags configuration
-          -- (-osuf and -hisuf, object and hi dir.s).
-          -- However, we anyway don't want to generate them.
-          }
-      InstalledUnitId unitId = thisInstalledUnitId dflags
+  modLoc <- liftIO $ mkHomeModLocation dflags modName fp
+  let InstalledUnitId unitId = thisInstalledUnitId dflags
   return $ ModSummary
     { ms_mod          = mkModule (fsToUnitId unitId) modName
     , ms_location     = modLoc
@@ -342,7 +333,7 @@ getModSummaryFromBuffer fp contents dflags parsed = do
     , ms_parsed_mod   = Nothing
     }
     where
-      (sourceType, derivedFile) =
+      (sourceType, _derivedFile) =
           let (stem, ext) = splitExtension fp in
           if "-boot" `isSuffixOf` ext
           then (HsBootFile, \newExt -> stem <.> newExt ++ "-boot")
