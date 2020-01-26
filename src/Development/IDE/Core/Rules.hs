@@ -374,11 +374,13 @@ getHiFileRule =
         session <- hscEnv <$> use_ GhcSession f
         pm <- use_ GetParsedModule f
         let mod = ms_mod $ pm_mod_summary pm
+        -- TODO find the hi file without relying on the parsed module
         let hiFile = ml_hi_file $ ms_location $ pm_mod_summary pm
         r <- liftIO $ initIfaceLoad session $ readIface mod hiFile
         case r of
             Maybes.Succeeded iface -> do
-                let modSummary = undefined
+                -- TODO it should be possible to construct a ModSummary from a ModIface
+                let modSummary = pm_mod_summary pm
                     result = HiFileResult modSummary iface
                 return ([], Just result)
             Maybes.Failed err -> do
