@@ -91,17 +91,17 @@ computePackageDeps env pkg = do
             T.pack $ "unknown package: " ++ show pkg]
         Just pkgInfo -> return $ Right $ depends pkgInfo
 
--- TODO Share code with typecheckModule in ghcide. The environment needs to be setup
+-- TODO Share code with typecheckModule. The environment needs to be setup
 -- slightly differently but we can probably factor out shared code here.
 ondiskTypeCheck :: HscEnv
-                -> [HiFileResult]
+                -> [(HomeModInfo, ModSummary)]
                 -> ParsedModule
                 -> IO ([FileDiagnostic], Maybe TcModuleResult)
 ondiskTypeCheck hsc deps pm = do
     fmap (either (, Nothing) (second Just)) $
       runGhcEnv hsc $
       catchSrcErrors "typecheck" $ do
-        let mss = map hirModSummary deps
+        let mss = map snd deps
         session <- getSession
         setSession session { hsc_mod_graph = mkModuleGraph mss }
         let installedModules  = map (GHC.InstalledModule (thisInstalledUnitId $ hsc_dflags session) . moduleName . ms_mod) mss
@@ -118,25 +118,26 @@ ondiskTypeCheck hsc deps pm = do
         -- Currently GetDependencies returns things in topological order so A comes before B if A imports B.
         -- We need to reverse this as GHC gets very unhappy otherwise and complains about broken interfaces.
         -- Long-term we might just want to change the order returned by GetDependencies
-        mapM_ loadDepModule (reverse deps)
+        -- FIXME is this reverse still correct
+        mapM_ loadDepModule (reverse $ map fst deps)
         (warnings, tcm) <- withWarnings "typecheck" $ \tweak ->
             GHC.typecheckModule pm { pm_mod_summary = tweak (pm_mod_summary pm) }
         tcm <- mkTcModuleResult tcm
         pure (map snd warnings, tcm)
 
-loadDepModule :: GhcMonad m => HiFileResult -> m ()
-loadDepModule (HiFileResult ms iface) = do
+loadDepModule :: GhcMonad m => HomeModInfo -> m ()
+loadDepModule HomeModInfo{hm_iface} = do
     hsc <- getSession
     -- The fixIO here is crucial and matches what GHC does. Otherwise GHC will fail
     -- to find identifiers in the interface and explode.
     -- For more details, look at hscIncrementalCompile and Note [Knot-tying typecheckIface] in GHC.
     details <- liftIO $ fixIO $ \details -> do
-        let hsc' = hsc { hsc_HPT = addToHpt (hsc_HPT hsc) (moduleName mod) (HomeModInfo iface details Nothing) }
-        initIfaceLoad hsc' (typecheckIface iface)
-    let mod_info = HomeModInfo iface details Nothing
+        let hsc' = hsc { hsc_HPT = addToHpt (hsc_HPT hsc) (moduleName mod) (HomeModInfo hm_iface details Nothing) }
+        initIfaceLoad hsc' (typecheckIface hm_iface)
+    let mod_info = HomeModInfo hm_iface details Nothing
     modifySession $ \e ->
         e { hsc_HPT = addToHpt (hsc_HPT e) (moduleName mod) mod_info }
-    where mod = ms_mod ms
+    where mod = mi_module hm_iface
 
 
 -- | Typecheck a single module using the supplied dependencies and packages.

@@ -55,6 +55,7 @@ import           Development.IDE.GHC.Error
 import           Development.Shake                        hiding (Diagnostic)
 import Development.IDE.Core.RuleTypes
 import Development.IDE.Spans.Type
+import System.IO (fixIO)
 
 import           GHC hiding (parseModule, typecheckModule)
 import qualified GHC.LanguageExtensions as LangExt
@@ -67,6 +68,7 @@ import GHC.Generics(Generic)
 import qualified Maybes
 import LoadIface
 import TcRnMonad (initIfaceLoad)
+import TcIface (typecheckIface)
 import Outputable (showSDoc)
 
 import qualified Development.IDE.Spans.AtPoint as AtPoint
@@ -279,21 +281,33 @@ typeCheckRule =
     define $ \TypeCheck file -> do
         pm <- use_ GetParsedModule file
         deps <- use_ GetDependencies file
-        packageState <- hscEnv <$> use_ GhcSession file
+        hsc <- hscEnv <$> use_ GhcSession file
         -- Figure out whether we need TemplateHaskell or QuasiQuotes support
-        let graph_needs_th_qq = needsTemplateHaskellOrQQ $ hsc_mod_graph packageState
+        let graph_needs_th_qq = needsTemplateHaskellOrQQ $ hsc_mod_graph hsc
             file_uses_th_qq = uses_th_qq $ ms_hspp_opts (pm_mod_summary pm)
             any_uses_th_qq = graph_needs_th_qq || file_uses_th_qq
-        tms <- if any_uses_th_qq
+        mirs <- uses_ GetModIface (transitiveModuleDeps deps)
+        bytecodes <- if any_uses_th_qq
                   -- If we use TH or QQ, we must obtain the bytecode
                   then do
-                    bytecodes <- uses_ GenerateByteCode (transitiveModuleDeps deps)
-                    tmrs <- uses_ GetModIface (transitiveModuleDeps deps)
-                    pure tmrs --(zipWith addByteCode bytecodes tmrs)
-                  else uses_ GetModIface (transitiveModuleDeps deps)
+                    fmap Just <$> uses_ GenerateByteCode (transitiveModuleDeps deps)
+                  else
+                    pure $ repeat Nothing
+
+        hmis <- liftIO $ forM (zip mirs bytecodes) $ \(HiFileResult{..}, bc) -> do
+    -- The fixIO here is crucial and matches what GHC does. Otherwise GHC will fail
+    -- to find identifiers in the interface and explode.
+    -- For more details, look at hscIncrementalCompile and Note [Knot-tying typecheckIface] in GHC.
+            d <- fixIO $ \details -> do
+                let hsc' = hsc { hsc_HPT = addToHpt (hsc_HPT hsc) (moduleName $ mi_module hirModIface) hmi }
+                    hmi = HomeModInfo hirModIface details Nothing
+                details <- initIfaceLoad hsc' (typecheckIface hirModIface)
+                return $ details
+            return (HomeModInfo hirModIface d bc, hirModSummary)
+
         setPriority priorityTypeCheck
         IdeOptions{ optDefer = defer} <- getIdeOptions
-        liftIO $ ondiskTypeCheck packageState tms pm
+        liftIO $ ondiskTypeCheck hsc hmis pm
     where
         uses_th_qq dflags = xopt LangExt.TemplateHaskell dflags || xopt LangExt.QuasiQuotes dflags
 --        addByteCode :: Linkable -> (ModSummary, ModIface) -> (ModSummary, ModIface)
