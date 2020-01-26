@@ -87,7 +87,7 @@ type instance RuleResult GhcSession = HscEnvEq
 
 -- | Resolve the imports in a module to the file path of a module
 -- in the same package or the package id of another package.
-type instance RuleResult GetLocatedImports = ([(Located ModuleName, Maybe NormalizedFilePath)], S.Set InstalledUnitId)
+type instance RuleResult GetLocatedImports = ([(Located ModuleName, Maybe ModLocation)], S.Set InstalledUnitId)
 
 -- | This rule is used to report import cycles. It depends on GetDependencyInformation.
 -- We cannot report the cycles directly from GetDependencyInformation since

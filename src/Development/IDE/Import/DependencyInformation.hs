@@ -17,7 +17,7 @@ module Development.IDE.Import.DependencyInformation
   , pathToId
   , idToPath
   , reachableModules
-
+  , modLocationToNormalizedFilePath
   , processDependencyInformation
   , transitiveDeps
   ) where
@@ -46,6 +46,7 @@ import GHC.Generics (Generic)
 
 import Development.IDE.Types.Diagnostics
 import Development.IDE.Types.Location
+import Development.IDE.Import.FindImports ()
 
 import GHC
 import Module
@@ -67,27 +68,33 @@ newtype FilePathId = FilePathId { getFilePathId :: Int }
   deriving (Show, NFData, Eq, Ord)
 
 data PathIdMap = PathIdMap
-  { idToPathMap :: !(IntMap NormalizedFilePath)
+  { idToPathMap :: !(IntMap ModLocation)
   , pathToIdMap :: !(Map NormalizedFilePath FilePathId)
   }
   deriving (Show, Generic)
 
 instance NFData PathIdMap
 
+modLocationToNormalizedFilePath :: ModLocation -> NormalizedFilePath
+modLocationToNormalizedFilePath loc =
+    let (Just filePath) = ml_hs_file loc
+    in
+    toNormalizedFilePath filePath
+
 emptyPathIdMap :: PathIdMap
 emptyPathIdMap = PathIdMap IntMap.empty MS.empty
 
-getPathId :: NormalizedFilePath -> PathIdMap -> (FilePathId, PathIdMap)
+getPathId :: ModLocation -> PathIdMap -> (FilePathId, PathIdMap)
 getPathId path m@PathIdMap{..} =
-    case MS.lookup path pathToIdMap of
+    case MS.lookup (modLocationToNormalizedFilePath path) pathToIdMap of
         Nothing ->
             let !newId = FilePathId $ MS.size pathToIdMap
             in (newId, insertPathId path newId m)
         Just id -> (id, m)
 
-insertPathId :: NormalizedFilePath -> FilePathId -> PathIdMap -> PathIdMap
+insertPathId :: ModLocation -> FilePathId -> PathIdMap -> PathIdMap
 insertPathId path id PathIdMap{..} =
-    PathIdMap (IntMap.insert (getFilePathId id) path idToPathMap) (MS.insert path id pathToIdMap)
+    PathIdMap (IntMap.insert (getFilePathId id) path idToPathMap) (MS.insert (modLocationToNormalizedFilePath path) id pathToIdMap)
 
 insertImport :: FilePathId -> Either ModuleParseError ModuleImports -> RawDependencyInformation -> RawDependencyInformation
 insertImport (FilePathId k) v rawDepInfo = rawDepInfo { rawImports = IntMap.insert k v (rawImports rawDepInfo) }
@@ -96,7 +103,11 @@ pathToId :: PathIdMap -> NormalizedFilePath -> FilePathId
 pathToId PathIdMap{pathToIdMap} path = pathToIdMap MS.! path
 
 idToPath :: PathIdMap -> FilePathId -> NormalizedFilePath
-idToPath PathIdMap{idToPathMap} (FilePathId id) = idToPathMap IntMap.! id
+idToPath pathIdMap filePathId = modLocationToNormalizedFilePath $ idToModLocation pathIdMap filePathId
+
+idToModLocation :: PathIdMap -> FilePathId -> ModLocation
+idToModLocation PathIdMap{idToPathMap} (FilePathId id) = idToPathMap IntMap.! id
+
 
 -- | Unprocessed results that we find by following imports recursively.
 data RawDependencyInformation = RawDependencyInformation

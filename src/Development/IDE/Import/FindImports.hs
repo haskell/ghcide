@@ -29,9 +29,12 @@ import           Control.Monad.IO.Class
 import           System.FilePath
 
 data Import
-  = FileImport !NormalizedFilePath
+  = FileImport !ModLocation
   | PackageImport !M.InstalledUnitId
   deriving (Show)
+
+instance NFData ModLocation where
+  rnf = undefined
 
 instance NFData Import where
   rnf (FileImport x) = rnf x
@@ -74,7 +77,7 @@ locateModule dflags exts doesExist modName mbPkgName isSource = do
       mbFile <- locateModuleFile dflags exts doesExist isSource $ unLoc modName
       case mbFile of
         Nothing -> return $ Left $ notFoundErr dflags modName $ LookupNotFound []
-        Just file -> return $ Right $ FileImport file
+        Just file -> toModLocation file
     -- if a package name is given we only go look for a package
     Just _pkgName -> lookupInPackageDB dflags
     Nothing -> do
@@ -83,8 +86,13 @@ locateModule dflags exts doesExist modName mbPkgName isSource = do
       mbFile <- locateModuleFile dflags exts doesExist isSource $ unLoc modName
       case mbFile of
         Nothing -> lookupInPackageDB dflags
-        Just file -> return $ Right $ FileImport file
+        Just file -> toModLocation file
   where
+    toModLocation file = liftIO $ do
+        loc <- mkHomeModLocation dflags (unLoc modName) (fromNormalizedFilePath file)
+        return $ Right $ FileImport loc
+
+
     lookupInPackageDB dfs =
       case lookupModuleWithSuggestions dfs (unLoc modName) mbPkgName of
         LookupFound _m pkgConfig -> return $ Right $ PackageImport $ unitId pkgConfig
