@@ -122,11 +122,12 @@ ondiskTypeCheck (IdeDefer defer) hsc deps pm = do
         -- Long-term we might just want to change the order returned by GetDependencies
         -- FIXME is this reverse still correct
         mapM_ loadDepModule (reverse $ map fst deps)
+        modSummary' <- initPlugins $ pm_mod_summary pm
         (warnings, tcm) <- withWarnings "typecheck" $ \tweak ->
             GHC.typecheckModule $
               enableTopLevelWarnings $
                 demoteIfDefer $
-                    pm { pm_mod_summary = tweak (pm_mod_summary pm) }
+                    pm { pm_mod_summary = tweak modSummary' }
         tcm <- mkTcModuleResult tcm
         pure (map snd warnings, tcm)
     where
