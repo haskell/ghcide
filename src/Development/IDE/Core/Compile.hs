@@ -67,7 +67,7 @@ parseModule
     -> HscEnv
     -> FilePath
     -> Maybe SB.StringBuffer
-    -> IO ([FileDiagnostic], Maybe ParsedModule)
+    -> IO ([FileDiagnostic], Maybe (StringBuffer, ParsedModule))
 parseModule IdeOptions{..} env file =
     fmap (either (, Nothing) (second Just)) .
     -- We need packages since imports fail to resolve otherwise.
@@ -353,7 +353,8 @@ parseFileContents
        => (GHC.ParsedSource -> IdePreprocessedSource)
        -> FilePath  -- ^ the filename (for source locations)
        -> Maybe SB.StringBuffer -- ^ Haskell module source text (full Unicode is supported)
-       -> ExceptT [FileDiagnostic] m ([FileDiagnostic], ParsedModule)
+       -> ExceptT [FileDiagnostic] m ([FileDiagnostic], (SB.StringBuffer, ParsedModule))
+            -- ^ Return the String that was used for parsing (after preprocessing)
 parseFileContents customPreprocessor filename mbContents = do
    (contents, dflags) <- preprocessor filename mbContents
    let loc  = mkRealSrcLoc (mkFastString filename) 1 1
@@ -393,4 +394,4 @@ parseFileContents customPreprocessor filename mbContents = do
                        , pm_annotations = hpm_annotations
                       }
                    warnings = diagFromErrMsgs "parser" dflags warns
-               pure (warnings ++ preproc_warnings, pm)
+               pure (warnings ++ preproc_warnings, (contents, pm))

@@ -36,7 +36,7 @@ import Development.IDE.Spans.Calculate
 import Development.IDE.Import.DependencyInformation
 import Development.IDE.Import.FindImports
 import           Development.IDE.Core.FileExists
-import           Development.IDE.Core.FileStore        (getFileContents, getSourceFingerprint)
+import           Development.IDE.Core.FileStore        (getFileContents)
 import           Development.IDE.Types.Diagnostics
 import Development.IDE.Types.Location
 import Development.IDE.GHC.Util
@@ -138,9 +138,12 @@ getParsedModuleRule =
         (_, contents) <- getFileContents file
         packageState <- hscEnv <$> use_ GhcSession file
         opt <- getIdeOptions
-        r <- liftIO $ parseModule opt packageState (fromNormalizedFilePath file) contents
-        mbFingerprint <- traverse (const $ getSourceFingerprint file) (optShakeFiles opt)
-        pure (fingerprintToBS <$> mbFingerprint, r)
+        (diag, res) <- liftIO $ parseModule opt packageState (fromNormalizedFilePath file) contents
+        case res of
+            Nothing -> pure (Nothing, (diag, Nothing))
+            Just (contents, modu) -> do
+                let mbFingerprint = fingerprintToBS (fingerprintFromStringBuffer contents) <$ optShakeFiles opt
+                pure (mbFingerprint, (diag, Just modu))
 
 getLocatedImportsRule :: Rules ()
 getLocatedImportsRule =
