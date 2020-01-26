@@ -6,13 +6,11 @@
 #include "ghc-api-version.h"
 
 -- | Go to the definition of a variable.
-module Development.IDE.Plugin.CodeAction
-    ( setHandlersCodeAction
-    , setHandlersCodeLens
-    ) where
+module Development.IDE.Plugin.CodeAction(plugin) where
 
 import           Language.Haskell.LSP.Types
 import Control.Monad (join)
+import Development.IDE.Plugin
 import Development.IDE.GHC.Compat
 import Development.IDE.Core.Rules
 import Development.IDE.Core.RuleTypes
@@ -37,6 +35,9 @@ import qualified Data.Text as T
 import Text.Regex.TDFA ((=~), (=~~))
 import Text.Regex.TDFA.Text()
 import Outputable (ppr, showSDocUnsafe)
+
+plugin :: Plugin
+plugin = Plugin mempty (setHandlersCodeAction <> setHandlersCodeLens)
 
 -- | Generate code actions.
 codeAction
