@@ -368,6 +368,7 @@ getHieFileRule =
         let nameCache = initNameCache u []
         liftIO $ fmap (hie_file_result . fst) $ readHieFile nameCache f
 
+-- TODO handle hi-boot files
 getHiFileRule :: Rules ()
 getHiFileRule =
     define $ \GetHiFile f -> do
