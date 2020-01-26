@@ -287,9 +287,9 @@ typeCheckRule =
                   -- If we use TH or QQ, we must obtain the bytecode
                   then do
                     bytecodes <- uses_ GenerateByteCode (transitiveModuleDeps deps)
-                    tmrs <- uses_ GetHiFile (transitiveModuleDeps deps)
+                    tmrs <- uses_ GetModIface (transitiveModuleDeps deps)
                     pure tmrs --(zipWith addByteCode bytecodes tmrs)
-                  else uses_ GetHiFile (transitiveModuleDeps deps)
+                  else uses_ GetModIface (transitiveModuleDeps deps)
         setPriority priorityTypeCheck
         IdeOptions{ optDefer = defer} <- getIdeOptions
         liftIO $ ondiskTypeCheck packageState tms pm
