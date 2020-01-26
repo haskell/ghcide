@@ -362,8 +362,10 @@ getHiFileRule =
         let hiFile = ml_hi_file $ ms_location $ pm_mod_summary pm
         r <- liftIO $ initIfaceLoad session $ readIface mod hiFile
         case r of
-            Maybes.Succeeded iface ->
-                return ([], Just iface)
+            Maybes.Succeeded iface -> do
+                let modSummary = undefined
+                    result = HiFileResult modSummary iface
+                return ([], Just result)
             Maybes.Failed err -> do
                 let d = Diagnostic
                             { _range = noRange,
