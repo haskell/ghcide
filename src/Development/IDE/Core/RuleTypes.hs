@@ -86,6 +86,11 @@ type instance RuleResult ReportImportCycles = ()
 -- | Read the given HIE file.
 type instance RuleResult GetHieFile = HieFile
 
+-- | Read the module interface file
+type instance RuleResult GetHiFile = ModIface
+
+-- | Get a module interface, either from an interface file or a typechecked module
+type instance RuleResult GetModIface = ModIface
 
 data GetParsedModule = GetParsedModule
     deriving (Eq, Show, Typeable, Generic)
@@ -154,3 +159,15 @@ data GetHieFile = GetHieFile FilePath
 instance Hashable GetHieFile
 instance NFData   GetHieFile
 instance Binary   GetHieFile
+
+data GetHiFile = GetHiFile
+    deriving (Eq, Show, Typeable, Generic)
+instance Hashable GetHiFile
+instance NFData   GetHiFile
+instance Binary   GetHiFile
+
+data GetModIface = GetModIface
+    deriving (Eq, Show, Typeable, Generic)
+instance Hashable GetModIface
+instance NFData   GetModIface
+instance Binary   GetModIface
