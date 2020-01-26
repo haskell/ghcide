@@ -7,6 +7,7 @@
 module Development.IDE.Import.FindImports
   ( locateModule
   , Import(..)
+  , ArtifactsLocation(..)
   ) where
 
 import           Development.IDE.GHC.Error as ErrUtils
@@ -29,12 +30,15 @@ import           Control.Monad.IO.Class
 import           System.FilePath
 
 data Import
-  = FileImport !ModLocation
+  = FileImport !ArtifactsLocation
   | PackageImport !M.InstalledUnitId
   deriving (Show)
 
-instance NFData ModLocation where
-  rnf = undefined
+data ArtifactsLocation =  ArtifactsLocation !ModLocation
+    deriving (Show)
+
+instance NFData ArtifactsLocation where
+  rnf = const ()
 
 instance NFData Import where
   rnf (FileImport x) = rnf x
@@ -90,7 +94,7 @@ locateModule dflags exts doesExist modName mbPkgName isSource = do
   where
     toModLocation file = liftIO $ do
         loc <- mkHomeModLocation dflags (unLoc modName) (fromNormalizedFilePath file)
-        return $ Right $ FileImport loc
+        return $ Right $ FileImport $ ArtifactsLocation loc
 
 
     lookupInPackageDB dfs =

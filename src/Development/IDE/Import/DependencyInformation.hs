@@ -46,7 +46,7 @@ import GHC.Generics (Generic)
 
 import Development.IDE.Types.Diagnostics
 import Development.IDE.Types.Location
-import Development.IDE.Import.FindImports ()
+import Development.IDE.Import.FindImports (ArtifactsLocation(..))
 
 import GHC
 import Module
@@ -68,15 +68,15 @@ newtype FilePathId = FilePathId { getFilePathId :: Int }
   deriving (Show, NFData, Eq, Ord)
 
 data PathIdMap = PathIdMap
-  { idToPathMap :: !(IntMap ModLocation)
+  { idToPathMap :: !(IntMap ArtifactsLocation)
   , pathToIdMap :: !(Map NormalizedFilePath FilePathId)
   }
   deriving (Show, Generic)
 
 instance NFData PathIdMap
 
-modLocationToNormalizedFilePath :: ModLocation -> NormalizedFilePath
-modLocationToNormalizedFilePath loc =
+modLocationToNormalizedFilePath :: ArtifactsLocation -> NormalizedFilePath
+modLocationToNormalizedFilePath (ArtifactsLocation loc) =
     let (Just filePath) = ml_hs_file loc
     in
     toNormalizedFilePath filePath
@@ -84,7 +84,7 @@ modLocationToNormalizedFilePath loc =
 emptyPathIdMap :: PathIdMap
 emptyPathIdMap = PathIdMap IntMap.empty MS.empty
 
-getPathId :: ModLocation -> PathIdMap -> (FilePathId, PathIdMap)
+getPathId :: ArtifactsLocation -> PathIdMap -> (FilePathId, PathIdMap)
 getPathId path m@PathIdMap{..} =
     case MS.lookup (modLocationToNormalizedFilePath path) pathToIdMap of
         Nothing ->
@@ -92,7 +92,7 @@ getPathId path m@PathIdMap{..} =
             in (newId, insertPathId path newId m)
         Just id -> (id, m)
 
-insertPathId :: ModLocation -> FilePathId -> PathIdMap -> PathIdMap
+insertPathId :: ArtifactsLocation -> FilePathId -> PathIdMap -> PathIdMap
 insertPathId path id PathIdMap{..} =
     PathIdMap (IntMap.insert (getFilePathId id) path idToPathMap) (MS.insert (modLocationToNormalizedFilePath path) id pathToIdMap)
 
@@ -105,7 +105,7 @@ pathToId PathIdMap{pathToIdMap} path = pathToIdMap MS.! path
 idToPath :: PathIdMap -> FilePathId -> NormalizedFilePath
 idToPath pathIdMap filePathId = modLocationToNormalizedFilePath $ idToModLocation pathIdMap filePathId
 
-idToModLocation :: PathIdMap -> FilePathId -> ModLocation
+idToModLocation :: PathIdMap -> FilePathId -> ArtifactsLocation
 idToModLocation PathIdMap{idToPathMap} (FilePathId id) = idToPathMap IntMap.! id
 
 

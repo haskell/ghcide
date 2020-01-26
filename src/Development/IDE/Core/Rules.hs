@@ -179,7 +179,7 @@ getLocatedImportsRule =
 -- imports recursively.
 rawDependencyInformation :: NormalizedFilePath -> Action RawDependencyInformation
 rawDependencyInformation f = do
-    let (initialId, initialMap) = getPathId (ModLocation (Just $ fromNormalizedFilePath f) "" "") emptyPathIdMap
+    let (initialId, initialMap) = getPathId (ArtifactsLocation $ ModLocation (Just $ fromNormalizedFilePath f) "" "") emptyPathIdMap
     go (IntSet.singleton $ getFilePathId initialId)
        (RawDependencyInformation IntMap.empty initialMap)
   where
@@ -197,7 +197,7 @@ rawDependencyInformation f = do
                     let rawDepInfo' = insertImport fId (Left ModuleParseError) rawDepInfo
                     in go fs rawDepInfo'
                   Just (modImports, pkgImports) -> do
-                    let f :: PathIdMap -> (a, Maybe ModLocation) -> (PathIdMap, (a, Maybe FilePathId))
+                    let f :: PathIdMap -> (a, Maybe ArtifactsLocation) -> (PathIdMap, (a, Maybe FilePathId))
                         f pathMap (imp, mbPath) = case mbPath of
                             Nothing -> (pathMap, (imp, Nothing))
                             Just path ->
