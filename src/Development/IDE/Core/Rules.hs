@@ -281,6 +281,8 @@ typeCheckRule :: Rules ()
 typeCheckRule =
     define $ \TypeCheck file -> do
         pm <- use_ GetParsedModule file
+        logger  <- actionLogger
+        liftIO $ logDebug logger $ T.pack $ "Typechecking file " <> fromNormalizedFilePath file
         deps <- use_ GetDependencies file
         hsc <- hscEnv <$> use_ GhcSession file
         -- Figure out whether we need TemplateHaskell or QuasiQuotes support
@@ -365,8 +367,10 @@ loadGhcSession = do
 getHieFileRule :: Rules ()
 getHieFileRule =
     defineNoFile $ \(GetHieFile f) -> do
+        logger  <- actionLogger
         u <- liftIO $ mkSplitUniqSupply 'a'
         let nameCache = initNameCache u []
+        liftIO $ logDebug logger $ T.pack $ "Loaded ide file " <> f
         liftIO $ fmap (hie_file_result . fst) $ readHieFile nameCache f
 
 -- TODO handle hi-boot files
