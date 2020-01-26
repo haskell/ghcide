@@ -142,7 +142,9 @@ getParsedModuleRule =
         case res of
             Nothing -> pure (Nothing, (diag, Nothing))
             Just (contents, modu) -> do
-                let mbFingerprint = fingerprintToBS (fingerprintFromStringBuffer contents) <$ optShakeFiles opt
+                mbFingerprint <- if isNothing $ optShakeFiles opt
+                    then pure Nothing
+                    else liftIO $ Just . fingerprintToBS <$> fingerprintFromStringBuffer contents
                 pure (mbFingerprint, (diag, Just modu))
 
 getLocatedImportsRule :: Rules ()
