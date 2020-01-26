@@ -85,7 +85,7 @@ main = do
 
     dir <- getCurrentDirectory
 
-    let handlers = def <>
+    let handlers =
             setHandlersCompletion <>
             setHandlersCodeAction <> setHandlersCodeLens
     let rules = do
