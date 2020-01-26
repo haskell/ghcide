@@ -15,7 +15,6 @@ import           Control.DeepSeq
 import Data.Binary
 import           Development.IDE.Import.DependencyInformation
 import Development.IDE.GHC.Util
-import Development.IDE.Types.Location
 import           Data.Hashable
 import           Data.Typeable
 import qualified Data.Set as S
