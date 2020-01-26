@@ -63,6 +63,10 @@ import NameCache
 import HscTypes
 import DynFlags (xopt)
 import GHC.Generics(Generic)
+import qualified Maybes
+import LoadIface
+import TcRnMonad (initIfaceLoad)
+import Outputable (showSDoc)
 
 import qualified Development.IDE.Spans.AtPoint as AtPoint
 import Development.IDE.Core.Service
@@ -349,6 +353,29 @@ getHieFileRule =
         let nameCache = initNameCache u []
         liftIO $ fmap (hie_file_result . fst) $ readHieFile nameCache f
 
+getHiFileRule :: Rules ()
+getHiFileRule =
+    define $ \GetHiFile f -> do
+        session <- hscEnv <$> use_ GhcSession f
+        pm <- use_ GetParsedModule f
+        let mod = ms_mod $ pm_mod_summary pm
+        let hiFile = ml_hi_file $ ms_location $ pm_mod_summary pm
+        r <- liftIO $ initIfaceLoad session $ readIface mod hiFile
+        case r of
+            Maybes.Succeeded iface ->
+                return ([], Just iface)
+            Maybes.Failed err -> do
+                let d = Diagnostic
+                            { _range = noRange,
+                            _severity = Nothing,
+                            _code = Nothing,
+                            _source = Just "CPP",
+                            _message = T.pack $ showSDoc (hsc_dflags session) err,
+                            _relatedInformation = Nothing
+                            }
+
+                return ([(f, ShowDiag, d)], Nothing)
+
 -- | A rule that wires per-file rules together
 mainRule :: Rules ()
 mainRule = do
@@ -363,7 +390,7 @@ mainRule = do
     generateByteCodeRule
     loadGhcSession
     getHieFileRule
-
+    getHiFileRule
 
 ------------------------------------------------------------
 
