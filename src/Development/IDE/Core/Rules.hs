@@ -307,7 +307,7 @@ typeCheckRule =
 
         setPriority priorityTypeCheck
         IdeOptions{ optDefer = defer} <- getIdeOptions
-        liftIO $ ondiskTypeCheck hsc hmis pm
+        liftIO $ ondiskTypeCheck defer hsc hmis pm
     where
         uses_th_qq dflags = xopt LangExt.TemplateHaskell dflags || xopt LangExt.QuasiQuotes dflags
 --        addByteCode :: Linkable -> (ModSummary, ModIface) -> (ModSummary, ModIface)

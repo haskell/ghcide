@@ -93,11 +93,12 @@ computePackageDeps env pkg = do
 
 -- TODO Share code with typecheckModule. The environment needs to be setup
 -- slightly differently but we can probably factor out shared code here.
-ondiskTypeCheck :: HscEnv
+ondiskTypeCheck :: IdeDefer
+                -> HscEnv
                 -> [(HomeModInfo, ModSummary)]
                 -> ParsedModule
                 -> IO ([FileDiagnostic], Maybe TcModuleResult)
-ondiskTypeCheck hsc deps pm = do
+ondiskTypeCheck (IdeDefer defer) hsc deps pm = do
     fmap (either (, Nothing) (second Just)) $
       runGhcEnv hsc $
       catchSrcErrors "typecheck" $ do
@@ -121,9 +122,14 @@ ondiskTypeCheck hsc deps pm = do
         -- FIXME is this reverse still correct
         mapM_ loadDepModule (reverse $ map fst deps)
         (warnings, tcm) <- withWarnings "typecheck" $ \tweak ->
-            GHC.typecheckModule pm { pm_mod_summary = tweak (pm_mod_summary pm) }
+            GHC.typecheckModule $
+              enableTopLevelWarnings $
+                demoteIfDefer $
+                    pm { pm_mod_summary = tweak (pm_mod_summary pm) }
         tcm <- mkTcModuleResult tcm
         pure (map snd warnings, tcm)
+    where
+        demoteIfDefer = if defer then demoteTypeErrorsToWarnings else id
 
 loadDepModule :: GhcMonad m => HomeModInfo -> m ()
 loadDepModule HomeModInfo{hm_iface} = do
