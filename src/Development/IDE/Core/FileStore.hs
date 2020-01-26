@@ -15,8 +15,6 @@ module Development.IDE.Core.FileStore(
     getSourceFingerprint
     ) where
 
-import Foreign.Ptr
-import Foreign.ForeignPtr
 import Fingerprint
 import           StringBuffer
 import Development.IDE.GHC.Orphans()
@@ -109,9 +107,8 @@ fingerprintSourceRule =
     define $ \FingerprintSource file -> do
       (_, mbContent) <- getFileContents file
       content <- liftIO $ maybe (hGetStringBuffer $ fromNormalizedFilePath file) pure mbContent
-      fingerprint <- liftIO $ fpStringBuffer content
+      fingerprint <- liftIO $ fingerprintFromStringBuffer content
       pure ([], Just fingerprint)
-    where fpStringBuffer (StringBuffer buf len cur) = withForeignPtr buf $ \ptr -> fingerprintData (ptr `plusPtr` cur) len
 
 getModificationTimeRule :: VFSHandle -> Rules ()
 getModificationTimeRule vfs =
