@@ -121,13 +121,8 @@ haddockToMarkdown (H.DocExamples es)
       = ">>> " ++ expr ++ "\n" ++ unlines result
 haddockToMarkdown (H.DocHyperlink (H.Hyperlink url Nothing))
   = "<" ++ url ++ ">"
-#if MIN_VERSION_haddock_library(1,8,0)
 haddockToMarkdown (H.DocHyperlink (H.Hyperlink url (Just label)))
   = "[" ++ haddockToMarkdown label ++ "](" ++ url ++ ")"
-#else
-haddockToMarkdown (H.DocHyperlink (H.Hyperlink url (Just label)))
-  = "[" ++ label ++ "](" ++ url ++ ")"
-#endif
 haddockToMarkdown (H.DocPic (H.Picture url Nothing))
   = "![](" ++ url ++ ")"
 haddockToMarkdown (H.DocPic (H.Picture url (Just label)))
