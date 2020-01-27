@@ -6,9 +6,9 @@ module Development.IDE.Core.PositionMapping
   , fromCurrentRange
   , applyChange
   , idMapping
-  -- toCurrent and fromCurrent are mainly exposed for testing
-  , toCurrent
-  , fromCurrent
+  -- newEnd and morph are mainly exposed for testing
+  , newEnd
+  , morph
   ) where
 
 import Control.Monad
@@ -32,53 +32,27 @@ idMapping :: PositionMapping
 idMapping = PositionMapping Just Just
 
 applyChange :: PositionMapping -> TextDocumentContentChangeEvent -> PositionMapping
-applyChange posMapping (TextDocumentContentChangeEvent (Just r) _ t) = PositionMapping
-    { toCurrentPosition = toCurrent r t <=< toCurrentPosition posMapping
-    , fromCurrentPosition = fromCurrentPosition posMapping <=< fromCurrent r t
+applyChange posMapping (TextDocumentContentChangeEvent (Just (Range start end)) _ t) = PositionMapping
+    { toCurrentPosition = morph start end (newEnd t start) <=< toCurrentPosition posMapping
+    , fromCurrentPosition = fromCurrentPosition posMapping <=< morph start (newEnd t start) end
     }
 applyChange posMapping _ = posMapping
 
-toCurrent :: Range -> T.Text -> Position -> Maybe Position
-toCurrent (Range (Position startLine startColumn) (Position endLine endColumn)) t (Position line column)
-    | line < startLine || line == startLine && column < startColumn =
-      -- Position is before the change and thereby unchanged.
-      Just $ Position line column
-    | line > endLine || line == endLine && column >= endColumn =
-      -- Position is after the change so increase line and column number
-      -- as necessary.
-      Just $ Position (line + lineDiff) newColumn
-    | otherwise = Nothing
-    -- Position is in the region that was changed.
-    where
-        lineDiff = linesNew - linesOld
-        linesNew = T.count "\n" t
-        linesOld = endLine - startLine
-        newEndColumn
-          | linesNew == 0 = startColumn + T.length t
-          | otherwise = T.length $ T.takeWhileEnd (/= '\n') t
-        newColumn
-          | line == endLine = column + newEndColumn - endColumn
-          | otherwise = column
+newEnd :: T.Text -> Position -> Position
+newEnd t (Position startLine startColumn) = Position endLine endColumn where
+  endLine = startLine + T.count "\n" t
+  endColumn = T.length (T.takeWhileEnd (/= '\n') t)
+    + if endLine == startLine then startColumn else 0
 
-fromCurrent :: Range -> T.Text -> Position -> Maybe Position
-fromCurrent (Range (Position startLine startColumn) (Position endLine endColumn)) t (Position line column)
-    | line < startLine || line == startLine && column < startColumn =
-      -- Position is before the change and thereby unchanged
-      Just $ Position line column
-    | line > newEndLine || line == newEndLine && column >= newEndColumn =
-      -- Position is after the change so increase line and column number
-      -- as necessary.
-      Just $ Position (line - lineDiff) newColumn
-    | otherwise = Nothing
-    -- Position is in the region that was changed.
-    where
-        lineDiff = linesNew - linesOld
-        linesNew = T.count "\n" t
-        linesOld = endLine - startLine
-        newEndLine = endLine + lineDiff
-        newEndColumn
-          | linesNew == 0 = startColumn + T.length t
-          | otherwise = T.length $ T.takeWhileEnd (/= '\n') t
-        newColumn
-          | line == newEndLine = column - (newEndColumn - endColumn)
-          | otherwise = column
+morph :: Position -> Position -> Position -> Position -> Maybe Position
+morph start end@(Position endLine endColumn)
+  (Position newEndLine newEndColumn) pos@(Position line column)
+  | pos < start = Just $ Position line column
+    -- Position is before the change and thereby unchanged.
+  | pos > end =
+    -- Position is after the change so increase line and column number
+    -- as necessary.
+    Just $ Position (line + newEndLine - endLine) $ column
+      + if line == endLine then newEndColumn - endColumn else 0
+  | otherwise = Nothing
+  -- Position is in the region that was changed.
