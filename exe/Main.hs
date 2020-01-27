@@ -15,6 +15,7 @@ import Control.Exception
 import Control.Monad.Extra
 import Control.Monad.IO.Class
 import Data.Default
+import Data.Void (Void)
 import System.Time.Extra
 import Development.IDE.Core.FileStore
 import Development.IDE.Core.OfInterest
@@ -175,7 +176,7 @@ showEvent lock (EventFileDiagnostics (toNormalizedFilePath -> file) diags) =
 showEvent lock e = withLock lock $ print e
 
 
-cradleToSession :: Cradle -> IO HscEnvEq
+cradleToSession :: Cradle Void -> IO HscEnvEq
 cradleToSession cradle = do
     cradleRes <- getCompilerOptions "" cradle
     opts <- case cradleRes of
