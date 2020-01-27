@@ -1,10 +1,6 @@
 -- Copyright (c) 2019 The DAML Authors. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
 
-{-# OPTIONS_GHC -Wno-missing-fields #-} -- to enable prettyPrint
-{-# LANGUAGE CPP #-}
-#include "ghc-api-version.h"
-
 -- | General utility functions, mostly focused around GHC operations.
 module Development.IDE.GHC.Util(
     -- * HcsEnv and environment
