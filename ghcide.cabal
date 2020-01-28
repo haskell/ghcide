@@ -112,6 +112,7 @@ library
         Development.IDE.LSP.LanguageServer
         Development.IDE.LSP.Protocol
         Development.IDE.LSP.Server
+        Development.IDE.Spans.Common
         Development.IDE.Types.Diagnostics
         Development.IDE.Types.Location
         Development.IDE.Types.Logger
@@ -134,7 +135,6 @@ library
         Development.IDE.LSP.Outline
         Development.IDE.Spans.AtPoint
         Development.IDE.Spans.Calculate
-        Development.IDE.Spans.Common
         Development.IDE.Spans.Documentation
         Development.IDE.Spans.Type
         Development.IDE.Plugin.Completions.Logic
@@ -217,13 +217,19 @@ test-suite ghcide-tests
         --------------------------------------------------------------
         ghcide,
         ghc-typelits-knownnat,
+        haddock-library,
+        haskell-lsp,
         haskell-lsp-types,
         lens,
         lsp-test >= 0.8,
         parser-combinators,
+        QuickCheck,
+        quickcheck-instances,
+        rope-utf16-splay,
         tasty,
-        tasty-hunit,
         tasty-expected-failure,
+        tasty-hunit,
+        tasty-quickcheck,
         text
     hs-source-dirs: test/cabal test/exe test/src
     include-dirs: include
