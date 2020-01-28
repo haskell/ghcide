@@ -58,7 +58,7 @@ import GHC.Generics
 --
 -- This is one of the most performance critical parts of ghcide, do not
 -- modify it without profiling.
-data NormalizedFilePath = NormalizedFilePath NormalizedUriWrapper Int !FilePath
+data NormalizedFilePath = NormalizedFilePath NormalizedUriWrapper !Int !FilePath
     deriving (Generic, Eq, Ord)
 
 instance NFData NormalizedFilePath where
