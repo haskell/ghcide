@@ -82,11 +82,7 @@ spanDocToMarkdown (SpanDocText txt) = txt
 
 spanDocToMarkdownForTest :: String -> String
 spanDocToMarkdownForTest
-#if MIN_VERSION_haddock_library(1,6,0)
   = haddockToMarkdown . H.toRegular . H._doc . H.parseParas Nothing
-#else
-  = haddockToMarkdown . H.toRegular . H._doc . H.parseParas
-#endif
 
 -- Simple (and a bit hacky) conversion from Haddock markup to Markdown
 haddockToMarkdown
