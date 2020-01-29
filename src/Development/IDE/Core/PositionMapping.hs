@@ -1,24 +1,30 @@
+{-# LANGUAGE RankNTypes #-}
 -- Copyright (c) 2019 The DAML Authors. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
 module Development.IDE.Core.PositionMapping
-  ( PositionMapping(..)
+  ( PositionMapping
+  , toCurrentPosition
+  , fromCurrentPosition
   , toCurrentRange
   , fromCurrentRange
-  , applyChange
-  , idMapping
+  , toMapping
   -- newEnd and morph are mainly exposed for testing
   , newEnd
   , morph
   ) where
 
-import Control.Monad
 import qualified Data.Text as T
 import Language.Haskell.LSP.Types
+import Control.Lens
 
-data PositionMapping = PositionMapping
-  { toCurrentPosition :: !(Position -> Maybe Position)
-  , fromCurrentPosition :: !(Position -> Maybe Position)
-  }
+-- (Position -> Maybe Position, Position -> Maybe Position)
+type PositionMapping = AnIso' (Maybe Position) (Maybe Position)
+
+toCurrentPosition :: PositionMapping -> Position -> Maybe Position
+toCurrentPosition mapping p = Just p ^. cloneIso mapping
+
+fromCurrentPosition :: PositionMapping -> Position -> Maybe Position
+fromCurrentPosition mapping p = Just p ^. from mapping
 
 toCurrentRange :: PositionMapping -> Range -> Maybe Range
 toCurrentRange mapping (Range a b) =
@@ -28,15 +34,10 @@ fromCurrentRange :: PositionMapping -> Range -> Maybe Range
 fromCurrentRange mapping (Range a b) =
     Range <$> fromCurrentPosition mapping a <*> fromCurrentPosition mapping b
 
-idMapping :: PositionMapping
-idMapping = PositionMapping Just Just
-
-applyChange :: PositionMapping -> TextDocumentContentChangeEvent -> PositionMapping
-applyChange posMapping (TextDocumentContentChangeEvent (Just (Range start end)) _ t) = PositionMapping
-    { toCurrentPosition = morph start end (newEnd t start) <=< toCurrentPosition posMapping
-    , fromCurrentPosition = fromCurrentPosition posMapping <=< morph start (newEnd t start) end
-    }
-applyChange posMapping _ = posMapping
+toMapping :: TextDocumentContentChangeEvent -> PositionMapping
+toMapping (TextDocumentContentChangeEvent (Just (Range start end)) _ t) =
+  iso (>>= morph start end (newEnd t start)) (>>= morph start (newEnd t start) end)
+toMapping _ = id
 
 newEnd :: T.Text -> Position -> Position
 newEnd t (Position startLine startColumn) = Position endLine endColumn where

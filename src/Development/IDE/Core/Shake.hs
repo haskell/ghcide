@@ -54,7 +54,7 @@ import qualified Data.ByteString.Char8 as BS
 import           Data.Dynamic
 import           Data.Maybe
 import Data.Map.Strict (Map)
-import           Data.List.Extra (foldl', partition, takeEnd)
+import           Data.List.Extra (partition, takeEnd)
 import qualified Data.Set as Set
 import qualified Data.Text as T
 import Data.Traversable (for)
@@ -203,7 +203,7 @@ mappingForVersion
     -> TextDocumentVersion
     -> PositionMapping
 mappingForVersion allMappings file ver =
-    fromMaybe idMapping $
+    fromMaybe id $
     Map.lookup ver =<<
     Map.lookup (filePathToUri' file) allMappings
 
@@ -815,6 +815,6 @@ updatePositionMapping IdeState{shakeExtras = ShakeExtras{positionMapping}} Versi
         let uri = toNormalizedUri _uri
         let mappingForUri = Map.findWithDefault Map.empty uri allMappings
         let updatedMapping =
-                Map.insert _version idMapping $
-                Map.map (\oldMapping -> foldl' applyChange oldMapping changes) mappingForUri
+                Map.insert _version id $
+                Map.map ((.) $ foldr (.) id $ fmap toMapping changes) mappingForUri
         pure $! Map.insert uri updatedMapping allMappings
