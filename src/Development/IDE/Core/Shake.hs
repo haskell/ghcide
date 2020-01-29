@@ -816,5 +816,5 @@ updatePositionMapping IdeState{shakeExtras = ShakeExtras{positionMapping}} Versi
         let mappingForUri = Map.findWithDefault Map.empty uri allMappings
         let updatedMapping =
                 Map.insert _version id $
-                Map.map ((.) $ foldr (.) id $ fmap toMapping changes) mappingForUri
+                Map.map (. foldr (.) id (fmap toMapping changes)) mappingForUri
         pure $! Map.insert uri updatedMapping allMappings
