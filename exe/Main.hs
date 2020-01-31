@@ -186,7 +186,8 @@ cradleToSession cradle = do
         CradleNone -> fail "'none' cradle is not yet supported"
     libdir <- getLibdir
     env <- runGhc (Just libdir) $ do
-        _targets <- initSession opts
+        targets <- initSession opts
+        setTargets targets
         getSession
     initDynLinker env
     newHscEnvEq env
