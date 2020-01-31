@@ -8,6 +8,7 @@
 
 module Main(main) where
 
+import Module
 import Arguments
 import Data.Maybe
 import Data.List.Extra
@@ -171,6 +172,7 @@ showEvent lock e = withLock lock $ print e
 
 cradleToSessionOpts :: Cradle Void -> FilePath -> IO ComponentOptions
 cradleToSessionOpts cradle file = do
+
     cradleRes <- getCompilerOptions file cradle
     opts <- case cradleRes of
         CradleSuccess r -> pure r
@@ -205,9 +207,14 @@ tweakHscEnv hscEnv opts = do
 
 deriving instance Ord ComponentOptions
 
+targetToFile :: TargetId -> (NormalizedFilePath, Bool)
+targetToFile (TargetModule mod) = (toNormalizedFilePath $ (moduleNameSlashes mod) -<.> "hs", False)
+targetToFile (TargetFile f _) = (toNormalizedFilePath f, True)
+
 loadSession :: FilePath -> IO (FilePath -> Action HscEnvEq)
 loadSession dir = do
     hscEnvs <- newVar Map.empty
+    fileToFlags <- newVar []
     -- This caches the mapping from Mod.hs -> hie.yaml
     cradleLoc <- memoIO $ \v -> do
         res <- findCradle v
@@ -217,7 +224,15 @@ loadSession dir = do
         res' <- traverse makeAbsolute res
         return $ normalise <$> res'
 
-    packageSetup <- memoIO $ \(hieYaml, opts) ->
+    packageSetup <- memoIO $ \(hieYaml, opts) -> do
+        hscEnv <- emptyHscEnv
+        -- TODO This should definitely not call initSession
+        targets <- runGhcEnv hscEnv $ initSession opts
+        modifyVar_ fileToFlags $ \var -> do
+            let xs = map (\target -> (targetToFile $ targetId target,opts)) targets
+            print (map (fromNormalizedFilePath . fst . fst) xs)
+            pure $ xs ++ var
+        -- print (hieYaml, opts)
         modifyVar_ hscEnvs $ \m -> do
             oldHscEnv <- case Map.lookup hieYaml m of
                 Nothing -> emptyHscEnv
@@ -231,10 +246,21 @@ loadSession dir = do
         -- TODO Handle the case where there is no hie.yaml
         newHscEnvEq =<< tweakHscEnv (fromJust hscEnv) opts
 
+    lock <- newLock
+
     -- This caches the mapping from hie.yaml + Mod.hs -> [String]
-    sessionOpts <- memoIO $ \(hieYaml, file) -> do
-        cradle <- maybe (loadImplicitCradle $ addTrailingPathSeparator dir) loadCradle hieYaml
-        cradleToSessionOpts cradle file
+    sessionOpts <- memoIO $ \(hieYaml, file) -> withLock lock $ do
+        v <- readVar fileToFlags
+        -- We sort so exact matches come first.
+        case find (\((f', exact), _) -> fromNormalizedFilePath f' == file || not exact && fromNormalizedFilePath f' `isSuffixOf` file) v of
+            Just (_, opts) -> do
+                putStrLn $ "Cached component of " <> show file
+                pure opts
+            Nothing-> do
+                putStrLn $ "Shelling out to cabal " <> show file
+                cradle <- maybe (loadImplicitCradle $ addTrailingPathSeparator dir) loadCradle hieYaml
+                opts <- cradleToSessionOpts cradle file
+                pure opts
     return $ \file -> liftIO $ do
         hieYaml <- cradleLoc file
         opts <- sessionOpts (hieYaml, file)
