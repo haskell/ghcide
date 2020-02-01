@@ -51,6 +51,7 @@ import Data.Either.Extra
 import Data.Maybe
 import           Data.Foldable
 import qualified Data.IntMap.Strict as IntMap
+import Data.IntMap.Strict (IntMap)
 import qualified Data.IntSet as IntSet
 import Data.List
 import Data.Ord
@@ -231,15 +232,17 @@ getLocatedImportsRule =
 -- imports recursively.
 rawDependencyInformation :: NormalizedFilePath -> Action RawDependencyInformation
 rawDependencyInformation f = do
-    let initialArtifact = ArtifactsLocation f (ModLocation (Just $ fromNormalizedFilePath f) "" "")
+    let initialArtifact = ArtifactsLocation f (ModLocation (Just $ fromNormalizedFilePath f) "" "") False
         (initialId, initialMap) = getPathId initialArtifact emptyPathIdMap
-    go (IntSet.singleton $ getFilePathId initialId)
-       (RawDependencyInformation IntMap.empty initialMap)
+    (rdi, ss) <- go (IntSet.singleton $ getFilePathId initialId)
+                    ((RawDependencyInformation IntMap.empty initialMap IntMap.empty), IntMap.empty)
+    let bm = IntMap.foldrWithKey (updateBootMap rdi) IntMap.empty ss
+    return (rdi { rawBootMap = bm })
   where
-    go fs rawDepInfo =
+    go fs (rawDepInfo, ss) =
         case IntSet.minView fs of
             -- Queue is empty
-            Nothing -> pure rawDepInfo
+            Nothing -> pure (rawDepInfo, ss)
             -- Pop f from the queue and process it
             Just (f, fs) -> do
                 let fId = FilePathId f
@@ -248,22 +251,43 @@ rawDependencyInformation f = do
                   Nothing ->
                     -- File doesn’t parse
                     let rawDepInfo' = insertImport fId (Left ModuleParseError) rawDepInfo
-                    in go fs rawDepInfo'
+                    in go fs (rawDepInfo', ss)
                   Just (modImports, pkgImports) -> do
-                    let f :: PathIdMap -> (a, Maybe ArtifactsLocation) -> (PathIdMap, (a, Maybe FilePathId))
-                        f pathMap (imp, mbPath) = case mbPath of
-                            Nothing -> (pathMap, (imp, Nothing))
+                    let f :: (PathIdMap, IntMap ArtifactsLocation)
+                          -> (a, Maybe ArtifactsLocation)
+                          -> ((PathIdMap, IntMap ArtifactsLocation), (a, Maybe FilePathId))
+                        f (pathMap, ss) (imp, mbPath) = case mbPath of
+                            Nothing -> ((pathMap, ss), (imp, Nothing))
                             Just path ->
                                 let (pathId, pathMap') = getPathId path pathMap
-                                in (pathMap', (imp, Just pathId))
+                                    ss' = if isBootLocation path
+                                            then IntMap.insert (getFilePathId pathId) path ss
+                                            else ss
+                                in ((pathMap', ss'), (imp, Just pathId))
                     -- Convert paths in imports to ids and update the path map
-                    let (pathIdMap, modImports') = mapAccumL f (rawPathIdMap rawDepInfo) modImports
+                    let ((pathIdMap, ss'), modImports') = mapAccumL f (rawPathIdMap rawDepInfo, ss) modImports
                     -- Files that we haven’t seen before are added to the queue.
                     let newFiles =
                             IntSet.fromList (coerce $ mapMaybe snd modImports')
                             IntSet.\\ IntMap.keysSet (rawImports rawDepInfo)
                     let rawDepInfo' = insertImport fId (Right $ ModuleImports modImports' pkgImports) rawDepInfo
-                    go (newFiles `IntSet.union` fs) (rawDepInfo' { rawPathIdMap = pathIdMap })
+                    go (newFiles `IntSet.union` fs)
+                       (rawDepInfo' { rawPathIdMap = pathIdMap }, ss')
+
+
+
+    updateBootMap pm boot_mod_id ArtifactsLocation{..} bm =
+      if not artifactIsSource
+        then
+          let msource_mod_id = lookupPathToId (rawPathIdMap pm) (toNormalizedFilePath $ dropBootSuffix artifactModLocation)
+          in case msource_mod_id of
+               Just source_mod_id -> insertBootId source_mod_id (FilePathId boot_mod_id) bm
+               Nothing -> bm
+        else bm
+
+    dropBootSuffix :: ModLocation -> FilePath
+    dropBootSuffix (ModLocation (Just hs_src) _ _) = reverse . drop (length @[] "-boot") . reverse $ hs_src
+    dropBootSuffix _ = error "dropBootSuffix"
 
 getDependencyInformationRule :: Rules ()
 getDependencyInformationRule =
@@ -430,7 +454,9 @@ getHiFileRule = defineEarlyCutoff $ \GetHiFile f -> do
   --      it should be possible to construct a ModSummary parsing just the imports
   --      (see HeaderInfo in the GHC package)
   pm      <- use_ GetParsedModule f
-  let hiFile = ml_hi_file $ ms_location ms
+  let hiFile = case ms_hsc_src ms of
+                HsBootFile -> addBootSuffix (ml_hi_file $ ms_location ms)
+                _ -> ml_hi_file $ ms_location ms
       ms     = pm_mod_summary pm
 
   case sequence depHis of
