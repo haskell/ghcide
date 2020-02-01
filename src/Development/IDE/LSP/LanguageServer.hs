@@ -134,8 +134,8 @@ runLanguageServer options userHandlers getIdeState = do
                                 "Message: " ++ show x ++ "\n" ++
                                 "Exception: " ++ show e
                     Response x@RequestMessage{_id, _params} wrap act ->
-                        checkCancelled ide clearReqId waitForCancel lspFuncs wrap act x _id _params $ 
-                            \res -> case res of
+                        checkCancelled ide clearReqId waitForCancel lspFuncs wrap act x _id _params $
+                            \case
                               Left e  -> sendFunc $ wrap $ ResponseMessage "2.0" (responseId _id) Nothing (Just e)
                               Right r -> sendFunc $ wrap $ ResponseMessage "2.0" (responseId _id) (Just r) Nothing
                     ResponseAndRequest x@RequestMessage{_id, _params} wrap wrapNewReq act ->
