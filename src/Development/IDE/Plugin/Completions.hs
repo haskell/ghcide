@@ -58,7 +58,7 @@ getCompletionsLSP
     :: LSP.LspFuncs ()
     -> IdeState
     -> CompletionParams
-    -> IO CompletionResponseResult
+    -> IO (ResponseBody CompletionResponseResult)
 getCompletionsLSP lsp ide
   CompletionParams{_textDocument=TextDocumentIdentifier uri
                   ,_position=position
@@ -74,13 +74,13 @@ getCompletionsLSP lsp ide
             pfix <- maybe (return Nothing) (flip VFS.getCompletionPrefix cnts) position'
             case (pfix, completionContext) of
               (Just (VFS.PosPrefixInfo _ "" _ _), Just CompletionContext { _triggerCharacter = Just "."})
-                -> return (Completions $ List [])
+                -> return (Right $ Completions $ List [])
               (Just pfix', _) -> do
                 let fakeClientCapabilities = ClientCapabilities Nothing Nothing Nothing Nothing
-                Completions . List <$> getCompletions ideOpts cci' (tmrModule tm') pfix' fakeClientCapabilities (WithSnippets True)
-              _ -> return (Completions $ List [])
-          _ -> return (Completions $ List [])
-      _ -> return (Completions $ List [])
+                Right . Completions . List <$> getCompletions ideOpts cci' (tmrModule tm') pfix' fakeClientCapabilities (WithSnippets True)
+              _ -> return (Right $ Completions $ List [])
+          _ -> return (Right $ Completions $ List [])
+      _ -> return (Right $ Completions $ List [])
 
 setHandlersCompletion :: PartialHandlers
 setHandlersCompletion = PartialHandlers $ \WithMessage{..} x -> return x{
