@@ -31,8 +31,4 @@ codeActionPlugin f = Plugin mempty $ PartialHandlers $ \WithMessage{..} x -> ret
     LSP.codeActionHandler = withResponse RspCodeAction g
     }
     where
-      g lsp state (CodeActionParams a b c _) = do
-        r <- f lsp state a b c
-        case r of
-          Left err -> return $ Left err
-          Right l ->  return $ Right (List l)
+      g lsp state (CodeActionParams a b c _) = fmap List <$> f lsp state a b c
