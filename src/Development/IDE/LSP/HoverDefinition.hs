@@ -20,8 +20,8 @@ import           Language.Haskell.LSP.Types
 
 import qualified Data.Text as T
 
-gotoDefinition :: IdeState -> TextDocumentPositionParams -> IO (ResponseBody LocationResponseParams)
-hover          :: IdeState -> TextDocumentPositionParams -> IO (ResponseBody (Maybe Hover))
+gotoDefinition :: IdeState -> TextDocumentPositionParams -> IO (Either ResponseError LocationResponseParams)
+hover          :: IdeState -> TextDocumentPositionParams -> IO (Either ResponseError (Maybe Hover))
 gotoDefinition = request "Definition" getDefinition (MultiLoc []) SingleLoc
 hover          = request "Hover"      getAtPoint     Nothing      foundHover
 
@@ -43,7 +43,7 @@ request
   -> (a -> b)
   -> IdeState
   -> TextDocumentPositionParams
-  -> IO (ResponseBody b)
+  -> IO (Either ResponseError b)
 request label getResults notFound found ide (TextDocumentPositionParams (TextDocumentIdentifier uri) pos _) = do
     mbResult <- case uriToFilePath' uri of
         Just path -> logAndRunRequest label getResults ide pos path

@@ -58,13 +58,13 @@ getCompletionsLSP
     :: LSP.LspFuncs ()
     -> IdeState
     -> CompletionParams
-    -> IO (ResponseBody CompletionResponseResult)
+    -> IO (Either ResponseError CompletionResponseResult)
 getCompletionsLSP lsp ide
   CompletionParams{_textDocument=TextDocumentIdentifier uri
                   ,_position=position
                   ,_context=completionContext} = do
     contents <- LSP.getVirtualFileFunc lsp $ toNormalizedUri uri
-    case (contents, uriToFilePath' uri) of
+    fmap Right $ case (contents, uriToFilePath' uri) of
       (Just cnts, Just path) -> do
         let npath = toNormalizedFilePath path
         (ideOpts, compls) <- runAction ide ((,) <$> getIdeOptions <*> useWithStale ProduceCompletions npath)
@@ -74,13 +74,13 @@ getCompletionsLSP lsp ide
             pfix <- maybe (return Nothing) (flip VFS.getCompletionPrefix cnts) position'
             case (pfix, completionContext) of
               (Just (VFS.PosPrefixInfo _ "" _ _), Just CompletionContext { _triggerCharacter = Just "."})
-                -> return (Right $ Completions $ List [])
+                -> return (Completions $ List [])
               (Just pfix', _) -> do
                 let fakeClientCapabilities = ClientCapabilities Nothing Nothing Nothing Nothing
-                Right . Completions . List <$> getCompletions ideOpts cci' (tmrModule tm') pfix' fakeClientCapabilities (WithSnippets True)
-              _ -> return (Right $ Completions $ List [])
-          _ -> return (Right $ Completions $ List [])
-      _ -> return (Right $ Completions $ List [])
+                Completions . List <$> getCompletions ideOpts cci' (tmrModule tm') pfix' fakeClientCapabilities (WithSnippets True)
+              _ -> return (Completions $ List [])
+          _ -> return (Completions $ List [])
+      _ -> return (Completions $ List [])
 
 setHandlersCompletion :: PartialHandlers
 setHandlersCompletion = PartialHandlers $ \WithMessage{..} x -> return x{

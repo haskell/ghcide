@@ -6,7 +6,6 @@
 module Development.IDE.LSP.Server
   ( WithMessage(..)
   , PartialHandlers(..)
-  , ResponseBody
   ) where
 
 
@@ -17,13 +16,10 @@ import qualified Language.Haskell.LSP.Core as LSP
 import qualified Language.Haskell.LSP.Messages as LSP
 import Development.IDE.Core.Service
 
--- | An LSP Response message can either have an error or a result.
-type ResponseBody resp = Either ResponseError resp
-
 data WithMessage = WithMessage
     {withResponse :: forall m req resp . (Show m, Show req) =>
         (ResponseMessage resp -> LSP.FromServerMessage) -> -- how to wrap a response
-        (LSP.LspFuncs () -> IdeState -> req -> IO (ResponseBody resp)) -> -- actual work
+        (LSP.LspFuncs () -> IdeState -> req -> IO (Either ResponseError resp)) -> -- actual work
         Maybe (LSP.Handler (RequestMessage m req resp))
     ,withNotification :: forall m req . (Show m, Show req) =>
         Maybe (LSP.Handler (NotificationMessage m req)) -> -- old notification handler

@@ -34,7 +34,7 @@ setHandlersOutline = PartialHandlers $ \WithMessage {..} x -> return x
   }
 
 moduleOutline
-  :: LSP.LspFuncs () -> IdeState -> DocumentSymbolParams -> IO (ResponseBody DSResult)
+  :: LSP.LspFuncs () -> IdeState -> DocumentSymbolParams -> IO (Either ResponseError DSResult)
 moduleOutline _lsp ideState DocumentSymbolParams { _textDocument = TextDocumentIdentifier uri }
   = case uriToFilePath uri of
     Just (toNormalizedFilePath -> fp) -> do

@@ -193,7 +193,7 @@ cancelHandler cancelRequest = PartialHandlers $ \_ x -> return x
 -- | A message that we need to deal with - the pieces are split up with existentials to gain additional type safety
 --   and defer precise processing until later (allows us to keep at a higher level of abstraction slightly longer)
 data Message
-    = forall m req resp . (Show m, Show req) => Response (RequestMessage m req resp) (ResponseMessage resp -> FromServerMessage) (LSP.LspFuncs () -> IdeState -> req -> IO (ResponseBody resp))
+    = forall m req resp . (Show m, Show req) => Response (RequestMessage m req resp) (ResponseMessage resp -> FromServerMessage) (LSP.LspFuncs () -> IdeState -> req -> IO (Either ResponseError resp))
     -- | Used for cases in which we need to send not only a response,
     --   but also an additional request to the client.
     --   For example, 'executeCommand' may generate an 'applyWorkspaceEdit' request.

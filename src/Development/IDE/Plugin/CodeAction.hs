@@ -48,7 +48,7 @@ codeAction
     -> TextDocumentIdentifier
     -> Range
     -> CodeActionContext
-    -> IO (ResponseBody [CAResult])
+    -> IO (Either ResponseError [CAResult])
 codeAction lsp state (TextDocumentIdentifier uri) _range CodeActionContext{_diagnostics=List xs} = do
     -- disable logging as its quite verbose
     -- logInfo (ideLogger ide) $ T.pack $ "Code action req: " ++ show arg
@@ -68,21 +68,21 @@ codeLens
     :: LSP.LspFuncs ()
     -> IdeState
     -> CodeLensParams
-    -> IO (ResponseBody (List CodeLens))
+    -> IO (Either ResponseError (List CodeLens))
 codeLens _lsp ideState CodeLensParams{_textDocument=TextDocumentIdentifier uri} = do
-    case uriToFilePath' uri of
+    fmap (Right . List) $ case uriToFilePath' uri of
       Just (toNormalizedFilePath -> filePath) -> do
         _ <- runAction ideState $ runMaybeT $ useE TypeCheck filePath
         diag <- getDiagnostics ideState
         hDiag <- getHiddenDiagnostics ideState
-        pure $ Right $ List
+        pure
           [ CodeLens _range (Just (Command title "typesignature.add" (Just $ List [toJSON edit]))) Nothing
           | (dFile, _, dDiag@Diagnostic{_range=_range@Range{..},..}) <- diag ++ hDiag
           , dFile == filePath
           , (title, tedit) <- suggestSignature False dDiag
           , let edit = WorkspaceEdit (Just $ Map.singleton uri $ List tedit) Nothing
           ]
-      Nothing -> pure $ Right $ List []
+      Nothing -> pure []
 
 -- | Execute the "typesignature.add" command.
 executeAddSignatureCommand
