@@ -9,6 +9,7 @@ module Development.IDE.Import.DependencyInformation
   , ModuleParseError(..)
   , TransitiveDependencies(..)
   , FilePathId(..)
+  , NamedModuleDep(..)
 
   , PathIdMap
   , emptyPathIdMap
@@ -123,6 +124,7 @@ data DependencyInformation =
   DependencyInformation
     { depErrorNodes :: !(IntMap (NonEmpty NodeError))
     -- ^ Nodes that cannot be processed correctly.
+    , depModuleNames :: !(IntMap ShowableModuleName)
     , depModuleDeps :: !(IntMap IntSet)
     -- ^ For a non-error node, this contains the set of module immediate dependencies
     -- in the same package.
@@ -130,6 +132,12 @@ data DependencyInformation =
     -- ^ For a non-error node, this contains the set of immediate pkg deps.
     , depPathIdMap :: !PathIdMap
     } deriving (Show, Generic)
+
+newtype ShowableModuleName =
+  ShowableModuleName {showableModuleName :: ModuleName}
+  deriving NFData
+
+instance Show ShowableModuleName where show = moduleNameString . showableModuleName
 
 reachableModules :: DependencyInformation -> [NormalizedFilePath]
 reachableModules DependencyInformation{..} =
@@ -197,16 +205,24 @@ processDependencyInformation rawDepInfo@RawDependencyInformation{..} =
   DependencyInformation
     { depErrorNodes = IntMap.fromList errorNodes
     , depModuleDeps = moduleDeps
+    , depModuleNames = IntMap.fromList $ coerce moduleNames
     , depPkgDeps = pkgDependencies rawDepInfo
     , depPathIdMap = rawPathIdMap
     }
   where resultGraph = buildResultGraph rawImports
         (errorNodes, successNodes) = partitionNodeResults $ IntMap.toList resultGraph
+        moduleNames :: [(FilePathId, ModuleName)]
+        moduleNames =
+          [ (fId, modName) | (_, imports) <- successNodes, (L _ modName, fId) <- imports]
         successEdges :: [(FilePathId, FilePathId, [FilePathId])]
         successEdges =
-            map (\(file, imports) -> (FilePathId file, FilePathId file, map snd imports)) successNodes
+            map
+              (\(file, imports) -> (FilePathId file, FilePathId file, map snd imports))
+              successNodes
         moduleDeps =
-          IntMap.fromList $ map (\(_, FilePathId v, vs) -> (v, IntSet.fromList $ coerce vs)) successEdges
+          IntMap.fromList $
+          map (\(_, FilePathId v, vs) -> (v, IntSet.fromList $ coerce vs))
+            successEdges
 
 -- | Given a dependency graph, buildResultGraph detects and propagates errors in that graph as follows:
 -- 1. Mark each node that is part of an import cycle as an error node.
@@ -279,18 +295,27 @@ transitiveDeps DependencyInformation{..} file = do
       IntSet.delete (getFilePathId fileId) .
       IntSet.fromList . map (fst3 . fromVertex) .
       reachable g <$> toVertex (getFilePathId fileId)
-  let transitiveModuleDepIds = filter (\v -> v `IntSet.member` reachableVs) $ map (fst3 . fromVertex) vs
+  let transitiveModuleDepIds =
+        filter (\v -> v `IntSet.member` reachableVs) $ map (fst3 . fromVertex) vs
   let transitivePkgDeps =
           Set.toList $ Set.unions $
           map (\f -> IntMap.findWithDefault Set.empty f depPkgDeps) $
           getFilePathId fileId : transitiveModuleDepIds
-  let transitiveModuleDeps = map (idToPath depPathIdMap . FilePathId) transitiveModuleDepIds
+  let transitiveModuleDeps =
+        map (idToPath depPathIdMap . FilePathId) transitiveModuleDepIds
+  let transitiveNamedModuleDeps =
+        [ NamedModuleDep (idToPath depPathIdMap (FilePathId fid)) mn ml
+        | (fid, ShowableModuleName mn) <- IntMap.toList depModuleNames
+        , let ArtifactsLocation ml = idToPathMap depPathIdMap IntMap.! fid
+        ]
   pure TransitiveDependencies {..}
-  where (g, fromVertex, toVertex) = graphFromEdges (map (\(f, fs) -> (f, f, IntSet.toList fs)) $ IntMap.toList depModuleDeps)
-        vs = topSort g
+  where
+    (g, fromVertex, toVertex) = graphFromEdges (map (\(f, fs) -> (f, f, IntSet.toList fs)) $ IntMap.toList depModuleDeps)
+    vs = topSort g
 
 data TransitiveDependencies = TransitiveDependencies
   { transitiveModuleDeps :: [NormalizedFilePath]
+  , transitiveNamedModuleDeps :: [NamedModuleDep]
   -- ^ Transitive module dependencies in topological order.
   -- The module itself is not included.
   , transitivePkgDeps :: [InstalledUnitId]
@@ -298,3 +323,21 @@ data TransitiveDependencies = TransitiveDependencies
   } deriving (Eq, Show, Generic)
 
 instance NFData TransitiveDependencies
+
+data NamedModuleDep = NamedModuleDep {
+  nmdFilePath :: !NormalizedFilePath,
+  nmdModuleName :: !ModuleName,
+  nmdModLocation :: !ModLocation
+  }
+  deriving Generic
+
+instance Eq NamedModuleDep where
+  a == b = nmdFilePath a == nmdFilePath b
+
+instance NFData NamedModuleDep where
+  rnf NamedModuleDep{..} =
+    rnf nmdFilePath `seq` rnf nmdModuleName `seq` rwhnf nmdModLocation
+
+instance Show NamedModuleDep where
+  show NamedModuleDep{..} = show nmdFilePath
+
