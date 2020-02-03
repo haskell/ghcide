@@ -27,6 +27,7 @@ module Development.IDE.Core.Rules(
 
 import Fingerprint
 
+import Control.Exception
 import Data.Binary
 import Data.Bifunctor (second)
 import Control.Monad.Extra
@@ -55,6 +56,7 @@ import Data.List
 import Data.Ord
 import qualified Data.Set                                 as Set
 import qualified Data.Text                                as T
+import qualified Data.Text.Encoding                       as TE
 import           Development.IDE.GHC.Error
 import           Development.Shake                        hiding (Diagnostic)
 import Development.IDE.Core.RuleTypes
@@ -335,6 +337,7 @@ typeCheckRule = define $ \TypeCheck file -> do
   pm   <- use_ GetParsedModule file
   deps <- use_ GetDependencies file
   hsc  <- hscEnv <$> use_ GhcSession file
+  logger <- actionLogger
   -- Figure out whether we need TemplateHaskell or QuasiQuotes support
   let graph_needs_th_qq = needsTemplateHaskellOrQQ $ hsc_mod_graph hsc
       file_uses_th_qq   = uses_th_qq $ ms_hspp_opts (pm_mod_summary pm)
@@ -349,7 +352,19 @@ typeCheckRule = define $ \TypeCheck file -> do
   setPriority priorityTypeCheck
   IdeOptions { optDefer = defer } <- getIdeOptions
 
-  liftIO $ typecheckModule defer hsc (zipWith unpack mirs bytecodes) pm
+  res <- liftIO $ typecheckModule defer hsc (zipWith unpack mirs bytecodes) pm
+
+  when supportsHieFiles $
+    whenJust (snd res) $ \(hsc, tcm) -> do
+      (_, contents) <- getFileContents file
+      liftIO $ generateAndWriteHieFile hsc (TE.encodeUtf8 <$> contents) (tmrModule tcm)
+        `catch` \(e::IOException) -> do
+          logDebug logger $ T.pack $ "Error saving .hie file: " <> show e
+      liftIO $ generateAndWriteHiFile hsc tcm
+        `catch` \(e::IOException) -> do
+          logDebug logger $ T.pack $ "Error saving .hi file: " <> show e
+
+  return $ second (fmap snd) res
  where
   unpack HiFileResult{..} bc = (hirModSummary, (hirModIface, bc))
   uses_th_qq dflags =

@@ -16,12 +16,15 @@ module Development.IDE.Core.Compile
   , addRelativeImport
   , mkTcModuleResult
   , generateByteCode
+  , generateAndWriteHieFile
+  , generateAndWriteHiFile
   , loadHieFile
   , loadInterface
   , loadDepModule
   , loadModuleHome
   ) where
 
+import Data.ByteString as BS (ByteString, readFile)
 import Development.IDE.Core.RuleTypes
 import Development.IDE.Core.Preprocessor
 import Development.IDE.Core.Shake
@@ -48,6 +51,7 @@ import ErrUtils
 
 import           Finder
 import qualified Development.IDE.GHC.Compat     as GHC
+import qualified Development.IDE.GHC.Compat     as Compat
 import           GhcMonad
 import           GhcPlugins                     as GHC hiding (fst3, (<>))
 import qualified HeaderInfo                     as Hdr
@@ -61,6 +65,7 @@ import           TcRnMonad (initIfaceLoad, tcg_th_coreplugins)
 import           TcIface                        (typecheckIface)
 import           TidyPgm
 
+import Control.Exception
 import Control.Monad.Extra
 import Control.Monad.Except
 import Control.Monad.Trans.Except
@@ -73,7 +78,8 @@ import           Data.Maybe
 import           Data.Tuple.Extra
 import qualified Data.Map.Strict                          as Map
 import           System.FilePath
-import           System.IO
+import           System.Directory
+import           System.IO.Extra
 
 
 -- | Given a string buffer, return the string (after preprocessing) and the 'ParsedModule'.
@@ -107,10 +113,10 @@ typecheckModule :: IdeDefer
                 -> HscEnv
                 -> [(ModSummary, (ModIface, Maybe Linkable))]
                 -> ParsedModule
-                -> IO (IdeResult TcModuleResult)
+                -> IO (IdeResult (HscEnv, TcModuleResult))
 typecheckModule (IdeDefer defer) hsc depsIn pm = do
-    fmap (either (, Nothing) (second Just)) $
-      runGhcEnv hsc $
+    fmap (either (, Nothing) (second Just) . fmap sequence . sequence) $
+      evalGhcEnv hsc $
       catchSrcErrors "typecheck" $ do
         -- Currently GetDependencies returns things in topological order so A comes before B if A imports B.
         -- We need to reverse this as GHC gets very unhappy otherwise and complains about broken interfaces.
@@ -252,6 +258,38 @@ mkTcModuleResult tcm = do
     return $ TcModuleResult tcm mod_info
   where
     (tcGblEnv, details) = tm_internals_ tcm
+
+atomicFileUpdate :: FilePath -> (FilePath -> IO a) -> IO ()
+atomicFileUpdate targetPath write = do
+  let dir = takeDirectory targetPath
+  createDirectoryIfMissing True dir
+  (tempFilePath, cleanUp) <- newTempFileWithin dir
+  (write tempFilePath >> renameFile tempFilePath targetPath) `onException` cleanUp
+
+generateAndWriteHieFile :: HscEnv -> Maybe ByteString -> TypecheckedModule -> IO ()
+generateAndWriteHieFile hscEnv mb_src tcm = do
+  src <- maybe (BS.readFile `traverse` srcPath) (return . Just) mb_src
+  case (src, tm_renamed_source tcm) of
+    (Just src, Just rnsrc) -> do
+      hf <- runHsc hscEnv $
+        GHC.mkHieFile mod_summary (fst $ tm_internals_ tcm) rnsrc src
+      atomicFileUpdate targetPath $ flip GHC.writeHieFile hf
+    _ ->
+      return ()
+  where
+    mod_summary  = pm_mod_summary $ tm_parsed_module tcm
+    mod_location = ms_location mod_summary
+    srcPath      = ml_hs_file mod_location
+    targetPath   = Compat.ml_hie_file mod_location
+
+generateAndWriteHiFile :: HscEnv -> TcModuleResult -> IO ()
+generateAndWriteHiFile hscEnv tc = do
+  atomicFileUpdate targetPath $ \fp ->
+    writeIfaceFile dflags fp modIface
+  where
+    modIface = hm_iface $ tmrModInfo tc
+    targetPath = ml_hi_file $ ms_location $ tmrModSummary tc
+    dflags = hsc_dflags hscEnv
 
 -- | Setup the environment that GHC needs according to our
 -- best understanding (!)
