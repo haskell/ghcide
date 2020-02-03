@@ -29,6 +29,7 @@ import Fingerprint
 
 import Data.Binary
 import Data.Bifunctor (second)
+import Data.Time
 import Control.Monad.Extra
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
@@ -59,11 +60,13 @@ import           Development.IDE.GHC.Error
 import           Development.Shake                        hiding (Diagnostic)
 import Development.IDE.Core.RuleTypes
 import Development.IDE.Spans.Type
+import System.FilePath (takeFileName)
 
 import qualified GHC.LanguageExtensions as LangExt
 import HscTypes
-import DynFlags (xopt)
+import DynFlags (xopt, thisPackage)
 import GHC.Generics(Generic)
+import HeaderInfo (getImports)
 
 import qualified Development.IDE.Spans.AtPoint as AtPoint
 import Development.IDE.Core.Service
@@ -508,6 +511,59 @@ getHiFileRule = defineEarlyCutoff $ \GetHiFile f -> do
                 Left err -> do
                   let diag = ideErrorWithSource (Just "interface file loading") (Just DsError) f . T.pack $ err
                   return (Nothing, (pure diag, Nothing))
+
+
+failRule :: IdeResult a
+failRule = ([], Nothing)
+
+getModSummaryRule :: Rules ()
+getModSummaryRule = define $ \GetModSummary f -> do
+    session <- hscEnv <$> use_ GhcSession f
+    let
+        dflags = hsc_dflags session
+        filePath = fromNormalizedFilePath f
+        fileName = takeFileName filePath
+
+    (_, mFileContent) <- getFileContents f
+    case mFileContent of
+        Nothing -> return failRule
+        Just fileContent -> do
+            eImports <- liftIO $ getImports dflags fileContent fileName fileName
+
+            case eImports of
+                Left err -> return failRule
+                Right (srcImports, normalImports, L _ moduleName) -> do
+                    modLoc <- liftIO $ mkHomeModLocation dflags moduleName fileName
+                    hieFileVersion  <- use_ GetModificationTime $ toNormalizedFilePath $ ml_hie_file modLoc
+                    let hieDate =
+                            case hieFileVersion  of
+                                VFSVersion v ->
+                                    error "HIE file shouldn't be in the virtual file system"
+
+                                ModificationTime l s ->
+                                    UTCTime
+                                        (ModifiedJulianDay $ fromIntegral l)
+                                        (picosecondsToDiffTime $ fromIntegral s)
+
+                    let mod = mkModule (thisPackage dflags) moduleName
+
+                        summary =
+                            ModSummary
+                                {  ms_mod          = mod
+                                ,  ms_hsc_src      = error "Should not depend on ms_iface_date"
+                                ,  ms_location     = modLoc
+                                ,  ms_hs_date      = error "Should not depend on ms_hs_date"
+                                ,  ms_obj_date     = error "Should not depend on ms_obj_date"
+                                ,  ms_iface_date   = error "Should not depend on ms_iface_date"
+                                ,  ms_hie_date     = Just hieDate
+                                ,  ms_srcimps      = srcImports
+                                ,  ms_textual_imps = normalImports -- Are normal imports == Non-source impors?
+                                ,  ms_parsed_mod   = error "Should not depend on ms_parsed_mod"
+                                ,  ms_hspp_file    = error "Should not depend on ms_hspp_file"
+                                ,  ms_hspp_opts    = dflags
+                                ,  ms_hspp_buf     = error "Should not depend on ms_hspp_buf"
+                               }
+                    return ([], Just summary)
 
 
 getModIfaceRule :: Rules ()
