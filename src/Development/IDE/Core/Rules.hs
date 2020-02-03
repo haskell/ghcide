@@ -61,11 +61,13 @@ import           Development.Shake                        hiding (Diagnostic)
 import Development.IDE.Core.RuleTypes
 import Development.IDE.Spans.Type
 import System.FilePath (takeFileName)
+import StringBuffer (hGetStringBuffer)
 
 import qualified GHC.LanguageExtensions as LangExt
 import HscTypes
 import DynFlags (xopt, thisPackage)
 import GHC.Generics(Generic)
+import Finder (mkHomeModLocation)
 import HeaderInfo (getImports)
 
 import qualified Development.IDE.Spans.AtPoint as AtPoint
@@ -460,14 +462,11 @@ getHiFileRule = defineEarlyCutoff $ \GetHiFile f -> do
   session <- hscEnv <$> use_ GhcSession f
   -- get all dependencies interface files, to check for freshness
   (deps,_) <- use_ GetLocatedImports f
+
   depHis  <- traverse (use GetHiFile) (mapMaybe (fmap artifactFilePath . snd) deps)
 
-  -- TODO find the hi file without relying on the parsed module
-  --      it should be possible to construct a ModSummary parsing just the imports
-  --      (see HeaderInfo in the GHC package)
-  pm      <- use_ GetParsedModule f
-  let hiFile = toNormalizedFilePath' $
-            case ms_hsc_src ms of
+  ms <- use_ GetModSummary f
+  let hiFile = case ms_hsc_src ms of
                 HsBootFile -> addBootSuffix (ml_hi_file $ ms_location ms)
                 _ -> ml_hi_file $ ms_location ms
       ms     = pm_mod_summary pm
@@ -503,6 +502,7 @@ getHiFileRule = defineEarlyCutoff $ \GetHiFile f -> do
               let d = mkInterfaceFilesGenerationDiag f "Stale interface file"
               pure (Nothing, (d, Nothing))
             else do
+              session <- hscEnv <$> use_ GhcSession f
               r <- liftIO $ loadInterface session ms deps
               case r of
                 Right iface -> do
@@ -516,54 +516,52 @@ getHiFileRule = defineEarlyCutoff $ \GetHiFile f -> do
 failRule :: IdeResult a
 failRule = ([], Nothing)
 
+logStr :: String -> Action ()
+logStr t = do
+    logger <- actionLogger
+    liftIO $ logDebug logger $ T.pack t
+
 getModSummaryRule :: Rules ()
 getModSummaryRule = define $ \GetModSummary f -> do
     session <- hscEnv <$> use_ GhcSession f
-    let
-        dflags = hsc_dflags session
+    let dflags = hsc_dflags session
         filePath = fromNormalizedFilePath f
         fileName = takeFileName filePath
-
     (_, mFileContent) <- getFileContents f
-    case mFileContent of
-        Nothing -> return failRule
-        Just fileContent -> do
-            eImports <- liftIO $ getImports dflags fileContent fileName fileName
-
-            case eImports of
-                Left err -> return failRule
-                Right (srcImports, normalImports, L _ moduleName) -> do
-                    modLoc <- liftIO $ mkHomeModLocation dflags moduleName fileName
-                    hieFileVersion  <- use_ GetModificationTime $ toNormalizedFilePath $ ml_hie_file modLoc
-                    let hieDate =
-                            case hieFileVersion  of
-                                VFSVersion v ->
-                                    error "HIE file shouldn't be in the virtual file system"
-
-                                ModificationTime l s ->
-                                    UTCTime
-                                        (ModifiedJulianDay $ fromIntegral l)
-                                        (picosecondsToDiffTime $ fromIntegral s)
-
-                    let mod = mkModule (thisPackage dflags) moduleName
-
-                        summary =
-                            ModSummary
-                                {  ms_mod          = mod
-                                ,  ms_hsc_src      = error "Should not depend on ms_iface_date"
-                                ,  ms_location     = modLoc
-                                ,  ms_hs_date      = error "Should not depend on ms_hs_date"
-                                ,  ms_obj_date     = error "Should not depend on ms_obj_date"
-                                ,  ms_iface_date   = error "Should not depend on ms_iface_date"
-                                ,  ms_hie_date     = Just hieDate
-                                ,  ms_srcimps      = srcImports
-                                ,  ms_textual_imps = normalImports -- Are normal imports == Non-source impors?
-                                ,  ms_parsed_mod   = error "Should not depend on ms_parsed_mod"
-                                ,  ms_hspp_file    = error "Should not depend on ms_hspp_file"
-                                ,  ms_hspp_opts    = dflags
-                                ,  ms_hspp_buf     = error "Should not depend on ms_hspp_buf"
-                               }
-                    return ([], Just summary)
+    fileContent <- liftIO $ maybe (hGetStringBuffer filePath) return mFileContent
+    eImports <- liftIO $ getImports dflags fileContent fileName fileName
+    case eImports of
+        Left _ -> do
+            logStr $ "Unable to get file imports for " <> filePath
+            return failRule
+        Right (srcImports, _, L _ moduleName) -> do
+            modLoc <- liftIO $ mkHomeModLocation dflags moduleName fileName
+            hieFileVersion  <- use_ GetModificationTime $ toNormalizedFilePath $ ml_hie_file modLoc
+            hieDate <- case hieFileVersion  of
+                VFSVersion _ -> error "HIE file shouldn't be in the virtual file system"
+                ModificationTime l s ->
+                    return $ UTCTime
+                        (ModifiedJulianDay $ fromIntegral l)
+                        (picosecondsToDiffTime $ fromIntegral s)
+            let mod = mkModule (thisPackage dflags) moduleName
+                summary =
+                    ModSummary
+                        {  ms_mod          = mod
+                        ,  ms_hsc_src      = HsSrcFile -- Will this always be true?
+                        ,  ms_location     = modLoc
+                        ,  ms_hs_date      = error "Should not depend on ms_hs_date"
+                        ,  ms_obj_date     = error "Should not depend on ms_obj_date"
+                        ,  ms_iface_date   = error "Should not depend on ms_iface_date"
+                        ,  ms_hie_date     = Just hieDate
+                        ,  ms_srcimps      = srcImports
+                        ,  ms_textual_imps = [] -- Are normal imports == Non-source impors?
+                        ,  ms_parsed_mod   = error "Should not depend on ms_parsed_mod"
+                        ,  ms_hspp_file    = error "Should not depend on ms_hspp_file"
+                        ,  ms_hspp_opts    = dflags
+                        ,  ms_hspp_buf     = error "Should not depend on ms_hspp_buf"
+                       }
+            logStr $ "Created ModSummary for " <> fromNormalizedFilePath f
+            return ([], Just summary)
 
 
 getModIfaceRule :: Rules ()
@@ -615,3 +613,4 @@ mainRule = do
     getHiFileRule
     getModIfaceRule
     isFileOfInterestRule
+    getModSummaryRule
