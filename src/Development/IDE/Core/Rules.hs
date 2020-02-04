@@ -10,7 +10,7 @@
 --
 module Development.IDE.Core.Rules(
     IdeState, GetDependencies(..), GetParsedModule(..), TransitiveDependencies(..),
-    Priority(..),
+    Priority(..), GhcSessionIO(..), GhcSessionFun(..), GetHscEnvEq(..),
     priorityTypeCheck,
     priorityGenerateCore,
     priorityFilesOfInterest,
@@ -334,11 +334,21 @@ instance Show GhcSessionFun where show _ = "GhcSessionFun"
 instance NFData GhcSessionFun where rnf !_ = ()
 
 
+-- Rule type for caching GHC sessions.
+type instance RuleResult GetHscEnvEq = HscEnvEq
+
+data GetHscEnvEq = GetHscEnvEq
+    { hscenvOptions :: [String]        -- componentOptions from hie-bios
+    , hscenvDependencies :: [FilePath] -- componentDependencies from hie-bios
+    }
+    deriving (Eq, Show, Typeable, Generic)
+instance Hashable GetHscEnvEq
+instance NFData   GetHscEnvEq
+instance Binary   GetHscEnvEq
+
+
 loadGhcSession :: Rules ()
-loadGhcSession = do
-    defineNoFile $ \GhcSessionIO -> do
-        opts <- getIdeOptions
-        liftIO $ GhcSessionFun <$> optGhcSession opts
+loadGhcSession =
     defineEarlyCutoff $ \GhcSession file -> do
         GhcSessionFun fun <- useNoFile_ GhcSessionIO
         val <- fun $ fromNormalizedFilePath file
