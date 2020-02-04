@@ -3,6 +3,5 @@ packages:
 - .
 extra-deps:
 - fuzzy-0.1.0.0
-- hie-bios-0.3.2
 nix:
   packages: [zlib]
