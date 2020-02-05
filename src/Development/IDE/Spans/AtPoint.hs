@@ -84,7 +84,7 @@ atPoint IdeOptions{..} (SpansInfo srcSpans cntsSpans) pos = do
        constraintsOverFVs = filter (\cnt -> not (tyCoVarsOfType cnt `disjointVarSet` thisFVs)) cnts
        constraintsT = T.intercalate ", " (map showName constraintsOverFVs)
 
-       typeAnnotation = case constraintsOverFVs of 
+       typeAnnotation = case constraintsOverFVs of
                           []  -> colon <> showName typ
                           [_] -> colon <> constraintsT <> "\n=> " <> showName typ
                           _   -> colon <> "(" <> constraintsT <> ")\n=> " <> showName typ
