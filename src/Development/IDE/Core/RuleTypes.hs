@@ -61,8 +61,10 @@ tmrModSummary :: TcModuleResult -> ModSummary
 tmrModSummary = pm_mod_summary . tm_parsed_module . tmrModule
 
 data HiFileResult = HiFileResult
-    { hirModSummary :: ModSummary
-    , hirModIface :: ModIface
+    { hirModSummary :: !ModSummary
+    -- Bang patterns here are important to stop the result retaining
+    -- a reference to a typechecked module
+    , hirModIface :: !ModIface
     }
 
 instance NFData HiFileResult where

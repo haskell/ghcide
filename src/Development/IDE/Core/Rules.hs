@@ -357,8 +357,15 @@ getSpanInfoRule =
 
 -- Typechecks a module.
 typeCheckRule :: Rules ()
-typeCheckRule = define $ \TypeCheck file -> do
-  pm   <- use_ GetParsedModule file
+typeCheckRule = define $ \TypeCheck file -> typeCheckRuleDefinition file
+
+-- This is factored out so it can be directly called from the GetModIface
+-- rule. Directly calling this rule means that on the initial load we can
+-- garbage collect all the intermediate typechecked modules rather than
+-- retain the information forever in the shake graph.
+typeCheckRuleDefinition :: NormalizedFilePath -> Action (IdeResult TcModuleResult)
+typeCheckRuleDefinition file = do
+  pm     <- use_ GetParsedModule file
   deps <- use_ GetDependencies file
   hsc  <- hscEnv <$> use_ GhcSession file
   logger <- actionLogger
@@ -505,10 +512,20 @@ getModIfaceRule = define $ \GetModIface f -> do
     case mbHiFile of
         Just x ->
             return ([], Just x)
-        Nothing -> do
-            tmr <- use_ TypeCheck f
-            let iface = hm_iface (tmrModInfo tmr)
-            return ([], Just $ HiFileResult (tmrModSummary tmr) iface)
+        Nothing
+          | fileOfInterest -> do
+            tmr <- use TypeCheck f
+            return ([], extract tmr)
+          | otherwise -> do
+            (diags, tmr) <- typeCheckRuleDefinition f
+            -- Bang pattern is important to avoid leaking 'tmr'
+            let !res = extract tmr
+            return (diags, res)
+    where
+      extract Nothing = Nothing
+      extract (Just tmr) =
+        -- Bang patterns are important to force the inner fields
+        Just $! HiFileResult (tmrModSummary tmr) (hm_iface $ tmrModInfo tmr)
 
 isFileOfInterestRule :: Rules ()
 isFileOfInterestRule = defineEarlyCutoff $ \IsFileOfInterest f -> do
