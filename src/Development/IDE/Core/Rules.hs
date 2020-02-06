@@ -27,7 +27,6 @@ module Development.IDE.Core.Rules(
 
 import Fingerprint
 
-import Control.Exception
 import Data.Binary
 import Data.Bifunctor (second)
 import Control.Monad.Extra
@@ -43,7 +42,6 @@ import           Development.IDE.Core.FileExists
 import           Development.IDE.Core.FileStore        (getFileContents)
 import           Development.IDE.Types.Diagnostics
 import Development.IDE.Types.Location
-import Development.IDE.Types.Logger (logDebug)
 import Development.IDE.GHC.Compat hiding (parseModule, typecheckModule)
 import Development.IDE.GHC.Util
 import Data.Coerce
@@ -365,10 +363,9 @@ typeCheckRule = define $ \TypeCheck file -> typeCheckRuleDefinition file
 -- retain the information forever in the shake graph.
 typeCheckRuleDefinition :: NormalizedFilePath -> Action (IdeResult TcModuleResult)
 typeCheckRuleDefinition file = do
-  pm     <- use_ GetParsedModule file
+  pm   <- use_ GetParsedModule file
   deps <- use_ GetDependencies file
   hsc  <- hscEnv <$> use_ GhcSession file
-  logger <- actionLogger
   -- Figure out whether we need TemplateHaskell or QuasiQuotes support
   let graph_needs_th_qq = needsTemplateHaskellOrQQ $ hsc_mod_graph hsc
       file_uses_th_qq   = uses_th_qq $ ms_hspp_opts (pm_mod_summary pm)
@@ -385,17 +382,16 @@ typeCheckRuleDefinition file = do
 
   res <- liftIO $ typecheckModule defer hsc (zipWith unpack mirs bytecodes) pm
 
-  when supportsHieFiles $
-    whenJust (snd res) $ \(hsc, tcm) -> do
+  case res of
+    (diags, Just (hsc,tcm)) | supportsHieFiles -> do
       (_, contents) <- getFileContents file
-      liftIO $ generateAndWriteHieFile hsc (TE.encodeUtf8 <$> contents) (tmrModule tcm)
-        `catch` \(e::IOException) -> do
-          logDebug logger $ T.pack $ "Error saving .hie file: " <> show e
-      liftIO $ generateAndWriteHiFile hsc tcm
-        `catch` \(e::IOException) -> do
-          logDebug logger $ T.pack $ "Error saving .hi file: " <> show e
-
-  return $ second (fmap snd) res
+      diagsHie <- liftIO $
+        generateAndWriteHieFile hsc (TE.encodeUtf8 <$> contents) (tmrModule tcm)
+      diagsHi  <- liftIO $
+        generateAndWriteHiFile hsc tcm
+      return (diags <> diagsHi <> diagsHie, Just tcm)
+    (diags, res) ->
+      return (diags, snd <$> res)
  where
   unpack HiFileResult{..} bc = (hirModSummary, (hirModIface, bc))
   uses_th_qq dflags =
@@ -452,7 +448,6 @@ loadGhcSession = do
 getHiFileRule :: Rules ()
 getHiFileRule = defineEarlyCutoff $ \GetHiFile f -> do
   session <- hscEnv <$> use_ GhcSession f
-  logger  <- actionLogger
   -- get all dependencies interface files, to check for freshness
   (deps,_)<- use_ GetLocatedImports f
   depHis  <- traverse (use GetHiFile) (mapMaybe (fmap artifactFilePath . snd) deps)
@@ -461,29 +456,30 @@ getHiFileRule = defineEarlyCutoff $ \GetHiFile f -> do
   --      it should be possible to construct a ModSummary parsing just the imports
   --      (see HeaderInfo in the GHC package)
   pm      <- use_ GetParsedModule f
-  let hiFile = case ms_hsc_src ms of
+  let hiFile = toNormalizedFilePath $
+            case ms_hsc_src ms of
                 HsBootFile -> addBootSuffix (ml_hi_file $ ms_location ms)
                 _ -> ml_hi_file $ ms_location ms
       ms     = pm_mod_summary pm
 
   case sequence depHis of
     Nothing -> do
-          liftIO $ logDebug logger $ T.pack ("Missing dependencies for interface file: " <> hiFile)
-          pure (Nothing, ([], Nothing))
+          let d = mkInterfaceFilesGenerationDiag f "Missing interface file dependencies"
+          pure (Nothing, (d, Nothing))
     Just deps -> do
-      gotHiFile <- getFileExists $ toNormalizedFilePath hiFile
+      gotHiFile <- getFileExists hiFile
       if not gotHiFile
         then do
-          liftIO $ logDebug logger $ T.pack ("Missing interface file: " <> hiFile)
-          pure (Nothing, ([], Nothing))
+          let d = mkInterfaceFilesGenerationDiag f "Missing interface file"
+          pure (Nothing, (d, Nothing))
         else do
-          hiVersion  <- use_ GetModificationTime $ toNormalizedFilePath hiFile
+          hiVersion  <- use_ GetModificationTime hiFile
           modVersion <- use_ GetModificationTime f
           let sourceModified = LT == comparing modificationTime hiVersion modVersion
           if sourceModified
             then do
-              liftIO $ logDebug logger $ T.pack ("Stale interface file: " <> hiFile)
-              pure (Nothing, ([], Nothing))
+              let d = mkInterfaceFilesGenerationDiag f "Stale interface file"
+              pure (Nothing, (d, Nothing))
             else do
               r <- liftIO $ loadInterface session ms deps
               case r of
@@ -491,13 +487,14 @@ getHiFileRule = defineEarlyCutoff $ \GetHiFile f -> do
                   let result = HiFileResult ms iface
                   return (Just (fingerprintToBS (mi_mod_hash iface)), ([], Just result))
                 Left err -> do
-                  let d = ideErrorText f errMsg
-                      errMsg = T.pack err
-                  liftIO
-                    $  logDebug logger
-                    $  T.pack ("Failed to load interface file " <> hiFile <> ": ")
-                    <> errMsg
-                  return (Nothing, ([d], Nothing))
+                  let diag = ideErrorWithSource (Just "interface file loading") (Just DsError) f . T.pack $ err
+                  return (Nothing, (pure diag, Nothing))
+
+mkInterfaceFilesGenerationDiag :: a -> String -> [(a, ShowDiagnostic, Diagnostic)]
+mkInterfaceFilesGenerationDiag f intro = mkDiag $ intro <> msg
+  where
+      msg = ": additional resource use while generating interface files in the background."
+      mkDiag = pure . ideErrorWithSource (Just "interface file loading") (Just DsInfo) f . T.pack
 
 getModIfaceRule :: Rules ()
 getModIfaceRule = define $ \GetModIface f -> do

@@ -397,7 +397,7 @@ diagnosticTests = testGroup "diagnostics"
           let itemA = TextDocumentItem uriA "haskell" 0 aContent
           let a = TextDocumentIdentifier uriA
           sendNotification TextDocumentDidOpen (DidOpenTextDocumentParams itemA)
-          diagsNot <- skipManyTill anyMessage message :: Session PublishDiagnosticsNotification
+          diagsNot <- skipManyTill anyMessage diagnostic
           let PublishDiagnosticsParams fileUri diags = _params (diagsNot :: PublishDiagnosticsNotification)
           -- Check that if we put a lower-case drive in for A.A
           -- the diagnostics for A.B will also be lower-case.

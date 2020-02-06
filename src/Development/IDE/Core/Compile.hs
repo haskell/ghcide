@@ -268,26 +268,29 @@ atomicFileUpdate targetPath write = do
   (tempFilePath, cleanUp) <- newTempFileWithin dir
   (write tempFilePath >> renameFile tempFilePath targetPath) `onException` cleanUp
 
-generateAndWriteHieFile :: HscEnv -> Maybe ByteString -> TypecheckedModule -> IO ()
-generateAndWriteHieFile hscEnv mb_src tcm = do
-  src <- maybe (BS.readFile `traverse` srcPath) (return . Just) mb_src
-  case (src, tm_renamed_source tcm) of
-    (Just src, Just rnsrc) -> do
-      hf <- runHsc hscEnv $
-        GHC.mkHieFile mod_summary (fst $ tm_internals_ tcm) rnsrc src
-      atomicFileUpdate targetPath $ flip GHC.writeHieFile hf
-    _ ->
-      return ()
+generateAndWriteHieFile :: HscEnv -> Maybe ByteString -> TypecheckedModule -> IO [FileDiagnostic]
+generateAndWriteHieFile hscEnv mb_src tcm =
+  handleGenerationErrors dflags "extended interface generation" $ do
+    src <- maybe (BS.readFile `traverse` srcPath) (return . Just) mb_src
+    case (src, tm_renamed_source tcm) of
+      (Just src, Just rnsrc) -> do
+        hf <- runHsc hscEnv $
+          GHC.mkHieFile mod_summary (fst $ tm_internals_ tcm) rnsrc src
+        atomicFileUpdate targetPath $ flip GHC.writeHieFile hf
+      _ ->
+        return ()
   where
+    dflags       = hsc_dflags hscEnv
     mod_summary  = pm_mod_summary $ tm_parsed_module tcm
     mod_location = ms_location mod_summary
     srcPath      = ml_hs_file mod_location
     targetPath   = Compat.ml_hie_file mod_location
 
-generateAndWriteHiFile :: HscEnv -> TcModuleResult -> IO ()
-generateAndWriteHiFile hscEnv tc = do
-  atomicFileUpdate targetPath $ \fp ->
-    writeIfaceFile dflags fp modIface
+generateAndWriteHiFile :: HscEnv -> TcModuleResult -> IO [FileDiagnostic]
+generateAndWriteHiFile hscEnv tc =
+  handleGenerationErrors dflags "interface generation" $ do
+    atomicFileUpdate targetPath $ \fp ->
+      writeIfaceFile dflags fp modIface
   where
     modIface = hm_iface $ tmrModInfo tc
     modSummary = tmrModSummary tc
@@ -296,6 +299,15 @@ generateAndWriteHiFile hscEnv tc = do
                 HsBootFile -> addBootSuffix
                 _ -> id
     dflags = hsc_dflags hscEnv
+
+handleGenerationErrors :: DynFlags -> T.Text -> IO () -> IO [FileDiagnostic]
+handleGenerationErrors dflags source action =
+  action >> return [] `catches`
+    [ Handler $ return . diagFromGhcException source dflags
+    , Handler $ return . diagFromString source DsError (noSpan "<internal>")
+    . (("Error during " ++ T.unpack source) ++) . show @SomeException
+    ]
+
 
 -- | Setup the environment that GHC needs according to our
 -- best understanding (!)
