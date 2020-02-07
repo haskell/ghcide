@@ -10,7 +10,7 @@
 --
 module Development.IDE.Core.Rules(
     IdeState, GetDependencies(..), GetParsedModule(..), TransitiveDependencies(..),
-    Priority(..), GhcSessionIO(..), GhcSessionFun(..), GetHscEnvEq(..),
+    Priority(..), GhcSessionIO(..), GhcSessionFun(..), GetHscEnv(..),
     priorityTypeCheck,
     priorityGenerateCore,
     priorityFilesOfInterest,
@@ -335,16 +335,16 @@ instance NFData GhcSessionFun where rnf !_ = ()
 
 
 -- Rule type for caching GHC sessions.
-type instance RuleResult GetHscEnvEq = HscEnvEq
+type instance RuleResult GetHscEnv = HscEnvEq
 
-data GetHscEnvEq = GetHscEnvEq
+data GetHscEnv = GetHscEnv
     { hscenvOptions :: [String]        -- componentOptions from hie-bios
     , hscenvDependencies :: [FilePath] -- componentDependencies from hie-bios
     }
     deriving (Eq, Show, Typeable, Generic)
-instance Hashable GetHscEnvEq
-instance NFData   GetHscEnvEq
-instance Binary   GetHscEnvEq
+instance Hashable GetHscEnv
+instance NFData   GetHscEnv
+instance Binary   GetHscEnv
 
 
 loadGhcSession :: Rules ()

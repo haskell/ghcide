@@ -39,13 +39,13 @@ import Language.Haskell.LSP.Types (LspId(IdInt))
 import Linker
 import Data.Version
 import Development.IDE.LSP.LanguageServer
-import System.Directory.Extra as IO
+import qualified System.Directory.Extra as IO
 import System.Environment
 import System.IO
 import System.Exit
 import Paths_ghcide
 import Development.GitRev
-import Development.Shake (Action, Rules, action, need)
+import Development.Shake (Action, Rules, action, doesFileExist, need)
 import qualified Data.HashSet as HashSet
 import qualified Data.Map.Strict as Map
 
@@ -84,9 +84,9 @@ main = do
     let logger p = Logger $ \pri msg -> when (pri >= p) $ withLock lock $
             T.putStrLn $ T.pack ("[" ++ upper (show pri) ++ "] ") <> msg
 
-    whenJust argsCwd setCurrentDirectory
+    whenJust argsCwd IO.setCurrentDirectory
 
-    dir <- getCurrentDirectory
+    dir <- IO.getCurrentDirectory
 
     let plugins = Completions.plugin <> CodeAction.plugin
         onInitialConfiguration = const $ Right ()
@@ -113,7 +113,7 @@ main = do
         putStrLn $ "\nStep 1/6: Finding files to test in " ++ dir
         files <- expandFiles (argFiles ++ ["." | null argFiles])
         -- LSP works with absolute file paths, so try and behave similarly
-        files <- nubOrd <$> mapM canonicalizePath files
+        files <- nubOrd <$> mapM IO.canonicalizePath files
         putStrLn $ "Found " ++ show (length files) ++ " files"
 
         putStrLn "\nStep 2/6: Looking for hie.yaml files that control setup"
@@ -164,7 +164,7 @@ expandFiles = concatMapM $ \x -> do
         let recurse "." = True
             recurse x | "." `isPrefixOf` takeFileName x = False -- skip .git etc
             recurse x = takeFileName x `notElem` ["dist","dist-newstyle"] -- cabal directories
-        files <- filter (\x -> takeExtension x `elem` [".hs",".lhs"]) <$> listFilesInside (return . recurse) x
+        files <- filter (\x -> takeExtension x `elem` [".hs",".lhs"]) <$> IO.listFilesInside (return . recurse) x
         when (null files) $
             fail $ "Couldn't find any .hs/.lhs files inside directory: " ++ x
         return files
@@ -185,7 +185,7 @@ showEvent lock e = withLock lock $ print e
 
 loadGhcSessionIO :: FilePath -> Rules ()
 loadGhcSessionIO dir = do
-    defineNoFile $ \(GetHscEnvEq opts deps) ->
+    defineNoFile $ \(GetHscEnv opts deps) ->
         liftIO $ createSession $ ComponentOptions opts deps
     defineNoFile $ \GhcSessionIO -> GhcSessionFun <$> loadSession dir
 
@@ -217,10 +217,9 @@ cradleToSession cradle = do
     cmpOpts <- liftIO $ getComponentOptions cradle
     let opts = componentOptions cmpOpts
         deps = componentDependencies cmpOpts
-    -- TODO Handle deps that don't exist yet but might be newly created.
-    existingDeps <- liftIO $ filterM doesFileExist deps
+    existingDeps <- filterM doesFileExist deps
     need existingDeps
-    useNoFile_ $ GetHscEnvEq opts deps
+    useNoFile_ $ GetHscEnv opts deps
 
 
 loadSession :: FilePath -> Action (FilePath -> Action HscEnvEq)
@@ -230,7 +229,7 @@ loadSession dir = liftIO $ do
         -- Sometimes we get C:, sometimes we get c:, and sometimes we get a relative path
         -- try and normalise that
         -- e.g. see https://github.com/digital-asset/ghcide/issues/126
-        res' <- traverse makeAbsolute res
+        res' <- traverse IO.makeAbsolute res
         return $ normalise <$> res'
     let session :: Maybe FilePath -> Action HscEnvEq
         session file = do
