@@ -19,7 +19,6 @@ import Development.IDE.Spans.Type as SpanInfo
 import Development.IDE.Spans.Common (spanDocToMarkdown)
 
 -- GHC API imports
-import Avail
 import DynFlags
 import FastString
 import Name
@@ -139,11 +138,11 @@ locationsAtPoint getHieFile IdeOptions{..} pos =
                 -- so we instead read the .hie files to get useful source spans.
                 mod <- MaybeT $ return $ nameModule_maybe name
                 (hieFile, srcPath) <- MaybeT $ getHieFile mod
-                avail <- MaybeT $ pure $ listToMaybe (filterAvails (eqName name) $ hie_exports hieFile)
+                avail <- MaybeT $ pure $ listToMaybe (filter (eqName name . snd) $ hieExportNames hieFile)
                 -- The location will point to the source file used during compilation.
                 -- This file might no longer exists and even if it does the path will be relative
                 -- to the compilation directory which we don’t know.
-                let span = setFileName srcPath $ nameSrcSpan $ availName avail
+                let span = setFileName srcPath $ fst avail
                 pure span
         -- We ignore uniques and source spans and only compare the name and the module.
         eqName :: Name -> Name -> Bool

@@ -383,7 +383,7 @@ typeCheckRuleDefinition file = do
   res <- liftIO $ typecheckModule defer hsc (zipWith unpack mirs bytecodes) pm
 
   case res of
-    (diags, Just (hsc,tcm)) | supportsHieFiles -> do
+    (diags, Just (hsc,tcm)) -> do
       (_, contents) <- getFileContents file
       diagsHie <- liftIO $
         generateAndWriteHieFile hsc (TE.encodeUtf8 <$> contents) (tmrModule tcm)
@@ -500,9 +500,6 @@ getModIfaceRule :: Rules ()
 getModIfaceRule = define $ \GetModIface f -> do
     fileOfInterest <- use_ IsFileOfInterest f
     let useHiFile =
-          -- Interface files do not carry location information, so
-          -- never use interface files if .hie files are not available
-          supportsHieFiles &&
           -- Never load interface files for files of interest
           not fileOfInterest
     mbHiFile <- if useHiFile then use GetHiFile f else return Nothing
