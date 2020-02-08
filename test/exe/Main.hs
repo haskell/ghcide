@@ -99,7 +99,7 @@ initializeResponseTests = withResource acquire release tests where
     , chk "NO color"                         _colorProvider (Just $ ColorOptionsStatic False)
     , chk "NO folding range"          _foldingRangeProvider (Just $ FoldingRangeOptionsStatic False)
     , chk "   execute command"      _executeCommandProvider (Just $ ExecuteCommandOptions $ List ["typesignature.add"])
-    , chk "NO workspace"                         _workspace  nothingWorkspace
+    , chk "   workspace"                         _workspace (Just $ WorkspaceOptions (Just WorkspaceFolderOptions{_supported = Just True, _changeNotifications = Just ( WorkspaceFolderChangeNotificationsBool True )}))
     , chk "NO experimental"                   _experimental  Nothing
     ] where
 
@@ -109,8 +109,6 @@ initializeResponseTests = withResource acquire release tests where
                               , _willSave  = Nothing
                               , _willSaveWaitUntil = Nothing
                               , _save = Just (SaveOptions {_includeText = Nothing})}))
-
-      nothingWorkspace = Just (WorkspaceOptions {_workspaceFolders = Nothing})
 
       chk :: (Eq a, Show a) => TestName -> (InitializeResponseCapabilitiesInner -> a) -> a -> TestTree
       chk title getActual expected =
