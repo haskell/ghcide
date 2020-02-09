@@ -255,6 +255,7 @@ test-suite ghcide-tests
         QuickCheck,
         quickcheck-instances,
         rope-utf16-splay,
+        shake,
         tasty,
         tasty-expected-failure,
         tasty-hunit,
