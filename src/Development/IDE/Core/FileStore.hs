@@ -122,7 +122,7 @@ getModificationTimeRule vfs =
         do time <- Dir.getModificationTime f
            let !day = toModifiedJulianDay $ utctDay time
                !dayTime = diffTimeToPicoseconds $ utctDayTime time
-           pure $! (day, dayTime)
+           pure (day, dayTime)
 #else
         withCString f $ \f' ->
         alloca $ \secPtr ->
