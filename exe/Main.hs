@@ -16,6 +16,7 @@ import Control.Monad.Extra
 import Control.Monad.IO.Class
 import Data.Default
 import System.Time.Extra
+import Development.IDE.Core.Debouncer
 import Development.IDE.Core.FileStore
 import Development.IDE.Core.OfInterest
 import Development.IDE.Core.Service
@@ -101,13 +102,16 @@ main = do
                     { optReportProgress = clientSupportsProgress caps
                     , optShakeProfiling = argsShakeProfiling
                     }
-            initialise caps (mainRule >> pluginRules plugins >> action kick) getLspId event (logger minBound) options vfs
+            debouncer <- newAsyncDebouncer
+            initialise caps (mainRule >> pluginRules plugins >> action kick) getLspId event (logger minBound) debouncer options vfs
     else do
         putStrLn $ "Ghcide setup tester in " ++ dir ++ "."
         putStrLn "Report bugs at https://github.com/digital-asset/ghcide/issues"
 
         putStrLn $ "\nStep 1/6: Finding files to test in " ++ dir
-        files <- nubOrd <$> expandFiles (argFiles ++ ["." | null argFiles])
+        files <- expandFiles (argFiles ++ ["." | null argFiles])
+        -- LSP works with absolute file paths, so try and behave similarly
+        files <- nubOrd <$> mapM canonicalizePath files
         putStrLn $ "Found " ++ show (length files) ++ " files"
 
         putStrLn "\nStep 2/6: Looking for hie.yaml files that control setup"
@@ -130,7 +134,11 @@ main = do
         let grab file = fromMaybe (head sessions) $ do
                 cradle <- Map.lookup file filesToCradles
                 Map.lookup cradle cradlesToSessions
-        ide <- initialise def mainRule (pure $ IdInt 0) (showEvent lock) (logger Info) (defaultIdeOptions $ return $ return . grab) vfs
+
+        let options =
+              (defaultIdeOptions $ return $ return . grab)
+                    { optShakeProfiling = argsShakeProfiling }
+        ide <- initialise def mainRule (pure $ IdInt 0) (showEvent lock) (logger Info) noopDebouncer options vfs
 
         putStrLn "\nStep 6/6: Type checking the files"
         setFilesOfInterest ide $ Set.fromList $ map toNormalizedFilePath files
@@ -171,7 +179,7 @@ showEvent lock (EventFileDiagnostics (toNormalizedFilePath -> file) diags) =
 showEvent lock e = withLock lock $ print e
 
 
-cradleToSession :: Cradle -> IO HscEnvEq
+cradleToSession :: Cradle a -> IO HscEnvEq
 cradleToSession cradle = do
     cradleRes <- getCompilerOptions "" cradle
     opts <- case cradleRes of

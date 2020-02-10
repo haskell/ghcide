@@ -34,12 +34,12 @@ setHandlersOutline = PartialHandlers $ \WithMessage {..} x -> return x
   }
 
 moduleOutline
-  :: LSP.LspFuncs () -> IdeState -> DocumentSymbolParams -> IO DSResult
+  :: LSP.LspFuncs () -> IdeState -> DocumentSymbolParams -> IO (Either ResponseError DSResult)
 moduleOutline _lsp ideState DocumentSymbolParams { _textDocument = TextDocumentIdentifier uri }
   = case uriToFilePath uri of
     Just (toNormalizedFilePath -> fp) -> do
       mb_decls <- runAction ideState $ use GetParsedModule fp
-      pure $ case mb_decls of
+      pure $ Right $ case mb_decls of
         Nothing -> DSDocumentSymbols (List [])
         Just (ParsedModule { pm_parsed_source = L _ltop HsModule { hsmodName, hsmodDecls, hsmodImports } })
           -> let
@@ -61,7 +61,7 @@ moduleOutline _lsp ideState DocumentSymbolParams { _textDocument = TextDocumentI
                DSDocumentSymbols (List allSymbols)
 
 
-    Nothing -> pure $ DSDocumentSymbols (List [])
+    Nothing -> pure $ Right $ DSDocumentSymbols (List [])
 
 documentSymbolForDecl :: Located (HsDecl GhcPs) -> Maybe DocumentSymbol
 documentSymbolForDecl (L l (TyClD FamDecl { tcdFam = FamilyDecl { fdLName = L _ n, fdInfo, fdTyVars } }))
@@ -172,7 +172,11 @@ documentSymbolForImport (L l ImportDecl { ideclName, ideclQualified }) = Just
   (defDocumentSymbol l :: DocumentSymbol)
     { _name   = "import " <> pprText ideclName
     , _kind   = SkModule
+#if MIN_GHC_API_VERSION(8,10,0)
+    , _detail = case ideclQualified of { NotQualified -> Nothing; _ -> Just "qualified" }
+#else
     , _detail = if ideclQualified then Just "qualified" else Nothing
+#endif
     }
 #if MIN_GHC_API_VERSION(8,6,0)
 documentSymbolForImport (L _ XImportDecl {}) = Nothing

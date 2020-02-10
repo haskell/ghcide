@@ -138,7 +138,7 @@ getParsedModuleRule =
         (_, contents) <- getFileContents file
         packageState <- hscEnv <$> use_ GhcSession file
         opt <- getIdeOptions
-        (diag, res) <- liftIO $ parseModule opt packageState (fromNormalizedFilePath file) contents
+        (diag, res) <- liftIO $ parseModule opt packageState (fromNormalizedFilePath file) (fmap textToStringBuffer contents)
         case res of
             Nothing -> pure (Nothing, (diag, Nothing))
             Just (contents, modu) -> do
@@ -253,7 +253,7 @@ reportImportCyclesRule =
 getDependenciesRule :: Rules ()
 getDependenciesRule =
     defineEarlyCutoff $ \GetDependencies file -> do
-        depInfo@DependencyInformation{..} <- use_ GetDependencyInformation file
+        depInfo <- use_ GetDependencyInformation file
         let allFiles = reachableModules depInfo
         _ <- uses_ ReportImportCycles allFiles
         opts <- getIdeOptions

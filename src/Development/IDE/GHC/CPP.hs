@@ -29,7 +29,7 @@ import DynFlags
 import Panic
 import FileCleanup
 #if MIN_GHC_API_VERSION(8,8,2)
-import LlvmCodeGen (LlvmVersion, llvmVersionList)
+import LlvmCodeGen (llvmVersionList)
 #elif MIN_GHC_API_VERSION(8,8,0)
 import LlvmCodeGen (LlvmVersion (..))
 #endif
@@ -59,7 +59,11 @@ doCpp dflags raw input_fn output_fn = do
     let verbFlags = getVerbFlags dflags
 
     let cpp_prog args | raw       = SysTools.runCpp dflags args
+#if MIN_GHC_API_VERSION(8,10,0)
+                      | otherwise = SysTools.runCc Nothing
+#else
                       | otherwise = SysTools.runCc
+#endif
                                           dflags (SysTools.Option "-E" : args)
 
     let target_defs =
@@ -116,8 +120,6 @@ doCpp dflags raw input_fn output_fn = do
                     ++ map SysTools.Option sse_defs
                     ++ map SysTools.Option avx_defs
                     ++ mb_macro_include
-        -- Define a special macro "__GHCIDE__"
-                    ++ [ SysTools.Option "-D__GHCIDE__"]
         -- Set the language mode to assembler-with-cpp when preprocessing. This
         -- alleviates some of the C99 macro rules relating to whitespace and the hash
         -- operator, which we tend to abuse. Clang in particular is not very happy
