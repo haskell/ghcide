@@ -206,7 +206,7 @@ upgradeWarningToError (nfp, sh, fd) =
 hideDiag :: DynFlags -> (WarnReason, FileDiagnostic) -> (WarnReason, FileDiagnostic)
 hideDiag originalFlags (Reason warning, (nfp, _sh, fd))
   | not (wopt warning originalFlags) = (Reason warning, (nfp, HideDiag, fd))
-hideDiag _originalFlags t = t 
+hideDiag _originalFlags t = t
 
 addRelativeImport :: NormalizedFilePath -> ParsedModule -> DynFlags -> DynFlags
 addRelativeImport fp modu dflags = dflags
@@ -333,11 +333,7 @@ getModSummaryFromBuffer fp contents dflags parsed = do
     , ms_parsed_mod   = Nothing
     }
     where
-      (sourceType, _derivedFile) =
-          let (stem, ext) = splitExtension fp in
-          if "-boot" `isSuffixOf` ext
-          then (HsBootFile, \newExt -> stem <.> newExt ++ "-boot")
-          else (HsSrcFile , \newExt -> stem <.> newExt)
+      sourceType = if "-boot" `isSuffixOf` takeExtension fp then HsBootFile else HsSrcFile
 
 
 -- | Given a buffer, flags, file path and module summary, produce a
