@@ -3,14 +3,19 @@
 {-# OPTIONS_GHC -Wno-dodgy-imports #-} -- GHC no longer exports def in GHC 8.6 and above
 {-# LANGUAGE CPP #-} -- To get precise GHC version
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Main(main) where
 
 import Arguments
+import Data.Binary (Binary)
+import Data.Dynamic (Typeable)
+import Data.Hashable (Hashable)
 import Data.Maybe
 import Data.List.Extra
 import System.FilePath
 import Control.Concurrent.Extra
+import Control.DeepSeq (NFData)
 import Control.Exception
 import Control.Monad.Extra
 import Control.Monad.IO.Class
@@ -45,11 +50,12 @@ import System.IO
 import System.Exit
 import Paths_ghcide
 import Development.GitRev
-import Development.Shake (Action, Rules, action, doesFileExist, need)
+import Development.Shake (Action, RuleResult, Rules, action, doesFileExist, need)
 import qualified Data.HashSet as HashSet
 import qualified Data.Map.Strict as Map
 
 import GHC hiding (def)
+import GHC.Generics (Generic)
 import qualified GHC.Paths
 
 import HIE.Bios
@@ -99,12 +105,12 @@ main = do
         runLanguageServer def (pluginHandler plugins) onInitialConfiguration onConfigurationChange $ \getLspId event vfs caps -> do
             t <- t
             hPutStrLn stderr $ "Started LSP server in " ++ showDuration t
-            let options = defaultIdeOptions
+            let options = (defaultIdeOptions $ loadSession dir)
                     { optReportProgress = clientSupportsProgress caps
                     , optShakeProfiling = argsShakeProfiling
                     }
             debouncer <- newAsyncDebouncer
-            initialise caps (loadGhcSessionIO dir >> mainRule >> pluginRules plugins >> action kick)
+            initialise caps (loadGhcSessionIO >> mainRule >> pluginRules plugins >> action kick)
                 getLspId event (logger minBound) debouncer options vfs
     else do
         putStrLn $ "Ghcide setup tester in " ++ dir ++ "."
@@ -137,12 +143,11 @@ main = do
         let grab file = fromMaybe (head sessions) $ do
                 cradle <- Map.lookup file filesToCradles
                 Map.lookup cradle cradlesToSessions
-        let loadGhcSession =
-              defineNoFile $ \GhcSessionIO ->
-                  return $ GhcSessionFun (return . grab)
 
-        let options = defaultIdeOptions { optShakeProfiling = argsShakeProfiling }
-        ide <- initialise def (loadGhcSession >> mainRule) (pure $ IdInt 0) (showEvent lock) (logger Info) noopDebouncer options vfs
+        let options =
+              (defaultIdeOptions $ return $ return . grab)
+                    { optShakeProfiling = argsShakeProfiling }
+        ide <- initialise def (loadGhcSessionIO >> mainRule) (pure $ IdInt 0) (showEvent lock) (logger Info) noopDebouncer options vfs
 
         putStrLn "\nStep 6/6: Type checking the files"
         setFilesOfInterest ide $ HashSet.fromList $ map toNormalizedFilePath files
@@ -183,11 +188,26 @@ showEvent lock (EventFileDiagnostics (toNormalizedFilePath -> file) diags) =
 showEvent lock e = withLock lock $ print e
 
 
-loadGhcSessionIO :: FilePath -> Rules ()
-loadGhcSessionIO dir = do
+-- Rule type for caching GHC sessions.
+type instance RuleResult GetHscEnv = HscEnvEq
+
+data GetHscEnv = GetHscEnv
+    { hscenvOptions :: [String]        -- componentOptions from hie-bios
+    , hscenvDependencies :: [FilePath] -- componentDependencies from hie-bios
+    }
+    deriving (Eq, Show, Typeable, Generic)
+instance Hashable GetHscEnv
+instance NFData   GetHscEnv
+instance Binary   GetHscEnv
+
+
+loadGhcSessionIO :: Rules ()
+loadGhcSessionIO =
+    -- This rule is for caching the GHC session. E.g., even when the cabal file
+    -- changed, if the resulting flags did not change, we would continue to use
+    -- the existing session.
     defineNoFile $ \(GetHscEnv opts deps) ->
         liftIO $ createSession $ ComponentOptions opts deps
-    defineNoFile $ \GhcSessionIO -> GhcSessionFun <$> loadSession dir
 
 
 getComponentOptions :: Cradle a -> IO ComponentOptions
