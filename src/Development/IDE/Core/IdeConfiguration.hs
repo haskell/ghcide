@@ -24,7 +24,7 @@ data IdeConfiguration = IdeConfiguration
   }
   deriving (Show)
 
-data IdeConfigurationVar = IdeConfigurationVar {unIdeConfigurationRef :: Var IdeConfiguration}
+newtype IdeConfigurationVar = IdeConfigurationVar {unIdeConfigurationRef :: Var IdeConfiguration}
 
 instance IsIdeGlobal IdeConfigurationVar
 

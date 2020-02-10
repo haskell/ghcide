@@ -72,7 +72,9 @@ setHandlersNotifications = PartialHandlers $ \WithMessage{..} x -> return x
             setSomethingModified ide
     ,LSP.didChangeWorkspaceFoldersNotificationHandler = withNotification (LSP.didChangeWorkspaceFoldersNotificationHandler x) $
         \_ ide (DidChangeWorkspaceFoldersParams events) -> do
+            let add       = S.union
+                substract = flip S.difference
             modifyWorkspaceFolders ide
-              $ S.union      (foldMap (S.singleton . parseWorkspaceFolder) (_added   events))
-              . S.difference (foldMap (S.singleton . parseWorkspaceFolder) (_removed events))
+              $ add       (foldMap (S.singleton . parseWorkspaceFolder) (_added   events))
+              . substract (foldMap (S.singleton . parseWorkspaceFolder) (_removed events))
     }
