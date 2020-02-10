@@ -29,14 +29,14 @@ getDocumentationTryGhc
 -- getDocs goes through the GHCi codepaths which cause problems on ghc-lib.
 -- See https://github.com/digital-asset/daml/issues/4152 for more details.
 #if MIN_GHC_API_VERSION(8,6,0) && !defined(GHC_LIB)
-getDocumentationTryGhc tcs name = do
+getDocumentationTryGhc sources name = do
   res <- catchSrcErrors "docs" $ getDocs name
   case res of
     Right (Right (Just docs, _)) -> return $ SpanDocString docs
-    _ -> return $ SpanDocText $ getDocumentation tcs name
+    _ -> return $ SpanDocText $ getDocumentation sources name
 #else
-getDocumentationTryGhc tcs name = do
-  return $ SpanDocText $ getDocumentation tcs name
+getDocumentationTryGhc sources name = do
+  return $ SpanDocText $ getDocumentation sources name
 #endif
 
 getDocumentation
@@ -50,12 +50,12 @@ getDocumentation
 -- may be edge cases where it is very wrong).
 -- TODO : Build a version of GHC exactprint to extract this information
 -- more accurately.
-getDocumentation tcs targetName = fromMaybe [] $ do
+getDocumentation sources targetName = fromMaybe [] $ do
   -- Find the module the target is defined in.
   targetNameSpan <- realSpan $ nameSrcSpan targetName
   tc <-
     find ((==) (Just $ srcSpanFile targetNameSpan) . annotationFileName)
-      $ reverse tcs -- TODO : Is reversing the list here really neccessary?
+      $ reverse sources -- TODO : Is reversing the list here really neccessary?
 
   -- Top level names bound by the module
   let bs = [ n | let L _ HsModule{hsmodDecls} = pm_parsed_source tc
