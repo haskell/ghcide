@@ -41,11 +41,6 @@ import GHC.IO.Encoding
 import GHC.IO.Exception
 import GHC.IO.Handle.Types
 import GHC.IO.Handle.Internals
-#if MIN_GHC_API_VERSION(8,10,0)
-#else
-import Config
-import Platform
-#endif
 import Data.Unique
 import Development.Shake.Classes
 import qualified Data.Text                as T
