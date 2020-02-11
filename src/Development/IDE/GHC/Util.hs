@@ -1,6 +1,8 @@
 -- Copyright (c) 2019 The DAML Authors. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
 
+{-# LANGUAGE CPP #-}
+#include "ghc-api-version.h"
 -- | General utility functions, mostly focused around GHC operations.
 module Development.IDE.GHC.Util(
     -- * HcsEnv and environment
@@ -41,6 +43,11 @@ import GHC.IO.Encoding
 import GHC.IO.Exception
 import GHC.IO.Handle.Types
 import GHC.IO.Handle.Internals
+#if MIN_GHC_API_VERSION(8,10,0)
+#else
+import Config
+import Platform
+#endif
 import Data.Unique
 import Development.Shake.Classes
 import qualified Data.Text                as T
@@ -85,7 +92,37 @@ textToStringBuffer = stringToStringBuffer . T.unpack
 
 -- | Pretty print a GHC value using 'unsafeGlobalDynFlags '.
 prettyPrint :: Outputable a => a -> String
-prettyPrint = showSDoc unsafeGlobalDynFlags . ppr
+prettyPrint = showSDoc fakeDynFlags . ppr
+
+-- | A 'DynFlags' value where most things are undefined. It's sufficient to call pretty printing,
+--   but not much else.
+fakeDynFlags :: DynFlags
+#if MIN_GHC_API_VERSION(8,10,0)
+fakeDynFlags = unsafeGlobalDynFlags
+#else
+fakeDynFlags = defaultDynFlags
+                  settings
+                  mempty
+    where
+        settings = Settings
+                   { sTargetPlatform = platform
+                   , sPlatformConstants = platformConstants
+                   , sProgramName = "ghc"
+                   , sProjectVersion = cProjectVersion
+#if MIN_GHC_API_VERSION(8,6,0)
+                   , sOpt_P_fingerprint = fingerprint0
+#endif
+                   }
+        platform = Platform
+          { platformWordSize=8
+          , platformOS=OSUnknown
+          , platformUnregisterised=True
+          }
+        platformConstants = PlatformConstants
+          { pc_DYNAMIC_BY_DEFAULT=False
+          , pc_WORD_SIZE=8
+          }
+#endif
 
 -- | Run a 'Ghc' monad value using an existing 'HscEnv'. Sets up and tears down all the required
 --   pieces, but designed to be more efficient than a standard 'runGhc'.
