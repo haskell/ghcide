@@ -242,6 +242,16 @@ diagnosticTests = testGroup "diagnostics"
       let contentA = T.unlines [ "module ModuleA where" ]
       _ <- openDoc' "ModuleA.hs" "haskell" contentA
       expectDiagnostics [("ModuleB.hs", [])]
+  , testSessionWait "add missing module (non workspace)" $ do
+      let contentB = T.unlines
+            [ "module ModuleB where"
+            , "import ModuleA"
+            ]
+      _ <- openDoc'' "/tmp/ModuleB.hs" "haskell" contentB
+      expectDiagnostics [("/tmp/ModuleB.hs", [(DsError, (1, 7), "Could not find module")])]
+      let contentA = T.unlines [ "module ModuleA where" ]
+      _ <- openDoc'' "/tmp/ModuleA.hs" "haskell" contentA
+      expectDiagnostics [("/tmp/ModuleB.hs", [])]
   , testSessionWait "cyclic module dependency" $ do
       let contentA = T.unlines
             [ "module ModuleA where"
@@ -1813,6 +1823,12 @@ openDoc' fp name contents = do
   -- Needed as ghcide sets up and relies on WatchedFiles but lsp-test does not track them
   sendNotification WorkspaceDidChangeWatchedFiles (DidChangeWatchedFilesParams $ List [FileEvent uri FcCreated])
   return res
+
+-- | Version of 'LSPTest.openDoc'' that does not send WatchedFiles events for files outside the workspace
+openDoc'' :: FilePath -> String -> T.Text -> Session TextDocumentIdentifier
+-- At the moment this is just LSPTest.openDoc' but it may change in the future
+-- when/if lsp-test implements WatchedFiles
+openDoc'' = LSPTest.openDoc'
 
 positionMappingTests :: TestTree
 positionMappingTests =
