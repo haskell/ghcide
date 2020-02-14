@@ -337,7 +337,10 @@ instance Eq NamedModuleDep where
 
 instance NFData NamedModuleDep where
   rnf NamedModuleDep{..} =
-    rnf nmdFilePath `seq` rnf nmdModuleName `seq` rwhnf nmdModLocation
+    rnf nmdFilePath `seq`
+    rnf nmdModuleName `seq`
+    -- 'ModLocation' lacks an 'NFData' instance
+    rwhnf nmdModLocation
 
 instance Show NamedModuleDep where
   show NamedModuleDep{..} = show nmdFilePath
