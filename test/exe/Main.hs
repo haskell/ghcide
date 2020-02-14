@@ -1780,20 +1780,23 @@ sessionDepsArePickedUp :: TestTree
 sessionDepsArePickedUp = testSession'
   "session-deps-are-picked-up"
   $ \dir -> do
-    liftIO $ do
-      writeFileUTF8 (dir </> "hie.yaml") "cradle: {stack: {component: \"foo:lib\"}}"
-      writeFileUTF8 (dir </> "stack.yaml") stackYamlContent
-      writeFileUTF8 (dir </> "package.yaml") oldPackageYamlContent
+    liftIO $
+      writeFileUTF8
+        (dir </> "hie.yaml")
+        "cradle: {direct: {arguments: []}}"
     -- Open without OverloadedStrings and expect an error.
     doc <- openDoc' "Foo.hs" "haskell" fooContent
     expectDiagnostics
       [("Foo.hs", [(DsError, (3, 6), "Couldn't match expected type")])]
-    -- Update package.yaml to enable OverloadedStrings.
-    liftIO $ writeFileUTF8 (dir </> "package.yaml") newPackageYamlContent
+    -- Update hie.yaml to enable OverloadedStrings.
+    liftIO $
+      writeFileUTF8
+        (dir </> "hie.yaml")
+        "cradle: {direct: {arguments: [-XOverloadedStrings]}}"
     -- Send change event.
     let change =
           TextDocumentContentChangeEvent
-            { _range = Just (Range (Position 5 0) (Position 5 0)),
+            { _range = Just (Range (Position 4 0) (Position 4 0)),
               _rangeLength = Nothing,
               _text = "\n"
             }
@@ -1801,32 +1804,6 @@ sessionDepsArePickedUp = testSession'
     -- Now no errors.
     expectDiagnostics [("Foo.hs", [])]
   where
-    stackYamlContent =
-      unlines
-        [ "resolver: nightly-2019-09-21",
-          "packages:",
-          "  - ."
-        ]
-    oldPackageYamlContent =
-      unlines
-        [ "name: foo",
-          "library:",
-          "  source-dirs:",
-          "    - .",
-          "dependencies:",
-          "  - base"
-        ]
-    newPackageYamlContent =
-      unlines
-        [ "name: foo",
-          "library:",
-          "  source-dirs:",
-          "    - .",
-          "dependencies:",
-          "  - base",
-          "default-extensions:",
-          "  - OverloadedStrings"
-        ]
     fooContent =
       T.unlines
         [ "module Foo where",

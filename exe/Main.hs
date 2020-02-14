@@ -59,6 +59,7 @@ import GHC.Generics (Generic)
 import qualified GHC.Paths
 
 import HIE.Bios
+import HIE.Bios.Cradle
 import HIE.Bios.Types
 
 -- Set the GHC libdir to the nix libdir if it's present.
@@ -232,12 +233,16 @@ createSession opts = do
     newHscEnvEq env
 
 
-cradleToSession :: Cradle a -> Action HscEnvEq
-cradleToSession cradle = do
+cradleToSession :: Maybe FilePath -> Cradle a -> Action HscEnvEq
+cradleToSession mbYaml cradle = do
     cmpOpts <- liftIO $ getComponentOptions cradle
     let opts = componentOptions cmpOpts
         deps = componentDependencies cmpOpts
-    existingDeps <- filterM doesFileExist deps
+        deps' = case mbYaml of
+                  -- For direct cradles, the hie.yaml file itself must be watched.
+                  Just yaml | isDirectCradle cradle -> yaml : deps
+                  _ -> deps
+    existingDeps <- filterM doesFileExist deps'
     need existingDeps
     useNoFile_ $ GetHscEnv opts deps
 
@@ -254,7 +259,7 @@ loadSession dir = liftIO $ do
     let session :: Maybe FilePath -> Action HscEnvEq
         session file = do
           c <- liftIO $ maybe (loadImplicitCradle $ addTrailingPathSeparator dir) loadCradle file
-          cradleToSession c
+          cradleToSession file c
     return $ \file -> session =<< liftIO (cradleLoc file)
 
 
