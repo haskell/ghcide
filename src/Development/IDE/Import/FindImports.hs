@@ -34,7 +34,7 @@ data Import
   | PackageImport !M.InstalledUnitId
   deriving (Show)
 
-data ArtifactsLocation =  ArtifactsLocation !ModLocation
+newtype ArtifactsLocation =  ArtifactsLocation ModLocation
     deriving (Show)
 
 instance NFData ArtifactsLocation where
