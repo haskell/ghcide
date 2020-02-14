@@ -78,9 +78,10 @@ instance NFData PathIdMap
 
 modLocationToNormalizedFilePath :: ArtifactsLocation -> NormalizedFilePath
 modLocationToNormalizedFilePath (ArtifactsLocation loc) =
-    let (Just filePath) = ml_hs_file loc
-    in
-    toNormalizedFilePath filePath
+    case ml_hs_file loc of
+      Just filePath -> toNormalizedFilePath filePath
+      -- Since we craete all 'ModLocation' values via 'mkHomeModLocation'
+      Nothing -> error "Has something changed in mkHomeModLocation?"
 
 emptyPathIdMap :: PathIdMap
 emptyPathIdMap = PathIdMap IntMap.empty HMS.empty
