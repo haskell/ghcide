@@ -70,8 +70,8 @@ newtype IdeReportProgress = IdeReportProgress Bool
 newtype IdeDefer          = IdeDefer          Bool
 
 clientSupportsProgress :: LSP.ClientCapabilities -> IdeReportProgress
-clientSupportsProgress caps = IdeReportProgress $ fromMaybe False $
-    LSP._workDoneProgress =<< LSP._window (caps :: LSP.ClientCapabilities)
+clientSupportsProgress caps = IdeReportProgress $ Just True ==
+    (LSP._workDoneProgress =<< LSP._window (caps :: LSP.ClientCapabilities))
 
 defaultIdeOptions :: IO (FilePath -> Action HscEnvEq) -> IdeOptions
 defaultIdeOptions session = IdeOptions

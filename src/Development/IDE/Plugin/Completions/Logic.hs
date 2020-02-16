@@ -303,7 +303,7 @@ toggleSnippets ClientCapabilities { _textDocument } (WithSnippets with) x
   | otherwise = x { _insertTextFormat = Just PlainText
                   , _insertText       = Nothing
                   }
-  where supported = fromMaybe False (_textDocument >>= _completion >>= _completionItem >>= _snippetSupport)
+  where supported = Just True == (_textDocument >>= _completion >>= _completionItem >>= _snippetSupport)
 
 -- | Returns the cached completions for the given module and position.
 getCompletions :: IdeOptions -> CachedCompletions -> TypecheckedModule -> VFS.PosPrefixInfo -> ClientCapabilities -> WithSnippets -> IO [CompletionItem]
