@@ -14,7 +14,6 @@ module Development.IDE.Types.Options
   , defaultIdeOptions
   ) where
 
-import Data.Maybe
 import Development.Shake
 import Development.IDE.GHC.Util
 import           GHC hiding (parseModule, typecheckModule)
