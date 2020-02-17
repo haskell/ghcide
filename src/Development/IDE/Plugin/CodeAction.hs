@@ -358,6 +358,9 @@ suggestNewImport eps ParsedModule {pm_parsed_source = L _ HsModule {..}} Diagnos
           RealSrcLoc s -> Just $ srcLocLine s
           _ -> Nothing
   , insertPos <- Position insertLine 0
+  , extendImportSuggestions <- -- Just [binding, mod, srcspan] <-
+    matchRegex _message
+    "Perhaps you want to add ‘[^’]*’ to the import list in the import of ‘([^’]*)’"
   =
     nubOrdBy
       (compare `on` fst)
@@ -369,11 +372,9 @@ suggestNewImport eps ParsedModule {pm_parsed_source = L _ HsModule {..}} Diagnos
           candidate <- availNames avail,
           occNameString (nameOccName candidate) == T.unpack name,
           Just m <- [nameModule_maybe candidate],
-          let edit =
-                "import " <> T.pack (moduleNameString $ moduleName m)
-                  <> " ("
-                  <> T.pack (prettyPrint candidate)
-                  <> ")"
+          let modName = T.pack $ moduleNameString $ moduleName m,
+          modName `notElem` fromMaybe [] extendImportSuggestions,
+          let edit = "import " <> modName <> " (" <> T.pack (prettyPrint candidate) <> ")"
       ]
 suggestNewImport _ _ _ = []
 
