@@ -257,10 +257,21 @@ createSession (ComponentOptions theOpts _) = do
              setHiDir cacheDir $
              setDefaultHieDir cacheDir $
              setIgnoreInterfacePragmas $
+             setLinkerOptions $
              disableOptimisation dflags'
         getSession
     initDynLinker env
     newHscEnvEq env
+
+-- we don't want to generate object code so we compile to bytecode
+-- (HscInterpreted) which implies LinkInMemory
+-- HscInterpreted
+setLinkerOptions :: DynFlags -> DynFlags
+setLinkerOptions df = df {
+    ghcLink   = LinkInMemory
+  , hscTarget = HscNothing
+  , ghcMode = CompManager
+  }
 
 setIgnoreInterfacePragmas :: DynFlags -> DynFlags
 setIgnoreInterfacePragmas df =
