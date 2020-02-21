@@ -67,7 +67,6 @@ import qualified Development.IDE.Spans.AtPoint as AtPoint
 import Development.IDE.Core.Service
 import Development.IDE.Core.Shake
 import Development.Shake.Classes
-import qualified System.Directory as IO
 
 -- | This is useful for rules to convert rules that can only produce errors or
 -- a result into the more general IdeResult type that supports producing
@@ -135,14 +134,17 @@ getHomeHieFile f = do
       hie_f = ml_hie_file $ ms_location $ pm_mod_summary pm
   mbHieTimestamp <- use GetModificationTime normal_hie_f
   srcTimestamp   <- use_ GetModificationTime f
-  case (mbHieTimestamp, srcTimestamp) of
-    (Just hie, src)
-      | comparing modificationTime hie src == GT -> pure ()
-    _ -> do
-      -- typecheck generates a .hie file as a side effect
-      void $ use_ TypeCheck f
-  hf <- liftIO $ loadHieFile hie_f
-  return ([], Just hf)
+
+  let isUpToDate
+        | Just d <- mbHieTimestamp = comparing modificationTime d srcTimestamp == GT
+        | otherwise = False
+
+-- In the future, TypeCheck will emit .hie files as a side effect
+--   unless isUpToDate $
+--       void $ use_ TypeCheck f
+
+  hf <- liftIO $ if isUpToDate then Just <$> loadHieFile hie_f else pure Nothing
+  return ([], hf)
 
 getPackageHieFile :: Module             -- ^ Package Module to load .hie file for
                   -> NormalizedFilePath -- ^ Path of home module importing the package module
@@ -153,16 +155,14 @@ getPackageHieFile mod file = do
     let unitId = moduleUnitId mod
     case lookupPackageConfig unitId pkgState of
         Just pkgConfig -> do
+            -- 'optLocateHieFile' returns Nothing if the file does not exist
             hieFile <- liftIO $ optLocateHieFile optPkgLocationOpts pkgConfig mod
             path    <- liftIO $ optLocateSrcFile optPkgLocationOpts pkgConfig mod
             case (hieFile, path) of
-                (Just hiePath, Just modPath) -> liftIO $ do
+                (Just hiePath, Just modPath) ->
                     -- deliberately loaded outside the Shake graph
                     -- to avoid dependencies on non-workspace files
-                    foundIt <- IO.doesFileExist hiePath
-                    if foundIt
-                        then Just . (, modPath) <$> loadHieFile hiePath
-                        else return Nothing
+                        liftIO $ Just . (, modPath) <$> loadHieFile hiePath
                 _ -> return Nothing
         _ -> return Nothing
 
