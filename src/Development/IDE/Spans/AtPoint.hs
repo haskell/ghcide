@@ -138,7 +138,7 @@ locationsAtPoint getHieFile IdeOptions{..} pos =
                 -- so we instead read the .hie files to get useful source spans.
                 mod <- MaybeT $ return $ nameModule_maybe name
                 (hieFile, srcPath) <- MaybeT $ getHieFile mod
-                avail <- MaybeT $ pure $ listToMaybe (filter (eqName name . snd) $ hieExportNames hieFile)
+                avail <- MaybeT $ pure $ find (eqName name . snd) $ hieExportNames hieFile
                 -- The location will point to the source file used during compilation.
                 -- This file might no longer exists and even if it does the path will be relative
                 -- to the compilation directory which we don’t know.

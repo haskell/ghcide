@@ -116,7 +116,7 @@ diagnostic = do
   -- the interesting warnings.
   -- Therefore we do not match messages containing only interface loading warnings,
   -- but, importantly, do match messages containing no warnings.
-  guard $ (null diags || not (null diags'))
+  guard (null diags || not (null diags'))
   return $ (m :: PublishDiagnosticsNotification){_params = PublishDiagnosticsParams uri (List diags')}
 
 standardizeQuotes :: T.Text -> T.Text
