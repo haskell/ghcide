@@ -9,6 +9,8 @@ module Development.IDE.GHC.Util(
     runGhcEnv,
     -- * GHC wrappers
     prettyPrint,
+    printRdrName,
+    printName,
     ParseResult(..), runParser,
     lookupPackageConfig,
     moduleImportPath,
@@ -97,6 +99,16 @@ runParser flags str parser = unP parser parseState
 -- | Pretty print a GHC value using 'unsafeGlobalDynFlags '.
 prettyPrint :: Outputable a => a -> String
 prettyPrint = showSDoc unsafeGlobalDynFlags . ppr
+
+-- | Pretty print a 'RdrName' wrapping operators in parens
+printRdrName :: RdrName -> String
+printRdrName name = showSDocUnsafe $ parenSymOcc rn (ppr rn)
+  where
+    rn = rdrNameOcc name
+
+-- | Pretty print a 'Name' wrapping operators in parens
+printName :: Name -> String
+printName = printRdrName . nameRdrName
 
 -- | Run a 'Ghc' monad value using an existing 'HscEnv'. Sets up and tears down all the required
 --   pieces, but designed to be more efficient than a standard 'runGhc'.
