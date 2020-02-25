@@ -142,9 +142,8 @@ getHomeHieFile f = do
         | Just d <- mbHieTimestamp = comparing modificationTime d srcTimestamp == GT
         | otherwise = False
 
--- In the future, TypeCheck will emit .hie files as a side effect
---   unless isUpToDate $
---       void $ use_ TypeCheck f
+  unless isUpToDate $
+       void $ use_ TypeCheck f
 
   hf <- liftIO $ if isUpToDate then Just <$> loadHieFile hie_f else pure Nothing
   return ([], hf)
