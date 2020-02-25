@@ -49,6 +49,7 @@ import GHC hiding (ClassOpSig, DerivD, ForD, IEThingAll, IEThingWith, InstD, TyC
 import Avail
 
 #if MIN_GHC_API_VERSION(8,8,0)
+import Control.Applicative ((<|>))
 import Development.IDE.GHC.HieAst
 import HieBin
 import HieTypes
@@ -174,7 +175,7 @@ pattern IEThingAll a <-
 setDefaultHieDir :: FilePath -> DynFlags -> DynFlags
 setDefaultHieDir _f d =
 #if MIN_GHC_API_VERSION(8,8,0)
-    d { hieDir     = hieDir d `mappend` Just _f}
+    d { hieDir     = hieDir d <|> Just _f}
 #else
     d
 #endif
