@@ -66,10 +66,7 @@ If you can't get `ghcide` working outside the editor, see [this setup troublesho
 
 ### Optimal project setup
 
-`ghcide` has been designed to handle projects with hundreds or thousands of modules. If `ghci` can handle it, then `ghcide` should be able to handle it too provided the following conditions are met:
-
-1. Use GHC >= 8.6
-2. Give `ghcide` a chance to load all the project modules and generate interface files. This happens automatically for all the dependencies of the modules being edited, but may take a while and require a restart to free up resources after complete.
+`ghcide` has been designed to handle projects with hundreds or thousands of modules. If `ghci` can handle it, then `ghcide` should be able to handle it. The only caveat is that this currently requires GHC >= 8.6, and that the first time a module is loaded in the editor will trigger generation of support files in the background if those do not already exist.
 
 ### Using with VS Code
 
