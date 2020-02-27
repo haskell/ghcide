@@ -1,4 +1,12 @@
-module Rules (loadGhcSession, cradleToSession, createSession, getComponentOptions) where
+{-# LANGUAGE OverloadedStrings #-}
+module Rules
+  ( loadGhcSession
+  , cradleToSession
+  , cradleLoadedMethod
+  , createSession
+  , getComponentOptions
+  )
+where
 
 import           Control.Exception
 import           Control.Monad                  (filterM)
@@ -7,8 +15,9 @@ import           Data.ByteString.Base16         (encode)
 import qualified Data.ByteString.Char8          as B
 import           Data.Functor                   ((<&>))
 import           Data.Maybe                     (fromMaybe)
+import           Data.Text                      (Text)
 import           Development.IDE.Core.Rules     (defineNoFile)
-import           Development.IDE.Core.Shake     (define, useNoFile_)
+import           Development.IDE.Core.Shake     (sendEvent, define, useNoFile_)
 import           Development.IDE.GHC.Util
 import           Development.IDE.Types.Location (fromNormalizedFilePath)
 import           Development.Shake
@@ -26,10 +35,19 @@ import qualified System.Directory.Extra         as IO
 import           System.Environment             (lookupEnv)
 import           System.FilePath.Posix          (addTrailingPathSeparator,
                                                  (</>))
+import Language.Haskell.LSP.Messages as LSP
+import Language.Haskell.LSP.Types as LSP
+import Data.Aeson (ToJSON(toJSON))
 
 -- Prefix for the cache path
 cacheDir :: String
 cacheDir = "ghcide"
+
+notifyCradleLoaded :: FilePath -> LSP.FromServerMessage
+notifyCradleLoaded fp =
+    LSP.NotCustomServer $
+    LSP.NotificationMessage "2.0" (LSP.CustomServerMethod cradleLoadedMethod) $
+    toJSON fp
 
 loadGhcSession :: Rules ()
 loadGhcSession =
@@ -47,6 +65,8 @@ cradleToSession = define $ \LoadCradle nfp -> do
     mbYaml <- doesDirectoryExist f <&> \isDir -> if isDir then Nothing else Just f
     cradle <- liftIO $  maybe (loadImplicitCradle $ addTrailingPathSeparator f) loadCradle mbYaml
 
+    sendEvent $ notifyCradleLoaded f
+
     cmpOpts <- liftIO $ getComponentOptions cradle
     let opts = componentOptions cmpOpts
         deps = componentDependencies cmpOpts
@@ -58,6 +78,8 @@ cradleToSession = define $ \LoadCradle nfp -> do
     need existingDeps
     ([],) . pure <$> useNoFile_ (GetHscEnv opts deps)
 
+cradleLoadedMethod :: Text
+cradleLoadedMethod = "ghcide/cradle/loaded"
 
 getComponentOptions :: Cradle a -> IO ComponentOptions
 getComponentOptions cradle = do
@@ -70,7 +92,6 @@ getComponentOptions cradle = do
         -- TODO Rather than failing here, we should ignore any files that use this cradle.
         -- That will require some more changes.
         CradleNone      -> fail "'none' cradle is not yet supported"
-
 
 createSession :: ComponentOptions -> IO HscEnvEq
 createSession (ComponentOptions theOpts _) = do
