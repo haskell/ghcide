@@ -65,10 +65,10 @@ codeAction lsp state (TextDocumentIdentifier uri) _range CodeActionContext{_diag
     contents <- LSP.getVirtualFileFunc lsp $ toNormalizedUri uri
     let text = Rope.toText . (_text :: VirtualFile -> Rope.Rope) <$> contents
         mbFile = toNormalizedFilePath <$> uriToFilePath uri
-    (ideOptions, parsedModule, env) <- runAction state $
+    (ideOptions, parsedModule, join -> env) <- runAction state $
       (,,) <$> getIdeOptions
            <*> getParsedModule `traverse` mbFile
-           <*> use_ GhcSession `traverse` mbFile
+           <*> use GhcSession `traverse` mbFile
     let dflags = hsc_dflags . hscEnv <$> env
     eps <- traverse readIORef (hsc_EPS . hscEnv <$> env)
     pure $ Right
