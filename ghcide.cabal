@@ -200,9 +200,18 @@ executable ghcide
         RuleTypes
 
     default-extensions:
+        BangPatterns
+        DeriveFunctor
         DeriveGeneric
+        GeneralizedNewtypeDeriving
+        LambdaCase
+        NamedFieldPuns
+        OverloadedStrings
         RecordWildCards
+        ScopedTypeVariables
+        StandaloneDeriving
         TupleSections
+        TypeApplications
         ViewPatterns
 
 test-suite ghcide-tests
