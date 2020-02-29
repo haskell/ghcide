@@ -8,13 +8,14 @@ module Rules
 where
 
 import           Control.Exception
-import           Control.Monad                  (filterM, when)
+import           Control.Monad                  (filterM, when, unless)
 import qualified Crypto.Hash.SHA1               as H
 import           Data.ByteString.Base16         (encode)
 import qualified Data.ByteString.Char8          as B
 import           Data.Functor                   ((<&>))
 import           Data.Maybe                     (fromMaybe)
 import           Data.Text                      (pack, Text)
+import           Data.Version                   (showVersion)
 import           Development.IDE.Core.Rules     (defineNoFile)
 import           Development.IDE.Core.Service   (getIdeOptions)
 import           Development.IDE.Core.Shake     (actionLogger, sendEvent, define, useNoFile_)
@@ -25,6 +26,7 @@ import           Development.Shake
 import           DynFlags                       (gopt_set, gopt_unset,
                                                  updOptLevel)
 import           GHC
+import           GHC.Check
 import qualified GHC.Paths
 import           HIE.Bios
 import           HIE.Bios.Cradle
@@ -123,6 +125,16 @@ createSession (ComponentOptions theOpts _) = do
              setIgnoreInterfacePragmas $
              setLinkerOptions $
              disableOptimisation dflags'
+        versionMatch <- checkGhcVersion
+        unless versionMatch $ do
+            v <- runTimeVersion
+            error $ unwords
+                ["ghcide compiled against GHC"
+                ,showVersion compileTimeVersion
+                ,"but currently using"
+                ,maybe "an unknown version of GHC" (\v -> "GHC " <> showVersion v) v
+                ,"This is unsupported, ghcide must be compiled with the same GHC version as the project."
+                ]
         getSession
     initDynLinker env
     newHscEnvEq env

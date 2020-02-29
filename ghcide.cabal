@@ -183,6 +183,7 @@ executable ghcide
         directory,
         extra,
         filepath,
+        ghc-check,
         ghc-paths,
         ghc,
         gitrev,
