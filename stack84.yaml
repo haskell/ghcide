@@ -22,4 +22,3 @@ extra-deps:
 - unordered-containers-0.2.10.0
 nix:
   packages: [zlib]
-allow-newer: true
