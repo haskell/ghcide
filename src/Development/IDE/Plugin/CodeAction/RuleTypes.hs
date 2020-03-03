@@ -1,9 +1,7 @@
 {-# LANGUAGE TypeFamilies #-}
 module Development.IDE.Plugin.CodeAction.RuleTypes
     (PackageExports(..), PackageExportsMap
-    ,fromUnitId
     ,IdentInfo(..)
-    ,packageExportsUnitId
     ,mkIdentInfos
     ) where
 
@@ -17,14 +15,11 @@ import Development.Shake (RuleResult)
 import Data.HashMap.Strict (HashMap)
 import Data.Typeable (Typeable)
 import GHC.Generics (Generic)
-import Module (unitIdString, DefUnitId(..), UnitId(DefiniteUnitId), InstalledUnitId(..), UnitId)
-import Data.String (fromString)
 import Name
 import FieldLabel (flSelector)
 
 type Identifier = Text
 type ModuleName = Text
-type UnitIdString = String
 
 data IdentInfo = IdentInfo
     { name :: !Identifier
@@ -58,14 +53,8 @@ mkIdentInfos (AvailTC _ nn flds)
 type instance RuleResult PackageExports = PackageExportsMap
 type PackageExportsMap = HashMap Identifier [(IdentInfo,ModuleName)]
 
-newtype PackageExports = PackageExports UnitIdString
+newtype PackageExports = PackageExports HscEnvEq
     deriving (Eq, Show, Typeable, Generic)
-
-packageExportsUnitId :: PackageExports -> UnitId
-packageExportsUnitId (PackageExports p) = DefiniteUnitId $ DefUnitId $ InstalledUnitId $ fromString p
-
-fromUnitId :: UnitId -> PackageExports
-fromUnitId = PackageExports . unitIdString
 
 instance Hashable PackageExports
 instance NFData   PackageExports

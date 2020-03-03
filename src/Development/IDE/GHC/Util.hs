@@ -163,6 +163,15 @@ instance Eq HscEnvEq where
 instance NFData HscEnvEq where
   rnf (HscEnvEq a b) = rnf (hashUnique a) `seq` b `seq` ()
 
+instance Hashable HscEnvEq where
+  hashWithSalt salt (HscEnvEq u _) = hashWithSalt salt u
+
+-- Fake instance needed to persuade Shake to accept this type as a key.
+-- No harm done as ghcide never persists these keys currently
+instance Binary HscEnvEq where
+  put _ = error "not really"
+  get = error "not really"
+
 -- | Read a UTF8 file, with lenient decoding, so it will never raise a decoding error.
 readFileUtf8 :: FilePath -> IO T.Text
 readFileUtf8 f = T.decodeUtf8With T.lenientDecode <$> BS.readFile f

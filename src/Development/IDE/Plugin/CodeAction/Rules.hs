@@ -1,57 +1,59 @@
 module Development.IDE.Plugin.CodeAction.Rules
-  ( rulePackageExports,
-    getVisiblePackageExports
+  ( rulePackageExports
   )
 where
 
-import Data.HashMap.Strict (fromListWith)
-import qualified Data.HashMap.Strict as Map
-import Data.Text ( Text, pack,)
-import Data.Traversable (forM)
-import Development.IDE.Core.RuleTypes
-import Development.IDE.Core.Shake
-import Development.IDE.GHC.Util
-import Development.IDE.Plugin.CodeAction.RuleTypes
-import Development.IDE.Types.Location
-import Development.Shake
-import HscTypes (hsc_dflags, IfaceExport, mi_exports)
-import LoadIface
-import Maybes
-import Module (Module (..), ModuleName, moduleNameString)
-import Packages (explicitPackages, exposedModules, packageConfigId)
-import TcRnMonad (WhereFrom (ImportByUser), initIfaceLoad)
-import GHC (DynFlags(pkgState))
-import Control.Monad.Trans (MonadTrans(lift))
-
-getVisiblePackageExports :: NormalizedFilePath -> Action [PackageExportsMap]
-getVisiblePackageExports f = fmap (fromMaybe []) $ runMaybeT $ do
-        session <- MaybeT $ use GhcSession f
-        let exposedPkgs = explicitPackages $ pkgState (hsc_dflags $ hscEnv session)
-        traverse (\p -> lift $ use_ (fromUnitId p) f) exposedPkgs
+import           Data.HashMap.Strict            ( fromListWith )
+import           Data.Text                      ( Text
+                                                , pack
+                                                )
+import           Data.Traversable               ( forM )
+import           Development.IDE.Core.Rules
+import           Development.IDE.GHC.Util
+import           Development.IDE.Plugin.CodeAction.RuleTypes
+import           Development.Shake
+import           GHC                            ( DynFlags(pkgState) )
+import           HscTypes                       ( IfaceExport
+                                                , hsc_dflags
+                                                , mi_exports
+                                                )
+import           LoadIface
+import           Maybes
+import           Module                         ( Module(..)
+                                                , ModuleName
+                                                , moduleNameString
+                                                )
+import           Packages                       ( explicitPackages
+                                                , exposedModules
+                                                , packageConfigId
+                                                )
+import           TcRnMonad                      ( WhereFrom(ImportByUser)
+                                                , initIfaceLoad
+                                                )
 
 rulePackageExports :: Rules ()
-rulePackageExports = define $ \(p :: PackageExports) file -> do
-  pkgState <- hscEnv <$> use_ GhcSession file
-  let pkg = lookupPackageConfig (packageExportsUnitId p) pkgState
-  case pkg of
-    Nothing -> return ([], Just mempty)
-    Just pkg -> do
-      results <- forM (exposedModules pkg) $ \(mn, _) -> do
-            modIface <-
-              liftIO $ initIfaceLoad pkgState $
-                loadInterface
-                  ""
-                  (Module (packageConfigId pkg) mn)
-                  (ImportByUser False)
-            case modIface of
-              Failed _err -> return mempty
-              Succeeded mi -> do
-                let avails = mi_exports mi
-                return $ fromListWith (++) $
-                  concatMap
-                    (unpackAvail mn)
-                    avails
-      return ([], Just $ foldr (Map.unionWith (++)) Map.empty results)
+rulePackageExports = defineNoFile $ \(PackageExports session) -> do
+  let env     = hscEnv session
+      pkgst   = pkgState (hsc_dflags env)
+      depends = explicitPackages pkgst
+      targets =
+        [ (pkg, mn)
+        | d        <- depends
+        , Just pkg <- [lookupPackageConfig d env]
+        , (mn, _)  <- exposedModules pkg
+        ]
+
+  results <- forM targets $ \(pkg, mn) -> do
+    modIface <- liftIO $ initIfaceLoad env $ loadInterface
+      ""
+      (Module (packageConfigId pkg) mn)
+      (ImportByUser False)
+    case modIface of
+      Failed    _err -> return mempty
+      Succeeded mi   -> do
+        let avails = mi_exports mi
+        return $ concatMap (unpackAvail mn) avails
+  return $ fromListWith (++) $ concat results
 
 unpackAvail :: ModuleName -> IfaceExport -> [(Text, [(IdentInfo, Text)])]
 unpackAvail mod =

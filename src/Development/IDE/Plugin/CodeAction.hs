@@ -65,15 +65,15 @@ codeAction lsp state (TextDocumentIdentifier uri) _range CodeActionContext{_diag
     contents <- LSP.getVirtualFileFunc lsp $ toNormalizedUri uri
     let text = Rope.toText . (_text :: VirtualFile -> Rope.Rope) <$> contents
         mbFile = toNormalizedFilePath <$> uriToFilePath uri
-    (ideOptions, parsedModule, join -> env, pkgExports) <- runAction state $
-      (,,,) <$> getIdeOptions
+    (ideOptions, parsedModule, join -> env) <- runAction state $
+      (,,) <$> getIdeOptions
             <*> getParsedModule `traverse` mbFile
             <*> use GhcSession `traverse` mbFile
-            <*> getVisiblePackageExports `traverse` mbFile
+    pkgExports <- runAction state $ (useNoFile_ . PackageExports) `traverse` env
     let dflags = hsc_dflags . hscEnv <$> env
     pure $ Right
         [ CACodeAction $ CodeAction title (Just CodeActionQuickFix) (Just $ List [x]) (Just edit) Nothing
-        | x <- xs, (title, tedit) <- suggestAction dflags (fromMaybe [] pkgExports) ideOptions ( join parsedModule ) text x
+        | x <- xs, (title, tedit) <- suggestAction dflags (fromMaybe mempty pkgExports) ideOptions ( join parsedModule ) text x
         , let edit = WorkspaceEdit (Just $ Map.singleton uri $ List tedit) Nothing
         ]
 
@@ -114,7 +114,7 @@ executeAddSignatureCommand _lsp _ideState ExecuteCommandParams{..}
 
 suggestAction
   :: Maybe DynFlags
-  -> [PackageExportsMap]
+  -> PackageExportsMap
   -> IdeOptions
   -> Maybe ParsedModule
   -> Maybe T.Text
@@ -348,8 +348,8 @@ suggestSignature _ _ = []
 
 -------------------------------------------------------------------------------------------------
 
-suggestNewImport :: [PackageExportsMap] -> ParsedModule -> Diagnostic -> [(T.Text, [TextEdit])]
-suggestNewImport eps ParsedModule {pm_parsed_source = L _ HsModule {..}} Diagnostic{_message}
+suggestNewImport :: PackageExportsMap -> ParsedModule -> Diagnostic -> [(T.Text, [TextEdit])]
+suggestNewImport packageExportsMap ParsedModule {pm_parsed_source = L _ HsModule {..}} Diagnostic{_message}
   | msg <- unifySpaces _message
   , Just name <- extractNotInScopeName msg
   , Just insertLine <- case hsmodImports of
@@ -363,15 +363,15 @@ suggestNewImport eps ParsedModule {pm_parsed_source = L _ HsModule {..}} Diagnos
   , extendImportSuggestions <- matchRegex msg
     "Perhaps you want to add ‘[^’]*’ to the import list in the import of ‘([^’]*)’"
   = [(imp, [TextEdit (Range insertPos insertPos) (imp <> "\n")])
-    | imp <- constructNewImportSuggestions eps name extendImportSuggestions
+    | imp <- constructNewImportSuggestions packageExportsMap name extendImportSuggestions
     ]
 suggestNewImport _ _ _ = []
 
 constructNewImportSuggestions
-  :: [PackageExportsMap] -> NotInScope -> Maybe [T.Text] -> [T.Text]
-constructNewImportSuggestions eps thingMissing notTheseModules = nubOrd
+  :: PackageExportsMap -> NotInScope -> Maybe [T.Text] -> [T.Text]
+constructNewImportSuggestions exportsMap thingMissing notTheseModules = nubOrd
   [ renderNewImport identInfo m
-  | (identInfo, m) <- items
+  | (identInfo, m) <- fromMaybe [] $ Map.lookup name exportsMap
   , canUseIdent thingMissing identInfo
   , m `notElem` fromMaybe [] notTheseModules
   ]
@@ -383,7 +383,6 @@ constructNewImportSuggestions eps thingMissing notTheseModules = nubOrd
   (qual, name) = case T.splitOn "." (notInScope thingMissing) of
     [n]      -> (Nothing, n)
     segments -> (Just (T.concat $ init segments), last segments)
-  items = concat $ foldMap (maybeToList . Map.lookup name) eps
   importWhat IdentInfo {parent, rendered}
     | Just p <- parent = p <> "(" <> rendered <> ")"
     | otherwise        = rendered
