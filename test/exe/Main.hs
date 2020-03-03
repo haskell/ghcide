@@ -1894,12 +1894,10 @@ loadCradleOnlyonce = testGroup "load cradle only once"
             liftIO $ length msgs @?= 0
 
 
-cradleLoadedMessage :: Session ()
-cradleLoadedMessage = do
-    m <- anyMessage
-    case m of
-        NotCustomServer (NotificationMessage _ (CustomServerMethod m) _) | m == cradleLoadedMethod -> return ()
-        _ -> empty
+cradleLoadedMessage :: Session FromServerMessage
+cradleLoadedMessage = satisfy $ \case
+        NotCustomServer (NotificationMessage _ (CustomServerMethod m) _) -> m == cradleLoadedMethod
+        _ -> False
 
 cradleLoadedMethod :: T.Text
 cradleLoadedMethod = "ghcide/cradle/loaded"
