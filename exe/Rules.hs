@@ -8,7 +8,7 @@ module Rules
 where
 
 import           Control.Exception
-import           Control.Monad                  (filterM)
+import           Control.Monad                  (filterM, when)
 import qualified Crypto.Hash.SHA1               as H
 import           Data.ByteString.Base16         (encode)
 import qualified Data.ByteString.Char8          as B
@@ -16,7 +16,7 @@ import           Data.Functor                   ((<&>))
 import           Data.Maybe                     (fromMaybe)
 import           Data.Text                      (Text)
 import           Development.IDE.Core.Rules     (defineNoFile)
-import           Development.IDE.Core.Shake     (sendEvent, define, useNoFile_)
+import           Development.IDE.Core.Shake     (ShakeExtras(ShakeExtras,isTesting), getShakeExtras, sendEvent, define, useNoFile_)
 import           Development.IDE.GHC.Util
 import           Development.IDE.Types.Location (fromNormalizedFilePath)
 import           Development.Shake
@@ -60,11 +60,14 @@ cradleToSession :: Rules ()
 cradleToSession = define $ \LoadCradle nfp -> do
     let f = fromNormalizedFilePath nfp
 
+    ShakeExtras{isTesting} <- getShakeExtras
+
     -- If the path points to a directory, load the implicit cradle
     mbYaml <- doesDirectoryExist f <&> \isDir -> if isDir then Nothing else Just f
     cradle <- liftIO $  maybe (loadImplicitCradle $ addTrailingPathSeparator f) loadCradle mbYaml
 
-    sendEvent $ notifyCradleLoaded f
+    when isTesting $
+        sendEvent $ notifyCradleLoaded f
 
     cmpOpts <- liftIO $ getComponentOptions cradle
     let opts = componentOptions cmpOpts

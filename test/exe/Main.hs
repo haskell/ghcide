@@ -1993,7 +1993,7 @@ runInDir dir s = do
   -- since the package import test creates "Data/List.hs", which otherwise has no physical home
   createDirectoryIfMissing True $ dir ++ "/Data"
 
-  let cmd = unwords [ghcideExe, "--lsp", "--cwd", dir]
+  let cmd = unwords [ghcideExe, "--lsp", "--test", "--cwd", dir]
   -- HIE calls getXgdDirectory which assumes that HOME is set.
   -- Only sets HOME if it wasn't already set.
   setEnv "HOME" "/homeless-shelter" False

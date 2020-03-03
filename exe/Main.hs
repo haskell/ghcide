@@ -95,6 +95,7 @@ main = do
             let options = (defaultIdeOptions $ loadSession dir)
                     { optReportProgress = clientSupportsProgress caps
                     , optShakeProfiling = argsShakeProfiling
+                    , optTesting        = IdeTesting argsTesting
                     }
             debouncer <- newAsyncDebouncer
             initialise caps (cradleRules >> mainRule >> pluginRules plugins >> action kick)
