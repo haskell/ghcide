@@ -30,7 +30,7 @@ getVisiblePackageExports f = fmap (fromMaybe []) $ runMaybeT $ do
         traverse (\p -> lift $ use_ (fromUnitId p) f) exposedPkgs
 
 rulePackageExports :: Rules ()
-rulePackageExports = define $ \p file -> do
+rulePackageExports = define $ \(p :: PackageExports) file -> do
   pkgState <- hscEnv <$> use_ GhcSession file
   let pkg = lookupPackageConfig (packageExportsUnitId p) pkgState
   case pkg of
