@@ -934,7 +934,7 @@ suggestImportTests = testGroup "suggest import actions"
       let before = T.unlines $ "module A where" : ["import " <> x | x <- imps] ++ def : other
           after  = T.unlines $ "module A where" : ["import " <> x | x <- imps] ++ [newImp] ++ def : other
           cradle = "cradle: {direct: {arguments: [-hide-all-packages, -package, base, -package, text, -package-env, -]}}"
-      liftIO$ writeFileUTF8 (dir </> "hie.yaml") cradle
+      liftIO $ writeFileUTF8 (dir </> "hie.yaml") cradle
       doc <- openDoc' "Test.hs" "haskell" before
       _diags <- waitForDiagnostics
       let defLine = length imps + 1
