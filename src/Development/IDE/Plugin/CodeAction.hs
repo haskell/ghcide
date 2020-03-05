@@ -406,6 +406,8 @@ extractNotInScopeName :: T.Text -> Maybe NotInScope
 extractNotInScopeName x
   | Just [name] <- matchRegex x "Data constructor not in scope: ([^ ]+)"
   = Just $ NotInScopeDataConstructor name
+  | Just [name] <- matchRegex x "Not in scope: data constructor [^‘]*‘([^’]*)’"
+  = Just $ NotInScopeDataConstructor name
   | Just [name] <- matchRegex x "ot in scope: type constructor or class [^‘]*‘([^’]*)’"
   = Just $ NotInScopeTypeConstructorOrClass name
   | Just [name] <- matchRegex x "ot in scope: ([^‘ ]+)"
