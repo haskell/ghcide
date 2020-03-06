@@ -461,6 +461,18 @@ getHiFileRule = defineEarlyCutoff $ \GetHiFile f -> do
                 _ -> ml_hi_file $ ms_location ms
       ms     = pm_mod_summary pm
 
+  IdeOptions{optInterfaceLoadingDiagnostics} <- getIdeOptions
+
+  let mkInterfaceFilesGenerationDiag f intro
+        | optInterfaceLoadingDiagnostics = mkDiag $ intro <> msg
+        | otherwise = []
+            where
+                msg =
+                    ": additional resource use while generating interface files in the background."
+                mkDiag = pure
+                       . ideErrorWithSource (Just "interface file loading") (Just DsInfo) f
+                       . T.pack
+
   case sequence depHis of
     Nothing -> do
           let d = mkInterfaceFilesGenerationDiag f "Missing interface file dependencies"
@@ -489,11 +501,6 @@ getHiFileRule = defineEarlyCutoff $ \GetHiFile f -> do
                   let diag = ideErrorWithSource (Just "interface file loading") (Just DsError) f . T.pack $ err
                   return (Nothing, (pure diag, Nothing))
 
-mkInterfaceFilesGenerationDiag :: a -> String -> [(a, ShowDiagnostic, Diagnostic)]
-mkInterfaceFilesGenerationDiag f intro = mkDiag $ intro <> msg
-  where
-      msg = ": additional resource use while generating interface files in the background."
-      mkDiag = pure . ideErrorWithSource (Just "interface file loading") (Just DsInfo) f . T.pack
 
 getModIfaceRule :: Rules ()
 getModIfaceRule = define $ \GetModIface f -> do
