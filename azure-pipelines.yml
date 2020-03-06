@@ -4,6 +4,7 @@ trigger:
   branches:
     include:
       - master
+      - azure*
 
 # Enable PR triggers that target the master branch
 pr:
