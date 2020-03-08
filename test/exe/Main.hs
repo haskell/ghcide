@@ -430,13 +430,13 @@ codeLensesTests = testGroup "code lenses"
 watchedFilesTests :: TestTree
 watchedFilesTests = testGroup "watched files"
   [ testSession "workspace file" $ do
-      _ <- openDoc' "A.hs" "haskell" "module A where"
+      _ <- openDoc' "C/A.hs" "haskell" "module A where"
       RequestMessage{_params = RegistrationParams (List regs)} <- skipManyTill anyMessage (message @RegisterCapabilityRequest)
       let watchedFileRegs =
             [ args | Registration _id WorkspaceDidChangeWatchedFiles args <- regs ]
       liftIO $ assertBool "watches workspace files" $ not $ null watchedFileRegs
   , testSession "non workspace file" $ do
-      _ <- openDoc' "/tmp/A.hs" "haskell" "module A where"
+      _ <- openDoc' "/tmp/A.hs" "haskell" "{-# LANGUAGE NoImplicitPrelude#-}\nmodule A where"
       msgs <- manyTill (Just <$> message @RegisterCapabilityRequest <|> Nothing <$ anyMessage) (message @WorkDoneProgressEndNotification)
       let watchedFileRegs =
             [ args
