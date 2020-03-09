@@ -26,79 +26,25 @@ module Development.IDE.Types.Location
 
 import Control.Applicative
 import Language.Haskell.LSP.Types (Location(..), Range(..), Position(..))
-import Control.DeepSeq
 import Control.Monad
-import Data.Binary
 import Data.Maybe as Maybe
-import Data.Hashable
 import Data.String
-import qualified Data.Text as T
 import FastString
-import Network.URI
-import System.FilePath
-import qualified System.FilePath.Posix as FPP
-import qualified System.FilePath.Windows as FPW
-import System.Info.Extra
 import qualified Language.Haskell.LSP.Types as LSP
 import Language.Haskell.LSP.Types as LSP (
-    filePathToUri
+    Uri(..)
+  , filePathToUri
   , NormalizedUri(..)
-  , Uri(..)
   , toNormalizedUri
   , fromNormalizedUri
+  , NormalizedFilePath(..)
+  , toNormalizedFilePath
+  , fromNormalizedFilePath
+  , normalizedFilePathToUri
+  , uriToNormalizedFilePath
   )
 import SrcLoc as GHC
 import Text.ParserCombinators.ReadP as ReadP
-import GHC.Generics
-
-
--- | Newtype wrapper around FilePath that always has normalized slashes.
--- The NormalizedUri and hash of the FilePath are cached to avoided
--- repeated normalisation when we need to compute them (which is a lot).
---
--- This is one of the most performance critical parts of ghcide, do not
--- modify it without profiling.
-data NormalizedFilePath = NormalizedFilePath NormalizedUriWrapper !Int !FilePath
-    deriving (Generic, Eq, Ord)
-
-instance NFData NormalizedFilePath where
-instance Binary NormalizedFilePath where
-  put (NormalizedFilePath _ _ fp) = put fp
-  get = do
-    v <- Data.Binary.get :: Get FilePath
-    return (toNormalizedFilePath v)
-
-
-instance Show NormalizedFilePath where
-  show (NormalizedFilePath _ _ fp) = "NormalizedFilePath " ++ show fp
-
-instance Hashable NormalizedFilePath where
-  hash (NormalizedFilePath _ h _) = h
-
--- Just to define NFData and Binary
-newtype NormalizedUriWrapper =
-  NormalizedUriWrapper { unwrapNormalizedFilePath :: NormalizedUri }
-  deriving (Show, Generic, Eq, Ord)
-
-instance NFData NormalizedUriWrapper where
-  rnf = rwhnf
-
-
-instance Hashable NormalizedUriWrapper where
-
-instance IsString NormalizedFilePath where
-    fromString = toNormalizedFilePath
-
-toNormalizedFilePath :: FilePath -> NormalizedFilePath
--- We want to keep empty paths instead of normalising them to "."
-toNormalizedFilePath "" = NormalizedFilePath (NormalizedUriWrapper emptyPathUri) (hash ("" :: String)) ""
-toNormalizedFilePath fp =
-  let nfp = normalise fp
-  in NormalizedFilePath (NormalizedUriWrapper $ filePathToUriInternal' nfp) (hash nfp) nfp
-
-fromNormalizedFilePath :: NormalizedFilePath -> FilePath
-fromNormalizedFilePath (NormalizedFilePath _ _ fp) = fp
-
 -- | We use an empty string as a filepath when we don’t have a file.
 -- However, haskell-lsp doesn’t support that in uriToFilePath and given
 -- that it is not a valid filepath it does not make sense to upstream a fix.
@@ -109,52 +55,13 @@ uriToFilePath' uri
     | otherwise = LSP.uriToFilePath uri
 
 emptyPathUri :: NormalizedUri
-emptyPathUri = filePathToUriInternal' ""
+emptyPathUri = normalizedFilePathToUri $ toNormalizedFilePath ""
 
 filePathToUri' :: NormalizedFilePath -> NormalizedUri
-filePathToUri' (NormalizedFilePath (NormalizedUriWrapper u) _ _) = u
-
-filePathToUriInternal' :: FilePath -> NormalizedUri
-filePathToUriInternal' fp = toNormalizedUri $ Uri $ T.pack $ LSP.fileScheme <> "//" <> platformAdjustToUriPath fp
-  where
-    -- The definitions below are variants of the corresponding functions in Language.Haskell.LSP.Types.Uri that assume that
-    -- the filepath has already been normalised. This is necessary since normalising the filepath has a nontrivial cost.
-
-    toNormalizedUri :: Uri -> NormalizedUri
-    toNormalizedUri (Uri t) =
-        let fp = T.pack $ escapeURIString isUnescapedInURI $ unEscapeString $ T.unpack t
-        in NormalizedUri (hash fp) fp
-
-    platformAdjustToUriPath :: FilePath -> String
-    platformAdjustToUriPath srcPath
-      | isWindows = '/' : escapedPath
-      | otherwise = escapedPath
-      where
-        (splitDirectories, splitDrive)
-          | isWindows =
-              (FPW.splitDirectories, FPW.splitDrive)
-          | otherwise =
-              (FPP.splitDirectories, FPP.splitDrive)
-        escapedPath =
-            case splitDrive srcPath of
-                (drv, rest) ->
-                    convertDrive drv `FPP.joinDrive`
-                    FPP.joinPath (map (escapeURIString unescaped) $ splitDirectories rest)
-        -- splitDirectories does not remove the path separator after the drive so
-        -- we do a final replacement of \ to /
-        convertDrive drv
-          | isWindows && FPW.hasTrailingPathSeparator drv =
-              FPP.addTrailingPathSeparator (init drv)
-          | otherwise = drv
-        unescaped c
-          | isWindows = isUnreserved c || c `elem` [':', '\\', '/']
-          | otherwise = isUnreserved c || c == '/'
-
-
+filePathToUri'  = normalizedFilePathToUri
 
 fromUri :: LSP.NormalizedUri -> NormalizedFilePath
-fromUri = toNormalizedFilePath . fromMaybe noFilePath . uriToFilePath' . fromNormalizedUri
-
+fromUri = fromMaybe (toNormalizedFilePath noFilePath) . uriToNormalizedFilePath
 
 noFilePath :: FilePath
 noFilePath = "<unknown>"
