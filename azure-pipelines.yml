@@ -207,13 +207,13 @@ jobs:
         # ghc versions 8.8.1 and 8.8.2 are not usable in windows
         # due to https://gitlab.haskell.org/ghc/ghc/issues/17575
         # TODO: Enable when stack88.yaml uses ghc-8.8.3
-        # stack-8.8:
+        # stack_88:
         #   STACK_YAML: "stack88.yaml"
-        stack-def:
+        stack_86:
           STACK_YAML: "stack.yaml"
-        stack-8.4:
+        stack_84:
           STACK_YAML: "stack84.yaml"
-        stack-ghc-lib:
+        stack_ghc_lib_88:
           STACK_YAML: "stack-ghc-lib.yaml"
     variables:
       STACK_ROOT: "C:\\sr"
