@@ -243,6 +243,7 @@ jobs:
       - bash: stack setup --stack-yaml $STACK_YAML
         displayName: 'stack setup'
       - bash: |
+          # Installing happy standalone to avoid error "strip.exe: unable to rename ../happy.exe; reason: File exists"
           stack install happy --stack-yaml $STACK_YAML
           stack build --only-dependencies --stack-yaml $STACK_YAML
         displayName: 'stack build --only-dependencies'
