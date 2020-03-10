@@ -27,6 +27,7 @@ module Development.IDE.Types.Location
 import Control.Applicative
 import Language.Haskell.LSP.Types (Location(..), Range(..), Position(..))
 import Control.Monad
+import Data.Hashable (hash)
 import Data.Maybe as Maybe
 import Data.String
 import FastString
@@ -38,13 +39,19 @@ import Language.Haskell.LSP.Types as LSP (
   , toNormalizedUri
   , fromNormalizedUri
   , NormalizedFilePath(..)
-  , toNormalizedFilePath
   , fromNormalizedFilePath
   , normalizedFilePathToUri
   , uriToNormalizedFilePath
   )
+import qualified Language.Haskell.LSP.Types as LSP (toNormalizedFilePath)
 import SrcLoc as GHC
 import Text.ParserCombinators.ReadP as ReadP
+
+toNormalizedFilePath :: FilePath -> NormalizedFilePath
+-- We want to keep empty paths instead of normalising them to "."
+toNormalizedFilePath "" = NormalizedFilePath emptyPathUri ""
+toNormalizedFilePath fp = LSP.toNormalizedFilePath fp
+
 -- | We use an empty string as a filepath when we don’t have a file.
 -- However, haskell-lsp doesn’t support that in uriToFilePath and given
 -- that it is not a valid filepath it does not make sense to upstream a fix.
@@ -55,7 +62,7 @@ uriToFilePath' uri
     | otherwise = LSP.uriToFilePath uri
 
 emptyPathUri :: NormalizedUri
-emptyPathUri = normalizedFilePathToUri $ toNormalizedFilePath ""
+emptyPathUri = NormalizedUri (hash ("" :: String)) ""
 
 filePathToUri' :: NormalizedFilePath -> NormalizedUri
 filePathToUri'  = normalizedFilePathToUri
