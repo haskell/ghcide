@@ -67,7 +67,7 @@ filePathToUri' :: NormalizedFilePath -> LSP.NormalizedUri
 filePathToUri' (NormalizedFilePath nfp) = LSP.normalizedFilePathToUri nfp
 
 fromUri :: LSP.NormalizedUri -> NormalizedFilePath
-fromUri = fromMaybe (toNormalizedFilePath noFilePath) . fmap NormalizedFilePath . LSP.uriToNormalizedFilePath
+fromUri = maybe (toNormalizedFilePath noFilePath) NormalizedFilePath . LSP.uriToNormalizedFilePath
 
 noFilePath :: FilePath
 noFilePath = "<unknown>"
