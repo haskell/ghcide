@@ -2,7 +2,6 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# OPTIONS_GHC -Wno-dodgy-imports #-} -- GHC no longer exports def in GHC 8.6 and above
 {-# LANGUAGE CPP #-} -- To get precise GHC version
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 
