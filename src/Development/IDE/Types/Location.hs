@@ -29,7 +29,6 @@ import Control.Monad
 import Data.Binary (Binary)
 import Control.DeepSeq (NFData)
 import Data.Hashable (Hashable, hash)
-import Data.Maybe as Maybe
 import Data.String
 import FastString
 import qualified Language.Haskell.LSP.Types as LSP
