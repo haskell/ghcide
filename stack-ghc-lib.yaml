@@ -3,7 +3,11 @@ packages:
 - .
 extra-deps:
 - haskell-lsp-0.20.0.0
-- haskell-lsp-types-0.20.0.0
+# - haskell-lsp-types-0.20.0.0
+- github: jneira/haskell-lsp
+  commit: 66fe48f7c65bf98bcb3a173747f173be0611560a
+  subdirs:
+    - haskell-lsp-types
 - lsp-test-0.10.1.0
 - hie-bios-0.4.0
 - ghc-lib-parser-8.8.1

@@ -2,5 +2,11 @@ resolver: nightly-2020-02-13
 packages:
 - .
 extra-deps:
+# - haskell-lsp-types-0.20.0.0
+- github: jneira/haskell-lsp
+  commit: 66fe48f7c65bf98bcb3a173747f173be0611560a
+  subdirs:
+    - haskell-lsp-types
+
 nix:
   packages: [zlib]
