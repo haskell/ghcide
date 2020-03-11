@@ -26,7 +26,7 @@ import Development.IDE.Import.DependencyInformation
 
 
 plugin :: Plugin c
-plugin = Plugin mempty produceCompletions setHandlersCompletion
+plugin = Plugin produceCompletions setHandlersCompletion
 
 produceCompletions :: Rules ()
 produceCompletions =

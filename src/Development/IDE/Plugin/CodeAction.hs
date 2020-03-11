@@ -46,7 +46,7 @@ import DynFlags (xFlags, FlagSpec(..))
 import GHC.LanguageExtensions.Type (Extension)
 
 plugin :: Plugin c
-plugin = codeActionPluginWithRules rules codeAction <> Plugin mempty mempty setHandlersCodeLens
+plugin = codeActionPluginWithRules rules codeAction <> Plugin mempty setHandlersCodeLens
 
 rules :: Rules ()
 rules = rulePackageExports
