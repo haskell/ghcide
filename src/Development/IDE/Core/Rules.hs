@@ -354,14 +354,24 @@ getSpanInfoRule =
 
 -- Typechecks a module.
 typeCheckRule :: Rules ()
-typeCheckRule = define $ \TypeCheck file -> typeCheckRuleDefinition file
+typeCheckRule = define $ \TypeCheck file ->
+    -- do not generate interface files as this rule is called
+    -- for files of interest on every keystroke
+    typeCheckRuleDefinition file SkipGenerationOfInterfaceFiles
+
+data GenerateInterfaceFiles
+    = DoGenerateInterfaceFiles
+    | SkipGenerationOfInterfaceFiles
 
 -- This is factored out so it can be directly called from the GetModIface
 -- rule. Directly calling this rule means that on the initial load we can
 -- garbage collect all the intermediate typechecked modules rather than
 -- retain the information forever in the shake graph.
-typeCheckRuleDefinition :: NormalizedFilePath -> Action (IdeResult TcModuleResult)
-typeCheckRuleDefinition file = do
+typeCheckRuleDefinition
+    :: NormalizedFilePath     -- ^ Path to source file
+    -> GenerateInterfaceFiles -- ^ Should generate .hi and .hie files ?
+    -> Action (IdeResult TcModuleResult)
+typeCheckRuleDefinition file generateArtifacts = do
   pm   <- use_ GetParsedModule file
   deps <- use_ GetDependencies file
   hsc  <- hscEnv <$> use_ GhcSession file
@@ -382,7 +392,7 @@ typeCheckRuleDefinition file = do
   res <- liftIO $ typecheckModule defer hsc (zipWith unpack mirs bytecodes) pm
 
   case res of
-    (diags, Just (hsc,tcm)) -> do
+    (diags, Just (hsc,tcm)) | DoGenerateInterfaceFiles <- generateArtifacts -> do
       (_, contents) <- getFileContents file
       diagsHie <- liftIO $
         generateAndWriteHieFile hsc (TE.encodeUtf8 <$> contents) (tmrModule tcm)
@@ -514,10 +524,12 @@ getModIfaceRule = define $ \GetModIface f -> do
             return ([], Just x)
         Nothing
           | fileOfInterest -> do
+            -- For files of interest only, create a Shake dependency on typecheck
             tmr <- use TypeCheck f
             return ([], extract tmr)
           | otherwise -> do
-            (diags, tmr) <- typeCheckRuleDefinition f
+            -- Otherwise invoke typechecking directly
+            (diags, tmr) <- typeCheckRuleDefinition f DoGenerateInterfaceFiles
             -- Bang pattern is important to avoid leaking 'tmr'
             let !res = extract tmr
             return (diags, res)
