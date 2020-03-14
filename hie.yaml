@@ -1,1 +1,16 @@
-cradle: {stack: {component: "ghcide:lib"}}
+cradle:
+  stack:
+    - path: "./src"
+      component: "ghcide:lib"
+
+    - path: "./exe"
+      component: "ghcide:exe:ghcide"
+
+    - path: "./test/preprocessor"
+      component: "ghcide:exe:ghcide-test-preprocessor"
+
+    - path: "./test/src"
+      component: "ghcide:test:ghcide-tests"
+
+    - path: "./test/exe"
+      component: "ghcide:test:ghcide-tests"
