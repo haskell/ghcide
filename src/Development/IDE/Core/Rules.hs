@@ -14,13 +14,11 @@ module Development.IDE.Core.Rules(
     Priority(..), GhcSessionIO(..), GhcSessionFun(..),
     priorityTypeCheck,
     priorityGenerateCore,
-    priorityFilesOfInterest,
-    runAction, useE, useNoFileE, usesE,
-    toIdeResult, defineNoFile,
+    runAction, useE,
+    defineNoFile,
     mainRule,
     getAtPoint,
     getDefinition,
-    getDependencies,
     getParsedModule,
     generateCore,
     ) where
@@ -71,19 +69,10 @@ import Development.Shake.Classes
 -- | This is useful for rules to convert rules that can only produce errors or
 -- a result into the more general IdeResult type that supports producing
 -- warnings while also producing a result.
-toIdeResult :: Either [FileDiagnostic] v -> IdeResult v
-toIdeResult = either (, Nothing) (([],) . Just)
-
 -- | useE is useful to implement functions that aren’t rules but need shortcircuiting
 -- e.g. getDefinition.
 useE :: IdeRule k v => k -> NormalizedFilePath -> MaybeT Action v
 useE k = MaybeT . use k
-
-useNoFileE :: IdeRule k v => k -> MaybeT Action v
-useNoFileE k = useE k ""
-
-usesE :: IdeRule k v => k -> [NormalizedFilePath] -> MaybeT Action [v]
-usesE k = MaybeT . fmap sequence . uses k
 
 defineNoFile :: IdeRule k v => (k -> Action v) -> Rules ()
 defineNoFile f = define $ \k file -> do
@@ -93,11 +82,6 @@ defineNoFile f = define $ \k file -> do
 
 ------------------------------------------------------------
 -- Exposed API
-
--- | Get all transitive file dependencies of a given module.
--- Does not include the file itself.
-getDependencies :: NormalizedFilePath -> Action (Maybe [NormalizedFilePath])
-getDependencies file = fmap transitiveModuleDeps <$> use GetDependencies file
 
 -- | Try to get hover text for the name under point.
 getAtPoint :: NormalizedFilePath -> Position -> Action (Maybe (Maybe Range, [T.Text]))
@@ -179,9 +163,6 @@ priorityTypeCheck = Priority 0
 
 priorityGenerateCore :: Priority
 priorityGenerateCore = Priority (-1)
-
-priorityFilesOfInterest :: Priority
-priorityFilesOfInterest = Priority (-2)
 
 getParsedModuleRule :: Rules ()
 getParsedModuleRule =

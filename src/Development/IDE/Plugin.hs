@@ -1,5 +1,5 @@
 
-module Development.IDE.Plugin(Plugin(..), codeActionPlugin, codeActionPluginWithRules) where
+module Development.IDE.Plugin(Plugin(..), codeActionPluginWithRules) where
 
 import Data.Default
 import Development.Shake
@@ -25,9 +25,6 @@ instance Semigroup (Plugin c) where
 instance Monoid (Plugin c) where
     mempty = def
 
-
-codeActionPlugin :: (LSP.LspFuncs c -> IdeState -> TextDocumentIdentifier -> Range -> CodeActionContext -> IO (Either ResponseError [CAResult])) -> Plugin c
-codeActionPlugin = codeActionPluginWithRules mempty
 
 codeActionPluginWithRules :: Rules () -> (LSP.LspFuncs c -> IdeState -> TextDocumentIdentifier -> Range -> CodeActionContext -> IO (Either ResponseError [CAResult])) -> Plugin c
 codeActionPluginWithRules rr f = Plugin rr $ PartialHandlers $ \WithMessage{..} x -> return x{

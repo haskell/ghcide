@@ -8,8 +8,7 @@
 module Development.IDE.Types.Logger
   ( Priority(..)
   , Logger(..)
-  , logError, logWarning, logInfo, logDebug, logTelemetry
-  , noLogging
+  , logError, logInfo, logDebug
   ) where
 
 import qualified Data.Text as T
@@ -37,18 +36,8 @@ data Logger = Logger {logPriority :: Priority -> T.Text -> IO ()}
 logError :: Logger -> T.Text -> IO ()
 logError x = logPriority x Error
 
-logWarning :: Logger -> T.Text -> IO ()
-logWarning x = logPriority x Warning
-
 logInfo :: Logger -> T.Text -> IO ()
 logInfo x = logPriority x Info
 
 logDebug :: Logger -> T.Text -> IO ()
 logDebug x = logPriority x Debug
-
-logTelemetry :: Logger -> T.Text -> IO ()
-logTelemetry x = logPriority x Telemetry
-
-
-noLogging :: Logger
-noLogging = Logger $ \_ _ -> return ()

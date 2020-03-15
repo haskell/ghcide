@@ -10,7 +10,6 @@ module Development.IDE.Types.Diagnostics (
   DiagnosticStore,
   List(..),
   ideErrorText,
-  showDiagnostics,
   showDiagnosticsColored,
   ) where
 
@@ -24,7 +23,6 @@ import Language.Haskell.LSP.Types as LSP (
   , List(..)
   )
 import Language.Haskell.LSP.Diagnostics
-import Data.Text.Prettyprint.Doc.Render.Text
 import qualified Data.Text.Prettyprint.Doc.Render.Terminal as Terminal
 import Data.Text.Prettyprint.Doc.Render.Terminal (Color(..), color)
 
@@ -71,9 +69,6 @@ prettyRange Range{..} = f _start <> "-" <> f _end
 stringParagraphs :: T.Text -> Doc a
 stringParagraphs = vcat . map (fillSep . map pretty . T.words) . T.lines
 
-showDiagnostics :: [FileDiagnostic] -> T.Text
-showDiagnostics = srenderPlain . prettyDiagnostics
-
 showDiagnosticsColored :: [FileDiagnostic] -> T.Text
 showDiagnosticsColored = srenderColored . prettyDiagnostics
 
@@ -105,24 +100,8 @@ prettyDiagnostic (fp, sh, LSP.Diagnostic{..}) =
 slabel_ :: String -> Doc a -> Doc a
 slabel_ t d = nest 2 $ sep [pretty t, d]
 
--- | The layout options used for the SDK assistant.
-cliLayout ::
-       Int
-    -- ^ Rendering width of the pretty printer.
-    -> LayoutOptions
-cliLayout renderWidth = LayoutOptions
-    { layoutPageWidth = AvailablePerLine renderWidth 0.9
-    }
-
--- | Render without any syntax annotations
-srenderPlain :: Doc ann -> T.Text
-srenderPlain = renderStrict . layoutSmart (cliLayout defaultTermWidth)
-
 -- | Render a 'Document' as an ANSII colored string.
 srenderColored :: Doc Terminal.AnsiStyle -> T.Text
 srenderColored =
     Terminal.renderStrict .
     layoutSmart defaultLayoutOptions { layoutPageWidth = AvailablePerLine 100 1.0 }
-
-defaultTermWidth :: Int
-defaultTermWidth = 80

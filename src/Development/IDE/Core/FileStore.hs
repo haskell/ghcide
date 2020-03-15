@@ -6,7 +6,6 @@
 module Development.IDE.Core.FileStore(
     getFileContents,
     getVirtualFile,
-    setBufferModified,
     setSomethingModified,
     fileStoreRules,
     VFSHandle,
@@ -49,7 +48,7 @@ import Language.Haskell.LSP.VFS
 
 -- | haskell-lsp manages the VFS internally and automatically so we cannot use
 -- the builtin VFS without spawning up an LSP server. To be able to test things
--- like `setBufferModified` we abstract over the VFS implementation.
+-- we abstract over the VFS implementation.
 data VFSHandle = VFSHandle
     { getVirtualFile :: NormalizedUri -> IO (Maybe VirtualFile)
         -- ^ get the contents of a virtual file
@@ -165,16 +164,6 @@ fileStoreRules vfs = do
     getModificationTimeRule vfs
     getFileContentsRule vfs
 
-
--- | Notify the compiler service that a particular file has been modified.
---   Use 'Nothing' to say the file is no longer in the virtual file system
---   but should be sourced from disk, or 'Just' to give its new value.
-setBufferModified :: IdeState -> NormalizedFilePath -> Maybe T.Text -> IO ()
-setBufferModified state absFile contents = do
-    VFSHandle{..} <- getIdeGlobalState state
-    whenJust setVirtualFileContents $ \set ->
-        set (filePathToUri' absFile) contents
-    void $ shakeRun state []
 
 -- | Note that some buffer somewhere has been modified, but don't say what.
 --   Only valid if the virtual file system was initialised by LSP, as that

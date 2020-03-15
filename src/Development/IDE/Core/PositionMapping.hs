@@ -2,8 +2,6 @@
 -- SPDX-License-Identifier: Apache-2.0
 module Development.IDE.Core.PositionMapping
   ( PositionMapping(..)
-  , toCurrentRange
-  , fromCurrentRange
   , applyChange
   , idMapping
   -- toCurrent and fromCurrent are mainly exposed for testing
@@ -19,14 +17,6 @@ data PositionMapping = PositionMapping
   { toCurrentPosition :: !(Position -> Maybe Position)
   , fromCurrentPosition :: !(Position -> Maybe Position)
   }
-
-toCurrentRange :: PositionMapping -> Range -> Maybe Range
-toCurrentRange mapping (Range a b) =
-    Range <$> toCurrentPosition mapping a <*> toCurrentPosition mapping b
-
-fromCurrentRange :: PositionMapping -> Range -> Maybe Range
-fromCurrentRange mapping (Range a b) =
-    Range <$> fromCurrentPosition mapping a <*> fromCurrentPosition mapping b
 
 idMapping :: PositionMapping
 idMapping = PositionMapping Just Just

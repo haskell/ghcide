@@ -14,12 +14,10 @@ module Development.IDE.GHC.Util(
     ParseResult(..), runParser,
     lookupPackageConfig,
     moduleImportPath,
-    cgGutsToCoreModule,
     fingerprintToBS,
     fingerprintFromStringBuffer,
     -- * General utilities
     textToStringBuffer,
-    readFileUtf8,
     hDuplicateTo',
     setDefaultHieDir,
     dontWriteHieFiles
@@ -48,9 +46,6 @@ import GHC.IO.Handle.Internals
 import Data.Unique
 import Development.Shake.Classes
 import qualified Data.Text                as T
-import qualified Data.Text.Encoding       as T
-import qualified Data.Text.Encoding.Error as T
-import qualified Data.ByteString          as BS
 import Lexer
 import StringBuffer
 import System.FilePath
@@ -171,18 +166,6 @@ instance Hashable HscEnvEq where
 instance Binary HscEnvEq where
   put _ = error "not really"
   get = error "not really"
-
--- | Read a UTF8 file, with lenient decoding, so it will never raise a decoding error.
-readFileUtf8 :: FilePath -> IO T.Text
-readFileUtf8 f = T.decodeUtf8With T.lenientDecode <$> BS.readFile f
-
--- | Convert from a 'CgGuts' to a 'CoreModule'.
-cgGutsToCoreModule :: SafeHaskellMode -> CgGuts -> ModDetails -> CoreModule
-cgGutsToCoreModule safeMode guts modDetails = CoreModule
-    (cg_module guts)
-    (md_types modDetails)
-    (cg_binds guts)
-    safeMode
 
 -- | Convert a 'Fingerprint' to a 'ByteString' by copying the byte across.
 --   Will produce an 8 byte unreadable ByteString.

@@ -12,7 +12,6 @@ module Development.IDE.Spans.Common (
 , SpanDoc(..)
 , emptySpanDoc
 , spanDocToMarkdown
-, spanDocToMarkdownForTest
 ) where
 
 import Data.Data
@@ -79,10 +78,6 @@ spanDocToMarkdown (SpanDocString _)
   = []
 #endif
 spanDocToMarkdown (SpanDocText txt) = txt
-
-spanDocToMarkdownForTest :: String -> String
-spanDocToMarkdownForTest
-  = haddockToMarkdown . H.toRegular . H._doc . H.parseParas Nothing
 
 -- Simple (and a bit hacky) conversion from Haddock markup to Markdown
 haddockToMarkdown

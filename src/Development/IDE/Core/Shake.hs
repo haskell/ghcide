@@ -22,16 +22,14 @@ module Development.IDE.Core.Shake(
     IdeState, shakeExtras,
     ShakeExtras(..), getShakeExtras, getShakeExtrasRules,
     IdeRule, IdeResult, GetModificationTime(..),
-    shakeOpen, shakeShut,
+    shakeOpen,
     shakeRun,
-    shakeProfile,
-    use, useWithStale, useNoFile, uses, usesWithStale,
+    use, useWithStale, uses, usesWithStale,
     use_, useNoFile_, uses_,
-    define, defineEarlyCutoff, defineOnDisk, needOnDisk, needOnDisks,
-    getDiagnostics, unsafeClearDiagnostics,
+    define, defineEarlyCutoff,
+    getDiagnostics,
     getHiddenDiagnostics,
     IsIdeGlobal, addIdeGlobal, addIdeGlobalExtras, getIdeGlobalState, getIdeGlobalAction,
-    garbageCollect,
     setPriority,
     sendEvent,
     ideLogger,
@@ -54,10 +52,8 @@ import           Data.Dynamic
 import           Data.Maybe
 import Data.Map.Strict (Map)
 import           Data.List.Extra (foldl', partition, takeEnd)
-import qualified Data.Set as Set
 import qualified Data.Text as T
 import Data.Traversable (for)
-import Data.Tuple.Extra
 import Data.Unique
 import Development.IDE.Core.Debouncer
 import Development.IDE.Core.PositionMapping
@@ -193,12 +189,6 @@ lastValue file v = do
         Succeeded ver v -> Just (v, mappingForVersion allMappings file ver)
         Stale ver v -> Just (v, mappingForVersion allMappings file ver)
         Failed -> Nothing
-
-valueVersion :: Value v -> Maybe TextDocumentVersion
-valueVersion = \case
-    Succeeded ver _ -> Just ver
-    Stale ver _ -> Just ver
-    Failed -> Nothing
 
 mappingForVersion
     :: HMap.HashMap NormalizedUri (Map TextDocumentVersion PositionMapping)
@@ -372,16 +362,6 @@ lspShakeProgress getLspId sendMsg inProgress = do
                         }
             loop id next
 
-shakeProfile :: IdeState -> FilePath -> IO ()
-shakeProfile IdeState{..} = shakeProfileDatabase shakeDb
-
-shakeShut :: IdeState -> IO ()
-shakeShut IdeState{..} = withMVar shakeAbort $ \stop -> do
-    -- Shake gets unhappy if you try to close when there is a running
-    -- request so we first abort that.
-    stop
-    shakeClose
-
 -- | This is a variant of withMVar where the first argument is run unmasked and if it throws
 -- an exception, the previous value is restored while the second argument is executed masked.
 withMVar' :: MVar a -> (a -> IO ()) -> IO (a, c) -> IO c
@@ -438,27 +418,6 @@ getHiddenDiagnostics IdeState{shakeExtras = ShakeExtras{hiddenDiagnostics}} = do
     val <- readVar hiddenDiagnostics
     return $ getAllDiagnostics val
 
--- | FIXME: This function is temporary! Only required because the files of interest doesn't work
-unsafeClearDiagnostics :: IdeState -> IO ()
-unsafeClearDiagnostics IdeState{shakeExtras = ShakeExtras{diagnostics}} =
-    writeVar diagnostics mempty
-
--- | Clear the results for all files that do not match the given predicate.
-garbageCollect :: (NormalizedFilePath -> Bool) -> Action ()
-garbageCollect keep = do
-    ShakeExtras{state, diagnostics,hiddenDiagnostics,publishedDiagnostics,positionMapping} <- getShakeExtras
-    liftIO $
-        do newState <- modifyVar state $ \values -> do
-               values <- evaluate $ HMap.filterWithKey (\(file, _) _ -> keep file) values
-               return $! dupe values
-           modifyVar_ diagnostics $ \diags -> return $! filterDiagnostics keep diags
-           modifyVar_ hiddenDiagnostics $ \hdiags -> return $! filterDiagnostics keep hdiags
-           modifyVar_ publishedDiagnostics $ \diags -> return $! HMap.filterWithKey (\uri _ -> keep (fromUri uri)) diags
-           let versionsForFile =
-                   HMap.fromListWith Set.union $
-                   mapMaybe (\((file, _key), v) -> (filePathToUri' file,) . Set.singleton <$> valueVersion v) $
-                   HMap.toList newState
-           modifyVar_ positionMapping $ \mappings -> return $! filterVersionMap versionsForFile mappings
 define
     :: IdeRule k v
     => (k -> NormalizedFilePath -> Action (IdeResult v)) -> Rules ()
@@ -471,9 +430,6 @@ use key file = head <$> uses key [file]
 useWithStale :: IdeRule k v
     => k -> NormalizedFilePath -> Action (Maybe (v, PositionMapping))
 useWithStale key file = head <$> usesWithStale key [file]
-
-useNoFile :: IdeRule k v => k -> Action (Maybe v)
-useNoFile key = use key ""
 
 use_ :: IdeRule k v => k -> NormalizedFilePath -> Action v
 use_ key file = head <$> uses_ key [file]
@@ -615,53 +571,6 @@ data OnDiskRule = OnDiskRule
   , runRule :: Action (IdeResult BS.ByteString)
   -- The actual rule code which produces the new hash (or Nothing if the rule failed) and the diagnostics.
   }
-
--- This is used by the DAML compiler for incremental builds. Right now this is not used by
--- ghcide itself but that might change in the future.
--- The reason why this code lives in ghcide and in particular in this module is that it depends quite heavily on
--- the internals of this module that we do not want to expose.
-defineOnDisk
-  :: (Shake.ShakeValue k, RuleResult k ~ ())
-  => (k -> NormalizedFilePath -> OnDiskRule)
-  -> Rules ()
-defineOnDisk act = addBuiltinRule noLint noIdentity $
-  \(QDisk key file) (mbOld :: Maybe BS.ByteString) mode -> do
-      extras <- getShakeExtras
-      let OnDiskRule{..} = act key file
-      let validateHash h
-              | BS.null h = Nothing
-              | otherwise = Just h
-      let runAct = actionCatch runRule $
-              \(e :: SomeException) -> pure ([ideErrorText file $ T.pack $ displayException e | not $ isBadDependency e], Nothing)
-      case mbOld of
-          Nothing -> do
-              (diags, mbHash) <- runAct
-              updateFileDiagnostics file (Key key) extras $ map (\(_,y,z) -> (y,z)) diags
-              pure $ RunResult ChangedRecomputeDiff (fromMaybe "" mbHash) (isJust mbHash)
-          Just old -> do
-              current <- validateHash <$> (actionCatch getHash $ \(_ :: SomeException) -> pure "")
-              if mode == RunDependenciesSame && Just old == current && not (BS.null old)
-                  then
-                    -- None of our dependencies changed, we’ve had a successful run before and
-                    -- the state on disk matches the state in the Shake database.
-                    pure $ RunResult ChangedNothing (fromMaybe "" current) (isJust current)
-                  else do
-                    (diags, mbHash) <- runAct
-                    updateFileDiagnostics file (Key key) extras $ map (\(_,y,z) -> (y,z)) diags
-                    let change
-                          | mbHash == Just old = ChangedRecomputeSame
-                          | otherwise = ChangedRecomputeDiff
-                    pure $ RunResult change (fromMaybe "" mbHash) (isJust mbHash)
-
-needOnDisk :: (Shake.ShakeValue k, RuleResult k ~ ()) => k -> NormalizedFilePath -> Action ()
-needOnDisk k file = do
-    successfull <- apply1 (QDisk k file)
-    liftIO $ unless successfull $ throwIO $ BadDependency (show k)
-
-needOnDisks :: (Shake.ShakeValue k, RuleResult k ~ ()) => k -> [NormalizedFilePath] -> Action ()
-needOnDisks k files = do
-    successfulls <- apply $ map (QDisk k) files
-    liftIO $ unless (and successfulls) $ throwIO $ BadDependency (show k)
 
 toShakeValue :: (BS.ByteString -> ShakeValue) -> Maybe BS.ByteString -> ShakeValue
 toShakeValue = maybe ShakeNoCutoff
@@ -813,20 +722,6 @@ getFileDiagnostics ::
 getFileDiagnostics fp ds =
     maybe [] getDiagnosticsFromStore $
     HMap.lookup (filePathToUri' fp) ds
-
-filterDiagnostics ::
-    (NormalizedFilePath -> Bool) ->
-    DiagnosticStore ->
-    DiagnosticStore
-filterDiagnostics keep =
-    HMap.filterWithKey (\uri _ -> maybe True (keep . toNormalizedFilePath) $ uriToFilePath' $ fromNormalizedUri uri)
-
-filterVersionMap
-    :: HMap.HashMap NormalizedUri (Set.Set TextDocumentVersion)
-    -> HMap.HashMap NormalizedUri (Map TextDocumentVersion a)
-    -> HMap.HashMap NormalizedUri (Map TextDocumentVersion a)
-filterVersionMap =
-    HMap.intersectionWith $ \versionsToKeep versionMap -> Map.restrictKeys versionMap versionsToKeep
 
 updatePositionMapping :: IdeState -> VersionedTextDocumentIdentifier -> List TextDocumentContentChangeEvent -> IO ()
 updatePositionMapping IdeState{shakeExtras = ShakeExtras{positionMapping}} VersionedTextDocumentIdentifier{..} changes = do

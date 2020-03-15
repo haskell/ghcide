@@ -9,11 +9,10 @@
 --
 module Development.IDE.Core.Service(
     getIdeOptions,
-    IdeState, initialise, shutdown,
+    IdeState, initialise,
     runAction,
     runActionSync,
-    writeProfile,
-    getDiagnostics, unsafeClearDiagnostics,
+    getDiagnostics,
     ideLogger,
     updatePositionMapping,
     ) where
@@ -71,13 +70,6 @@ initialise caps mainRule getLspId toDiags logger debouncer options vfs =
             ofInterestRules
             fileExistsRules getLspId caps vfs
             mainRule
-
-writeProfile :: IdeState -> FilePath -> IO ()
-writeProfile = shakeProfile
-
--- | Shutdown the Compiler Service.
-shutdown :: IdeState -> IO ()
-shutdown = shakeShut
 
 -- This will return as soon as the result of the action is
 -- available.  There might still be other rules running at this point,
