@@ -1,9 +1,5 @@
-module Development.IDE.Plugin
-    (
-      Plugin(..)
-    , codeActionPlugin
-    , codeActionPluginWithRules
-    ) where
+
+module Development.IDE.Plugin(Plugin(..), codeActionPlugin, codeActionPluginWithRules) where
 
 import Data.Default
 import Development.Shake
@@ -13,7 +9,6 @@ import           Language.Haskell.LSP.Types
 import Development.IDE.Core.Rules
 import qualified Language.Haskell.LSP.Core as LSP
 import Language.Haskell.LSP.Messages
-
 
 
 data Plugin c = Plugin

@@ -152,11 +152,9 @@ runLanguageServer options userHandlers onInitialConfig onConfigChange getIdeStat
                                 case res of
                                     Left e  -> sendFunc $ wrap $ ResponseMessage "2.0" (responseId _id) Nothing (Just e)
                                     Right r -> sendFunc $ wrap $ ResponseMessage "2.0" (responseId _id) (Just r) Nothing
-                                case newReq of
-                                    Nothing -> return ()
-                                    Just (rm, newReqParams) -> do
-                                        reqId <- getNextReqId
-                                        sendFunc $ wrapNewReq $ RequestMessage "2.0" reqId rm newReqParams
+                                whenJust newReq $ \(rm, newReqParams) -> do
+                                    reqId <- getNextReqId
+                                    sendFunc $ wrapNewReq $ RequestMessage "2.0" reqId rm newReqParams
                     InitialParams x@RequestMessage{_id, _params} act -> do
                         catch (act lspFuncs ide _params) $ \(e :: SomeException) ->
                             logError (ideLogger ide) $ T.pack $
