@@ -122,7 +122,7 @@ typecheckModule (IdeDefer defer) hsc depsIn pm = do
         -- Long-term we might just want to change the order returned by GetDependencies
         let deps = reverse depsIn
 
-        setupFinderCache deps
+        setupFinderCache (map fst deps)
 
         let modSummary = pm_mod_summary pm
             dflags = ms_hspp_opts modSummary
@@ -316,18 +316,16 @@ handleGenerationErrors dflags source action =
 -- HPT.
 setupEnv :: GhcMonad m => [(ModSummary, HomeModInfo)] -> m ()
 setupEnv tms = do
-    setupFinderCache tms
+    setupFinderCache (map fst tms)
     -- load dependent modules, which must be in topological order.
     modifySession $ \e ->
       foldl' (\e (_, hmi) -> loadModuleHome hmi e) e tms
 
 -- | Initialise the finder cache, dependencies should be topologically
 -- sorted.
-setupFinderCache :: GhcMonad m => [(ModSummary, b)] -> m ()
-setupFinderCache tms = do
+setupFinderCache :: GhcMonad m => [ModSummary] -> m ()
+setupFinderCache mss = do
     session <- getSession
-
-    let mss = map fst tms
 
     -- set the target and module graph in the session
     let graph = mkModuleGraph mss
