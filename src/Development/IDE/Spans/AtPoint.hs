@@ -133,7 +133,7 @@ locationsAtPoint getHieFile IdeOptions{..} pos =
             sp@(RealSrcSpan _) -> pure $ Just sp
             sp@(UnhelpfulSpan _) -> runMaybeT $ do
                 guard (sp /= wiredInSrcSpan)
-                -- This case usually arises when the definition is in an external package.
+                -- This case usually arises when the definition is in an external package (DAML only).
                 -- In this case the interface files contain garbage source spans
                 -- so we instead read the .hie files to get useful source spans.
                 mod <- MaybeT $ return $ nameModule_maybe name
