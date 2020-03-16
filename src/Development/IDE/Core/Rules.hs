@@ -55,7 +55,6 @@ import Data.List
 import Data.Ord
 import qualified Data.Set                                 as Set
 import qualified Data.Text                                as T
-import qualified Data.Text.Encoding                       as TE
 import           Development.IDE.GHC.Error
 import           Development.Shake                        hiding (Diagnostic)
 import Development.IDE.Core.RuleTypes
@@ -393,9 +392,8 @@ typeCheckRuleDefinition file generateArtifacts = do
 
   case res of
     (diags, Just (hsc,tcm)) | DoGenerateInterfaceFiles <- generateArtifacts -> do
-      (_, contents) <- getFileContents file
       diagsHie <- liftIO $
-        generateAndWriteHieFile hsc (TE.encodeUtf8 <$> contents) (tmrModule tcm)
+        generateAndWriteHieFile hsc (tmrModule tcm)
       diagsHi  <- liftIO $
         generateAndWriteHiFile hsc tcm
       return (diags <> diagsHi <> diagsHie, Just tcm)

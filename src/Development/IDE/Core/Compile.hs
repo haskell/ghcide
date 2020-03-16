@@ -24,7 +24,6 @@ module Development.IDE.Core.Compile
   , loadModuleHome
   ) where
 
-import Data.ByteString as BS (ByteString, readFile)
 import Development.IDE.Core.RuleTypes
 import Development.IDE.Core.Preprocessor
 import Development.IDE.Core.Shake
@@ -268,14 +267,13 @@ atomicFileUpdate targetPath write = do
   (tempFilePath, cleanUp) <- newTempFileWithin dir
   (write tempFilePath >> renameFile tempFilePath targetPath) `onException` cleanUp
 
-generateAndWriteHieFile :: HscEnv -> Maybe ByteString -> TypecheckedModule -> IO [FileDiagnostic]
-generateAndWriteHieFile hscEnv mb_src tcm =
+generateAndWriteHieFile :: HscEnv -> TypecheckedModule -> IO [FileDiagnostic]
+generateAndWriteHieFile hscEnv tcm =
   handleGenerationErrors dflags "extended interface generation" $ do
-    src <- maybe (BS.readFile `traverse` srcPath) (return . Just) mb_src
-    case (src, tm_renamed_source tcm) of
-      (Just src, Just rnsrc) -> do
+    case tm_renamed_source tcm of
+      Just rnsrc -> do
         hf <- runHsc hscEnv $
-          GHC.mkHieFile mod_summary (fst $ tm_internals_ tcm) rnsrc src
+          GHC.mkHieFile mod_summary (fst $ tm_internals_ tcm) rnsrc ""
         atomicFileUpdate targetPath $ flip GHC.writeHieFile hf
       _ ->
         return ()
@@ -283,7 +281,6 @@ generateAndWriteHieFile hscEnv mb_src tcm =
     dflags       = hsc_dflags hscEnv
     mod_summary  = pm_mod_summary $ tm_parsed_module tcm
     mod_location = ms_location mod_summary
-    srcPath      = ml_hs_file mod_location
     targetPath   = Compat.ml_hie_file mod_location
 
 generateAndWriteHiFile :: HscEnv -> TcModuleResult -> IO [FileDiagnostic]
