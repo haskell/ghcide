@@ -147,7 +147,7 @@ runLanguageServer options userHandlers onInitialConfig onConfigChange getIdeStat
                               Left e  -> sendFunc $ wrap $ ResponseMessage "2.0" (responseId _id) Nothing (Just e)
                               Right r -> sendFunc $ wrap $ ResponseMessage "2.0" (responseId _id) (Just r) Nothing
                     ResponseAndRequest x@RequestMessage{_id, _params} wrap wrapNewReq act ->
-                        checkCancelled ide clearReqId waitForCancel lspFuncs wrap act x _id _params $ do
+                        checkCancelled ide clearReqId waitForCancel lspFuncs wrap act x _id _params $
                             \(res, newReq) -> do
                                 case res of
                                     Left e  -> sendFunc $ wrap $ ResponseMessage "2.0" (responseId _id) Nothing (Just e)
