@@ -78,6 +78,7 @@ import qualified Data.Map.Strict                          as Map
 import           System.FilePath
 import           System.Directory
 import           System.IO.Extra
+import Data.Either.Extra (maybeToEither)
 
 
 -- | Given a string buffer, return the string (after preprocessing) and the 'ParsedModule'.
@@ -513,9 +514,7 @@ loadInterface session ms deps = do
     Maybes.Succeeded iface -> do
       session' <- foldM (\e d -> loadDepModuleIO (hirModIface d) Nothing e) session deps
       (reason, iface') <- checkOldIface session' ms SourceUnmodified (Just iface)
-      case iface' of
-        Just iface' -> return $ Right iface'
-        Nothing -> return $ Left (showReason reason)
+      return $ maybeToEither (showReason reason) iface'
     Maybes.Failed err -> do
       let errMsg = showSDoc (hsc_dflags session) err
       return $ Left errMsg

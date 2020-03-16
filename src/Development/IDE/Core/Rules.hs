@@ -388,17 +388,15 @@ typeCheckRuleDefinition file generateArtifacts = do
   setPriority priorityTypeCheck
   IdeOptions { optDefer = defer } <- getIdeOptions
 
-  res <- liftIO $ typecheckModule defer hsc (zipWith unpack mirs bytecodes) pm
-
-  case res of
-    (diags, Just (hsc,tcm)) | DoGenerateInterfaceFiles <- generateArtifacts -> do
-      diagsHie <- liftIO $
-        generateAndWriteHieFile hsc (tmrModule tcm)
-      diagsHi  <- liftIO $
-        generateAndWriteHiFile hsc tcm
-      return (diags <> diagsHi <> diagsHie, Just tcm)
-    (diags, res) ->
-      return (diags, snd <$> res)
+  liftIO $ do
+    res <- typecheckModule defer hsc (zipWith unpack mirs bytecodes) pm
+    case res of
+      (diags, Just (hsc,tcm)) | DoGenerateInterfaceFiles <- generateArtifacts -> do
+        diagsHie <- generateAndWriteHieFile hsc (tmrModule tcm)
+        diagsHi  <- generateAndWriteHiFile hsc tcm
+        return (diags <> diagsHi <> diagsHie, Just tcm)
+      (diags, res) ->
+        return (diags, snd <$> res)
  where
   unpack HiFileResult{..} bc = (hirModSummary, (hirModIface, bc))
   uses_th_qq dflags =
@@ -456,7 +454,7 @@ getHiFileRule :: Rules ()
 getHiFileRule = defineEarlyCutoff $ \GetHiFile f -> do
   session <- hscEnv <$> use_ GhcSession f
   -- get all dependencies interface files, to check for freshness
-  (deps,_)<- use_ GetLocatedImports f
+  (deps,_) <- use_ GetLocatedImports f
   depHis  <- traverse (use GetHiFile) (mapMaybe (fmap artifactFilePath . snd) deps)
 
   -- TODO find the hi file without relying on the parsed module
@@ -494,7 +492,7 @@ getHiFileRule = defineEarlyCutoff $ \GetHiFile f -> do
         else do
           hiVersion  <- use_ GetModificationTime hiFile
           modVersion <- use_ GetModificationTime f
-          let sourceModified = LT == comparing modificationTime hiVersion modVersion
+          let sourceModified = modificationTime hiVersion < modificationTime modVersion
           if sourceModified
             then do
               let d = mkInterfaceFilesGenerationDiag f "Stale interface file"
@@ -526,7 +524,7 @@ getModIfaceRule = define $ \GetModIface f -> do
             tmr <- use TypeCheck f
             return ([], extract tmr)
           | otherwise -> do
-            -- Otherwise invoke typechecking directly
+            -- Otherwise the interface file does not exist or is out of date. Invoke typechecking directly to update it without incurring a dependency on the typecheck rule.
             (diags, tmr) <- typeCheckRuleDefinition f DoGenerateInterfaceFiles
             -- Bang pattern is important to avoid leaking 'tmr'
             let !res = extract tmr
