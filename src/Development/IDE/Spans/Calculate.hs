@@ -55,7 +55,7 @@ getSrcSpanInfos
     -> [(ParsedModule, ModIface)]
     -> IO SpansInfo
 getSrcSpanInfos env imports tc deps =
-    runGhcEnv env $
+    evalGhcEnv env $
         getSpanInfo imports (tmrModule tc) deps
 
 -- | Get ALL source spans in the module.

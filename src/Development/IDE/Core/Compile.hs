@@ -89,7 +89,7 @@ parseModule
     -> IO (IdeResult (StringBuffer, ParsedModule))
 parseModule IdeOptions{..} env filename mbContents =
     fmap (either (, Nothing) id) $
-    runGhcEnv env $ runExceptT $ do
+    evalGhcEnv env $ runExceptT $ do
         (contents, dflags) <- preprocessor filename mbContents
         (diag, modu) <- parseFileContents optPreprocessor dflags filename contents
         return (diag, Just (contents, modu))
@@ -114,7 +114,7 @@ typecheckModule :: IdeDefer
                 -> IO (IdeResult (HscEnv, TcModuleResult))
 typecheckModule (IdeDefer defer) hsc depsIn pm = do
     fmap (either (, Nothing) (second Just) . fmap sequence . sequence) $
-      evalGhcEnv hsc $
+      runGhcEnv hsc $
       catchSrcErrors "typecheck" $ do
         -- Currently GetDependencies returns things in topological order so A comes before B if A imports B.
         -- We need to reverse this as GHC gets very unhappy otherwise and complains about broken interfaces.
@@ -156,7 +156,7 @@ compileModule
     -> IO (IdeResult (SafeHaskellMode, CgGuts, ModDetails))
 compileModule packageState deps tmr =
     fmap (either (, Nothing) (second Just)) $
-    runGhcEnv packageState $
+    evalGhcEnv packageState $
         catchSrcErrors "compile" $ do
             setupEnv (deps ++ [(tmrModSummary tmr, tmrModInfo tmr)])
 
@@ -180,7 +180,7 @@ compileModule packageState deps tmr =
 generateByteCode :: HscEnv -> [(ModSummary, HomeModInfo)] -> TcModuleResult -> CgGuts -> IO (IdeResult Linkable)
 generateByteCode hscEnv deps tmr guts =
     fmap (either (, Nothing) (second Just)) $
-    runGhcEnv hscEnv $
+    evalGhcEnv hscEnv $
       catchSrcErrors "bytecode" $ do
           setupEnv (deps ++ [(tmrModSummary tmr, tmrModInfo tmr)])
           session <- getSession
