@@ -14,10 +14,11 @@ module Development.IDE.Types.Location
     , LSP.NormalizedUri
     , LSP.toNormalizedUri
     , LSP.fromNormalizedUri
-    , NormalizedFilePath'
+    , LSP.NormalizedFilePath
     , fromUri
+    , emptyFilePath
     , toNormalizedFilePath'
-    , fromNormalizedFilePath'
+    , LSP.fromNormalizedFilePath
     , filePathToUri'
     , uriToFilePath'
     , readSrcSpan
@@ -26,30 +27,21 @@ module Development.IDE.Types.Location
 import Control.Applicative
 import Language.Haskell.LSP.Types (Location(..), Range(..), Position(..))
 import Control.Monad
-import Data.Binary (Binary)
-import Control.DeepSeq (NFData)
-import Data.Hashable (Hashable, hash)
+import Data.Hashable (Hashable(hash))
 import Data.String
 import FastString
 import qualified Language.Haskell.LSP.Types as LSP
 import SrcLoc as GHC
 import Text.ParserCombinators.ReadP as ReadP
+import Data.Maybe (fromMaybe)
 
--- We need a newtype to override the IsString instance
-newtype NormalizedFilePath' = NormalizedFilePath' LSP.NormalizedFilePath
-  deriving (NFData, Binary, Show, Hashable, Eq)
-
-instance IsString NormalizedFilePath' where
-    fromString = toNormalizedFilePath'
-
-toNormalizedFilePath' :: FilePath -> NormalizedFilePath'
+toNormalizedFilePath' :: FilePath -> LSP.NormalizedFilePath
 -- We want to keep empty paths instead of normalising them to "."
-toNormalizedFilePath' "" = NormalizedFilePath' $ LSP.NormalizedFilePath emptyPathUri ""
-toNormalizedFilePath' fp = NormalizedFilePath' $ LSP.toNormalizedFilePath fp
+toNormalizedFilePath' "" = emptyFilePath
+toNormalizedFilePath' fp = LSP.toNormalizedFilePath fp
 
-fromNormalizedFilePath' :: NormalizedFilePath' -> FilePath
-fromNormalizedFilePath' (NormalizedFilePath' nfp) =  LSP.fromNormalizedFilePath nfp
-
+emptyFilePath :: LSP.NormalizedFilePath
+emptyFilePath = LSP.NormalizedFilePath emptyPathUri ""
 
 -- | We use an empty string as a filepath when we don’t have a file.
 -- However, haskell-lsp doesn’t support that in uriToFilePath and given
@@ -63,11 +55,11 @@ uriToFilePath' uri
 emptyPathUri :: LSP.NormalizedUri
 emptyPathUri = LSP.NormalizedUri (hash ("" :: String)) ""
 
-filePathToUri' :: NormalizedFilePath' -> LSP.NormalizedUri
-filePathToUri' (NormalizedFilePath' nfp) = LSP.normalizedFilePathToUri nfp
+filePathToUri' :: LSP.NormalizedFilePath -> LSP.NormalizedUri
+filePathToUri' = LSP.normalizedFilePathToUri
 
-fromUri :: LSP.NormalizedUri -> NormalizedFilePath'
-fromUri = maybe (toNormalizedFilePath' noFilePath) NormalizedFilePath' . LSP.uriToNormalizedFilePath
+fromUri :: LSP.NormalizedUri -> LSP.NormalizedFilePath
+fromUri = fromMaybe (toNormalizedFilePath' noFilePath) . LSP.uriToNormalizedFilePath
 
 noFilePath :: FilePath
 noFilePath = "<unknown>"

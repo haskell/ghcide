@@ -58,9 +58,9 @@ modifyWorkspaceFolders ide f = do
   IdeConfiguration    ws  <- readVar var
   writeVar var (IdeConfiguration (f ws))
 
-isWorkspaceFile :: NormalizedFilePath' -> Action Bool
+isWorkspaceFile :: NormalizedFilePath -> Action Bool
 isWorkspaceFile file =
-  if isRelative (fromNormalizedFilePath' file)
+  if isRelative (fromNormalizedFilePath file)
     then return True
     else do
       IdeConfiguration {..} <- getIdeConfiguration

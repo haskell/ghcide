@@ -29,7 +29,7 @@ import           Development.IDE.Core.FileExists  (modifyFileExists)
 import           Development.IDE.Core.OfInterest
 
 
-whenUriFile :: Uri -> (NormalizedFilePath' -> IO ()) -> IO ()
+whenUriFile :: Uri -> (NormalizedFilePath -> IO ()) -> IO ()
 whenUriFile uri act = whenJust (LSP.uriToFilePath uri) $ act . toNormalizedFilePath'
 
 setHandlersNotifications :: PartialHandlers c

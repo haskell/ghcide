@@ -31,10 +31,10 @@ import Development.IDE.Types.Logger
 import Development.IDE.Core.Shake
 
 
-newtype OfInterestVar = OfInterestVar (Var (HashSet NormalizedFilePath'))
+newtype OfInterestVar = OfInterestVar (Var (HashSet NormalizedFilePath))
 instance IsIdeGlobal OfInterestVar
 
-type instance RuleResult GetFilesOfInterest = HashSet NormalizedFilePath'
+type instance RuleResult GetFilesOfInterest = HashSet NormalizedFilePath
 
 data GetFilesOfInterest = GetFilesOfInterest
     deriving (Eq, Show, Typeable, Generic)
@@ -47,14 +47,14 @@ instance Binary   GetFilesOfInterest
 ofInterestRules :: Rules ()
 ofInterestRules = do
     addIdeGlobal . OfInterestVar =<< liftIO (newVar HashSet.empty)
-    defineEarlyCutoff $ \GetFilesOfInterest _file -> assert (null $ fromNormalizedFilePath' _file) $ do
+    defineEarlyCutoff $ \GetFilesOfInterest _file -> assert (null $ fromNormalizedFilePath _file) $ do
         alwaysRerun
         filesOfInterest <- getFilesOfInterestUntracked
         pure (Just $ BS.fromString $ show filesOfInterest, ([], Just filesOfInterest))
 
 
 -- | Get the files that are open in the IDE.
-getFilesOfInterest :: Action (HashSet NormalizedFilePath')
+getFilesOfInterest :: Action (HashSet NormalizedFilePath)
 getFilesOfInterest = useNoFile_ GetFilesOfInterest
 
 
@@ -64,17 +64,17 @@ getFilesOfInterest = useNoFile_ GetFilesOfInterest
 
 -- | Set the files-of-interest - not usually necessary or advisable.
 --   The LSP client will keep this information up to date.
-setFilesOfInterest :: IdeState -> HashSet NormalizedFilePath' -> IO ()
+setFilesOfInterest :: IdeState -> HashSet NormalizedFilePath -> IO ()
 setFilesOfInterest state files = modifyFilesOfInterest state (const files)
 
-getFilesOfInterestUntracked :: Action (HashSet NormalizedFilePath')
+getFilesOfInterestUntracked :: Action (HashSet NormalizedFilePath)
 getFilesOfInterestUntracked = do
     OfInterestVar var <- getIdeGlobalAction
     liftIO $ readVar var
 
 -- | Modify the files-of-interest - not usually necessary or advisable.
 --   The LSP client will keep this information up to date.
-modifyFilesOfInterest :: IdeState -> (HashSet NormalizedFilePath' -> HashSet NormalizedFilePath') -> IO ()
+modifyFilesOfInterest :: IdeState -> (HashSet NormalizedFilePath -> HashSet NormalizedFilePath) -> IO ()
 modifyFilesOfInterest state f = do
     OfInterestVar var <- getIdeGlobalState state
     files <- modifyVar var $ pure . dupe . f
