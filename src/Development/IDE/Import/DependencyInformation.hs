@@ -69,7 +69,7 @@ newtype FilePathId = FilePathId { getFilePathId :: Int }
 
 data PathIdMap = PathIdMap
   { idToPathMap :: !(IntMap ArtifactsLocation)
-  , pathToIdMap :: !(HashMap NormalizedFilePath FilePathId)
+  , pathToIdMap :: !(HashMap NormalizedFilePath' FilePathId)
   }
   deriving (Show, Generic)
 
@@ -93,10 +93,10 @@ insertPathId path id PathIdMap{..} =
 insertImport :: FilePathId -> Either ModuleParseError ModuleImports -> RawDependencyInformation -> RawDependencyInformation
 insertImport (FilePathId k) v rawDepInfo = rawDepInfo { rawImports = IntMap.insert k v (rawImports rawDepInfo) }
 
-pathToId :: PathIdMap -> NormalizedFilePath -> FilePathId
+pathToId :: PathIdMap -> NormalizedFilePath' -> FilePathId
 pathToId PathIdMap{pathToIdMap} path = pathToIdMap HMS.! path
 
-idToPath :: PathIdMap -> FilePathId -> NormalizedFilePath
+idToPath :: PathIdMap -> FilePathId -> NormalizedFilePath'
 idToPath pathIdMap filePathId = artifactFilePath $ idToModLocation pathIdMap filePathId
 
 idToModLocation :: PathIdMap -> FilePathId -> ArtifactsLocation
@@ -132,7 +132,7 @@ newtype ShowableModuleName =
 
 instance Show ShowableModuleName where show = moduleNameString . showableModuleName
 
-reachableModules :: DependencyInformation -> [NormalizedFilePath]
+reachableModules :: DependencyInformation -> [NormalizedFilePath']
 reachableModules DependencyInformation{..} =
     map (idToPath depPathIdMap . FilePathId) $ IntMap.keys depErrorNodes <> IntMap.keys depModuleDeps
 
@@ -281,7 +281,7 @@ partitionSCC (CyclicSCC xs:rest) = second (xs:) $ partitionSCC rest
 partitionSCC (AcyclicSCC x:rest) = first (x:)   $ partitionSCC rest
 partitionSCC []                  = ([], [])
 
-transitiveDeps :: DependencyInformation -> NormalizedFilePath -> Maybe TransitiveDependencies
+transitiveDeps :: DependencyInformation -> NormalizedFilePath' -> Maybe TransitiveDependencies
 transitiveDeps DependencyInformation{..} file = do
   let !fileId = pathToId depPathIdMap file
   reachableVs <-
@@ -307,7 +307,7 @@ transitiveDeps DependencyInformation{..} file = do
     vs = topSort g
 
 data TransitiveDependencies = TransitiveDependencies
-  { transitiveModuleDeps :: [NormalizedFilePath]
+  { transitiveModuleDeps :: [NormalizedFilePath']
   , transitiveNamedModuleDeps :: [NamedModuleDep]
   -- ^ Transitive module dependencies in topological order.
   -- The module itself is not included.
@@ -318,7 +318,7 @@ data TransitiveDependencies = TransitiveDependencies
 instance NFData TransitiveDependencies
 
 data NamedModuleDep = NamedModuleDep {
-  nmdFilePath :: !NormalizedFilePath,
+  nmdFilePath :: !NormalizedFilePath',
   nmdModuleName :: !ModuleName,
   nmdModLocation :: !ModLocation
   }

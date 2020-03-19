@@ -100,7 +100,7 @@ data ShakeExtras = ShakeExtras
     ,positionMapping :: Var (HMap.HashMap NormalizedUri (Map TextDocumentVersion PositionMapping))
     -- ^ Map from a text document version to a PositionMapping that describes how to map
     -- positions in a version of that document to positions in the latest version
-    ,inProgress :: Var (HMap.HashMap NormalizedFilePath Int)
+    ,inProgress :: Var (HMap.HashMap NormalizedFilePath' Int)
     -- ^ How many rules are running for each file
     }
 
@@ -141,7 +141,7 @@ getIdeGlobalState = getIdeGlobalExtras . shakeExtras
 
 
 -- | The state of the all values.
-type Values = HMap.HashMap (NormalizedFilePath, Key) (Value Dynamic)
+type Values = HMap.HashMap (NormalizedFilePath', Key) (Value Dynamic)
 
 -- | Key type
 data Key = forall k . (Typeable k, Hashable k, Eq k, Show k) => Key k
@@ -185,7 +185,7 @@ currentValue Failed = Nothing
 
 -- | Return the most recent, potentially stale, value and a PositionMapping
 -- for the version of that value.
-lastValue :: NormalizedFilePath -> Value v -> Action (Maybe (v, PositionMapping))
+lastValue :: NormalizedFilePath' -> Value v -> Action (Maybe (v, PositionMapping))
 lastValue file v = do
     ShakeExtras{positionMapping} <- getShakeExtras
     allMappings <- liftIO $ readVar positionMapping
@@ -202,7 +202,7 @@ valueVersion = \case
 
 mappingForVersion
     :: HMap.HashMap NormalizedUri (Map TextDocumentVersion PositionMapping)
-    -> NormalizedFilePath
+    -> NormalizedFilePath'
     -> TextDocumentVersion
     -> PositionMapping
 mappingForVersion allMappings file ver =
@@ -252,7 +252,7 @@ profileCounter = unsafePerformIO $ newVar 0
 setValues :: IdeRule k v
           => Var Values
           -> k
-          -> NormalizedFilePath
+          -> NormalizedFilePath'
           -> Value v
           -> IO ()
 setValues state key file val = modifyVar_ state $ \vals -> do
@@ -264,13 +264,13 @@ deleteValue
   :: (Typeable k, Hashable k, Eq k, Show k)
   => IdeState
   -> k
-  -> NormalizedFilePath
+  -> NormalizedFilePath'
   -> IO ()
 deleteValue IdeState{shakeExtras = ShakeExtras{state}} key file = modifyVar_ state $ \vals ->
     evaluate $ HMap.delete (file, Key key) vals
 
 -- | We return Nothing if the rule has not run and Just Failed if it has failed to produce a value.
-getValues :: forall k v. IdeRule k v => Var Values -> k -> NormalizedFilePath -> IO (Maybe (Value v))
+getValues :: forall k v. IdeRule k v => Var Values -> k -> NormalizedFilePath' -> IO (Maybe (Value v))
 getValues state key file = do
     vs <- readVar state
     case HMap.lookup (file, Key key) vs of
@@ -414,7 +414,7 @@ shakeRun IdeState{shakeExtras=ShakeExtras{..}, ..} acts =
                             Right _ -> "completed"
                        profile = case res of
                             Right (_, Just fp) ->
-                                let link = case filePathToUri' $ toNormalizedFilePath fp of
+                                let link = case filePathToUri' $ toNormalizedFilePath' fp of
                                                 NormalizedUri _ x -> x
                                 in ", profile saved at " <> T.unpack link
                             _ -> ""
@@ -444,7 +444,7 @@ unsafeClearDiagnostics IdeState{shakeExtras = ShakeExtras{diagnostics}} =
     writeVar diagnostics mempty
 
 -- | Clear the results for all files that do not match the given predicate.
-garbageCollect :: (NormalizedFilePath -> Bool) -> Action ()
+garbageCollect :: (NormalizedFilePath' -> Bool) -> Action ()
 garbageCollect keep = do
     ShakeExtras{state, diagnostics,hiddenDiagnostics,publishedDiagnostics,positionMapping} <- getShakeExtras
     liftIO $
@@ -461,27 +461,27 @@ garbageCollect keep = do
            modifyVar_ positionMapping $ \mappings -> return $! filterVersionMap versionsForFile mappings
 define
     :: IdeRule k v
-    => (k -> NormalizedFilePath -> Action (IdeResult v)) -> Rules ()
+    => (k -> NormalizedFilePath' -> Action (IdeResult v)) -> Rules ()
 define op = defineEarlyCutoff $ \k v -> (Nothing,) <$> op k v
 
 use :: IdeRule k v
-    => k -> NormalizedFilePath -> Action (Maybe v)
+    => k -> NormalizedFilePath' -> Action (Maybe v)
 use key file = head <$> uses key [file]
 
 useWithStale :: IdeRule k v
-    => k -> NormalizedFilePath -> Action (Maybe (v, PositionMapping))
+    => k -> NormalizedFilePath' -> Action (Maybe (v, PositionMapping))
 useWithStale key file = head <$> usesWithStale key [file]
 
 useNoFile :: IdeRule k v => k -> Action (Maybe v)
 useNoFile key = use key ""
 
-use_ :: IdeRule k v => k -> NormalizedFilePath -> Action v
+use_ :: IdeRule k v => k -> NormalizedFilePath' -> Action v
 use_ key file = head <$> uses_ key [file]
 
 useNoFile_ :: IdeRule k v => k -> Action v
 useNoFile_ key = use_ key ""
 
-uses_ :: IdeRule k v => k -> [NormalizedFilePath] -> Action [v]
+uses_ :: IdeRule k v => k -> [NormalizedFilePath'] -> Action [v]
 uses_ key files = do
     res <- uses key files
     case sequence res of
@@ -500,13 +500,13 @@ isBadDependency x
     | Just (_ :: BadDependency) <- fromException x = True
     | otherwise = False
 
-newtype Q k = Q (k, NormalizedFilePath)
+newtype Q k = Q (k, NormalizedFilePath')
     deriving (Eq,Hashable,NFData, Generic)
 
 instance Binary k => Binary (Q k)
 
 instance Show k => Show (Q k) where
-    show (Q (k, file)) = show k ++ "; " ++ fromNormalizedFilePath file
+    show (Q (k, file)) = show k ++ "; " ++ fromNormalizedFilePath' file
 
 -- | Invariant: the 'v' must be in normal form (fully evaluated).
 --   Otherwise we keep repeatedly 'rnf'ing values taken from the Shake database
@@ -524,12 +524,12 @@ type instance RuleResult (Q k) = A (RuleResult k)
 
 -- | Return up2date results. Stale results will be ignored.
 uses :: IdeRule k v
-    => k -> [NormalizedFilePath] -> Action [Maybe v]
+    => k -> [NormalizedFilePath'] -> Action [Maybe v]
 uses key files = map (\(A value _) -> currentValue value) <$> apply (map (Q . (key,)) files)
 
 -- | Return the last computed result which might be stale.
 usesWithStale :: IdeRule k v
-    => k -> [NormalizedFilePath] -> Action [Maybe (v, PositionMapping)]
+    => k -> [NormalizedFilePath'] -> Action [Maybe (v, PositionMapping)]
 usesWithStale key files = do
     values <- map (\(A value _) -> value) <$> apply (map (Q . (key,)) files)
     mapM (uncurry lastValue) (zip files values)
@@ -542,7 +542,7 @@ withProgress var file = actionBracket (f succ) (const $ f pred) . const
 
 defineEarlyCutoff
     :: IdeRule k v
-    => (k -> NormalizedFilePath -> Action (Maybe BS.ByteString, IdeResult v))
+    => (k -> NormalizedFilePath' -> Action (Maybe BS.ByteString, IdeResult v))
     -> Rules ()
 defineEarlyCutoff op = addBuiltinRule noLint noIdentity $ \(Q (key, file)) (old :: Maybe BS.ByteString) mode -> do
     extras@ShakeExtras{state, inProgress} <- getShakeExtras
@@ -589,7 +589,7 @@ defineEarlyCutoff op = addBuiltinRule noLint noIdentity $ \(Q (key, file)) (old 
 
 
 -- | Rule type, input file
-data QDisk k = QDisk k NormalizedFilePath
+data QDisk k = QDisk k NormalizedFilePath'
   deriving (Eq, Generic)
 
 instance Hashable k => Hashable (QDisk k)
@@ -600,7 +600,7 @@ instance Binary k => Binary (QDisk k)
 
 instance Show k => Show (QDisk k) where
     show (QDisk k file) =
-        show k ++ "; " ++ fromNormalizedFilePath file
+        show k ++ "; " ++ fromNormalizedFilePath' file
 
 type instance RuleResult (QDisk k) = Bool
 
@@ -622,7 +622,7 @@ data OnDiskRule = OnDiskRule
 -- the internals of this module that we do not want to expose.
 defineOnDisk
   :: (Shake.ShakeValue k, RuleResult k ~ ())
-  => (k -> NormalizedFilePath -> OnDiskRule)
+  => (k -> NormalizedFilePath' -> OnDiskRule)
   -> Rules ()
 defineOnDisk act = addBuiltinRule noLint noIdentity $
   \(QDisk key file) (mbOld :: Maybe BS.ByteString) mode -> do
@@ -653,12 +653,12 @@ defineOnDisk act = addBuiltinRule noLint noIdentity $
                           | otherwise = ChangedRecomputeDiff
                     pure $ RunResult change (fromMaybe "" mbHash) (isJust mbHash)
 
-needOnDisk :: (Shake.ShakeValue k, RuleResult k ~ ()) => k -> NormalizedFilePath -> Action ()
+needOnDisk :: (Shake.ShakeValue k, RuleResult k ~ ()) => k -> NormalizedFilePath' -> Action ()
 needOnDisk k file = do
     successfull <- apply1 (QDisk k file)
     liftIO $ unless successfull $ throwIO $ BadDependency (show k)
 
-needOnDisks :: (Shake.ShakeValue k, RuleResult k ~ ()) => k -> [NormalizedFilePath] -> Action ()
+needOnDisks :: (Shake.ShakeValue k, RuleResult k ~ ()) => k -> [NormalizedFilePath'] -> Action ()
 needOnDisks k files = do
     successfulls <- apply $ map (QDisk k) files
     liftIO $ unless (and successfulls) $ throwIO $ BadDependency (show k)
@@ -694,7 +694,7 @@ decodeShakeValue bs = case BS.uncons bs of
 
 
 updateFileDiagnostics ::
-     NormalizedFilePath
+     NormalizedFilePath'
   -> Key
   -> ShakeExtras
   -> [(ShowDiagnostic,Diagnostic)] -- ^ current results
@@ -788,7 +788,7 @@ getDiagnosticsFromStore (StoreItem _ diags) = concatMap SL.fromSortedList $ Map.
 -- | Sets the diagnostics for a file and compilation step
 --   if you want to clear the diagnostics call this with an empty list
 setStageDiagnostics
-    :: NormalizedFilePath
+    :: NormalizedFilePath'
     -> TextDocumentVersion -- ^ the time that the file these diagnostics originate from was last edited
     -> T.Text
     -> [LSP.Diagnostic]
@@ -807,7 +807,7 @@ getAllDiagnostics =
     concatMap (\(k,v) -> map (fromUri k,ShowDiag,) $ getDiagnosticsFromStore v) . HMap.toList
 
 getFileDiagnostics ::
-    NormalizedFilePath ->
+    NormalizedFilePath' ->
     DiagnosticStore ->
     [LSP.Diagnostic]
 getFileDiagnostics fp ds =
@@ -815,11 +815,11 @@ getFileDiagnostics fp ds =
     HMap.lookup (filePathToUri' fp) ds
 
 filterDiagnostics ::
-    (NormalizedFilePath -> Bool) ->
+    (NormalizedFilePath' -> Bool) ->
     DiagnosticStore ->
     DiagnosticStore
 filterDiagnostics keep =
-    HMap.filterWithKey (\uri _ -> maybe True (keep . toNormalizedFilePath) $ uriToFilePath' $ fromNormalizedUri uri)
+    HMap.filterWithKey (\uri _ -> maybe True (keep . toNormalizedFilePath') $ uriToFilePath' $ fromNormalizedUri uri)
 
 filterVersionMap
     :: HMap.HashMap NormalizedUri (Set.Set TextDocumentVersion)

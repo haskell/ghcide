@@ -41,7 +41,7 @@ setHandlersHover      = PartialHandlers $ \WithMessage{..} x ->
 -- | Respond to and log a hover or go-to-definition request
 request
   :: T.Text
-  -> (NormalizedFilePath -> Position -> Action (Maybe a))
+  -> (NormalizedFilePath' -> Position -> Action (Maybe a))
   -> b
   -> (a -> b)
   -> IdeState
@@ -53,9 +53,9 @@ request label getResults notFound found ide (TextDocumentPositionParams (TextDoc
         Nothing   -> pure Nothing
     pure $ Right $ maybe notFound found mbResult
 
-logAndRunRequest :: T.Text -> (NormalizedFilePath -> Position -> Action b) -> IdeState -> Position -> String -> IO b
+logAndRunRequest :: T.Text -> (NormalizedFilePath' -> Position -> Action b) -> IdeState -> Position -> String -> IO b
 logAndRunRequest label getResults ide pos path = do
-  let filePath = toNormalizedFilePath path
+  let filePath = toNormalizedFilePath' path
   logInfo (ideLogger ide) $
     label <> " request at position " <> T.pack (showPosition pos) <>
     " in file: " <> T.pack path

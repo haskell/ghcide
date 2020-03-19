@@ -94,7 +94,7 @@ instance Binary   GetFileContents
 getModificationTimeRule :: VFSHandle -> Rules ()
 getModificationTimeRule vfs =
     defineEarlyCutoff $ \GetModificationTime file -> do
-        let file' = fromNormalizedFilePath file
+        let file' = fromNormalizedFilePath' file
         let wrap time@(l,s) = (Just $ BS.pack $ show time, ([], Just $ ModificationTime l s))
         alwaysRerun
         mbVirtual <- liftIO $ getVirtualFile vfs $ filePathToUri' file
@@ -149,14 +149,14 @@ getFileContentsRule vfs =
             Left err -> return ([err], Nothing)
             Right contents -> return ([], Just (time, contents))
 
-ideTryIOException :: NormalizedFilePath -> IO a -> IO (Either FileDiagnostic a)
+ideTryIOException :: NormalizedFilePath' -> IO a -> IO (Either FileDiagnostic a)
 ideTryIOException fp act =
   mapLeft
       (\(e :: IOException) -> ideErrorText fp $ T.pack $ show e)
       <$> try act
 
 
-getFileContents :: NormalizedFilePath -> Action (FileVersion, Maybe T.Text)
+getFileContents :: NormalizedFilePath' -> Action (FileVersion, Maybe T.Text)
 getFileContents = use_ GetFileContents
 
 fileStoreRules :: VFSHandle -> Rules ()
@@ -169,7 +169,7 @@ fileStoreRules vfs = do
 -- | Notify the compiler service that a particular file has been modified.
 --   Use 'Nothing' to say the file is no longer in the virtual file system
 --   but should be sourced from disk, or 'Just' to give its new value.
-setBufferModified :: IdeState -> NormalizedFilePath -> Maybe T.Text -> IO ()
+setBufferModified :: IdeState -> NormalizedFilePath' -> Maybe T.Text -> IO ()
 setBufferModified state absFile contents = do
     VFSHandle{..} <- getIdeGlobalState state
     whenJust setVirtualFileContents $ \set ->

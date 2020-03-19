@@ -32,7 +32,7 @@ import           Language.Haskell.LSP.Types.Capabilities
 import qualified System.Directory as Dir
 
 -- | A map for tracking the file existence
-type FileExistsMap = (HashMap NormalizedFilePath Bool)
+type FileExistsMap = (HashMap NormalizedFilePath' Bool)
 
 -- | A wrapper around a mutable 'FileExistsMap'
 newtype FileExistsMapVar = FileExistsMapVar (Var FileExistsMap)
@@ -52,7 +52,7 @@ modifyFileExistsAction f = do
   liftIO $ modifyVar_ var f
 
 -- | Modify the global store of file exists
-modifyFileExists :: IdeState -> [(NormalizedFilePath, Bool)] -> IO ()
+modifyFileExists :: IdeState -> [(NormalizedFilePath', Bool)] -> IO ()
 modifyFileExists state changes = do
   FileExistsMapVar var <- getIdeGlobalState state
   changesMap           <- evaluate $ HashMap.fromList changes
@@ -84,7 +84,7 @@ instance Binary   GetFileExists
 --     2. The editor creates a new buffer @B.hs@
 --        Unless the editor also sends a @DidChangeWatchedFile@ event, ghcide will not pick it up
 --        Most editors, e.g. VSCode, only send the event when the file is saved to disk.
-getFileExists :: NormalizedFilePath -> Action Bool
+getFileExists :: NormalizedFilePath' -> Action Bool
 getFileExists fp = use_ GetFileExists fp
 
 -- | Installs the 'getFileExists' rules.
@@ -111,7 +111,7 @@ fileExistsRulesFast getLspId vfs = do
         then fileExistsFast getLspId vfs file
         else fileExistsSlow vfs file
 
-fileExistsFast :: IO LspId -> VFSHandle -> NormalizedFilePath -> Action (Maybe BS.ByteString, ([a], Maybe Bool))
+fileExistsFast :: IO LspId -> VFSHandle -> NormalizedFilePath' -> Action (Maybe BS.ByteString, ([a], Maybe Bool))
 fileExistsFast getLspId vfs file = do
     fileExistsMap <- getFileExistsMapUntracked
     let mbFilesWatched = HashMap.lookup file fileExistsMap
@@ -140,14 +140,14 @@ fileExistsFast getLspId vfs file = do
     reqId <- getLspId
     let
       req = RequestMessage "2.0" reqId ClientRegisterCapability regParams
-      fpAsId       = T.pack $ fromNormalizedFilePath fp
+      fpAsId       = T.pack $ fromNormalizedFilePath' fp
       regParams    = RegistrationParams (List [registration])
       registration = Registration fpAsId
                                   WorkspaceDidChangeWatchedFiles
                                   (Just (A.toJSON regOptions))
       regOptions =
         DidChangeWatchedFilesRegistrationOptions { watchers = List [watcher] }
-      watcher = FileSystemWatcher { globPattern = fromNormalizedFilePath fp
+      watcher = FileSystemWatcher { globPattern = fromNormalizedFilePath' fp
                                   , kind        = Just 5 -- Create and Delete events only
                                   }
 
@@ -160,20 +160,20 @@ fileExistsRulesSlow:: VFSHandle -> Rules ()
 fileExistsRulesSlow vfs =
   defineEarlyCutoff $ \GetFileExists file -> fileExistsSlow vfs file
 
-fileExistsSlow :: VFSHandle -> NormalizedFilePath -> Action (Maybe BS.ByteString, ([a], Maybe Bool))
+fileExistsSlow :: VFSHandle -> NormalizedFilePath' -> Action (Maybe BS.ByteString, ([a], Maybe Bool))
 fileExistsSlow vfs file = do
     alwaysRerun
     exist <- liftIO $ getFileExistsVFS vfs file
     pure (summarizeExists exist, ([], Just exist))
 
-getFileExistsVFS :: VFSHandle -> NormalizedFilePath -> IO Bool
+getFileExistsVFS :: VFSHandle -> NormalizedFilePath' -> IO Bool
 getFileExistsVFS vfs file = do
     -- we deliberately and intentionally wrap the file as an FilePath WITHOUT mkAbsolute
     -- so that if the file doesn't exist, is on a shared drive that is unmounted etc we get a properly
     -- cached 'No' rather than an exception in the wrong place
     handle (\(_ :: IOException) -> return False) $
         (isJust <$> getVirtualFile vfs (filePathToUri' file)) ||^
-        Dir.doesFileExist (fromNormalizedFilePath file)
+        Dir.doesFileExist (fromNormalizedFilePath' file)
 
 --------------------------------------------------------------------------------------------------
 -- The message definitions below probably belong in haskell-lsp-types

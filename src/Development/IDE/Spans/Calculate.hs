@@ -49,7 +49,7 @@ import Development.IDE.Spans.Documentation
 -- | Get source span info, used for e.g. AtPoint and Goto Definition.
 getSrcSpanInfos
     :: HscEnv
-    -> [(Located ModuleName, Maybe NormalizedFilePath)]
+    -> [(Located ModuleName, Maybe NormalizedFilePath')]
     -> TcModuleResult
     -> [ParsedModule]
     -> IO SpansInfo
@@ -59,7 +59,7 @@ getSrcSpanInfos env imports tc deps =
 
 -- | Get ALL source spans in the module.
 getSpanInfo :: GhcMonad m
-            => [(Located ModuleName, Maybe NormalizedFilePath)] -- ^ imports
+            => [(Located ModuleName, Maybe NormalizedFilePath')] -- ^ imports
             -> TypecheckedModule
             -> [ParsedModule]
             -> m SpansInfo
@@ -235,13 +235,13 @@ getLHsType deps (L spn (HsTyVar U _ v)) = do
   pure [(Named n, spn, ty', docs)]
 getLHsType _ _ = pure []
 
-importInfo :: [(Located ModuleName, Maybe NormalizedFilePath)]
+importInfo :: [(Located ModuleName, Maybe NormalizedFilePath')]
            -> [(SpanSource, SrcSpan)]
 importInfo = mapMaybe (uncurry wrk) where
-  wrk :: Located ModuleName -> Maybe NormalizedFilePath -> Maybe (SpanSource, SrcSpan)
+  wrk :: Located ModuleName -> Maybe NormalizedFilePath' -> Maybe (SpanSource, SrcSpan)
   wrk modName = \case
     Nothing -> Nothing
-    Just fp -> Just (fpToSpanSource $ fromNormalizedFilePath fp, getLoc modName)
+    Just fp -> Just (fpToSpanSource $ fromNormalizedFilePath' fp, getLoc modName)
 
   -- TODO make this point to the module name
   fpToSpanSource :: FilePath -> SpanSource

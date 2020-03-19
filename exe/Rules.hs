@@ -19,7 +19,7 @@ import           Development.IDE.Core.Rules     (defineNoFile)
 import           Development.IDE.Core.Service   (getIdeOptions)
 import           Development.IDE.Core.Shake     (actionLogger, sendEvent, define, useNoFile_)
 import           Development.IDE.GHC.Util
-import           Development.IDE.Types.Location (fromNormalizedFilePath)
+import           Development.IDE.Types.Location (fromNormalizedFilePath')
 import           Development.IDE.Types.Options  (IdeOptions(IdeOptions, optTesting))
 import           Development.Shake
 import           DynFlags                       (gopt_set, gopt_unset,
@@ -62,12 +62,12 @@ loadGhcSession =
 cradleToSession :: Rules ()
 cradleToSession = define $ \LoadCradle nfp -> do
 
-    let f = fromNormalizedFilePath nfp
+    let f = fromNormalizedFilePath' nfp
 
     IdeOptions{optTesting} <- getIdeOptions
 
     logger <- actionLogger
-    liftIO $ logDebug logger $ "Running cradle " <> pack (fromNormalizedFilePath nfp)
+    liftIO $ logDebug logger $ "Running cradle " <> pack (fromNormalizedFilePath' nfp)
 
     -- If the path points to a directory, load the implicit cradle
     mbYaml <- doesDirectoryExist f <&> \isDir -> if isDir then Nothing else Just f

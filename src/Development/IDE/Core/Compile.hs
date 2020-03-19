@@ -93,7 +93,7 @@ computePackageDeps
 computePackageDeps env pkg = do
     let dflags = hsc_dflags env
     case lookupInstalledPackage dflags pkg of
-        Nothing -> return $ Left [ideErrorText (toNormalizedFilePath noFilePath) $
+        Nothing -> return $ Left [ideErrorText (toNormalizedFilePath' noFilePath) $
             T.pack $ "unknown package: " ++ show pkg]
         Just pkgInfo -> return $ Right $ depends pkgInfo
 
@@ -233,7 +233,7 @@ hideDiag originalFlags (Reason warning, (nfp, _sh, fd))
   | not (wopt warning originalFlags) = (Reason warning, (nfp, HideDiag, fd))
 hideDiag _originalFlags t = t
 
-addRelativeImport :: NormalizedFilePath -> ParsedModule -> DynFlags -> DynFlags
+addRelativeImport :: NormalizedFilePath' -> ParsedModule -> DynFlags -> DynFlags
 addRelativeImport fp modu dflags = dflags
     {importPaths = nubOrd $ maybeToList (moduleImportPath fp modu) ++ importPaths dflags}
 

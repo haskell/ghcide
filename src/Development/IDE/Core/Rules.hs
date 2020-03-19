@@ -76,13 +76,13 @@ toIdeResult = either (, Nothing) (([],) . Just)
 
 -- | useE is useful to implement functions that aren’t rules but need shortcircuiting
 -- e.g. getDefinition.
-useE :: IdeRule k v => k -> NormalizedFilePath -> MaybeT Action v
+useE :: IdeRule k v => k -> NormalizedFilePath' -> MaybeT Action v
 useE k = MaybeT . use k
 
 useNoFileE :: IdeRule k v => k -> MaybeT Action v
 useNoFileE k = useE k ""
 
-usesE :: IdeRule k v => k -> [NormalizedFilePath] -> MaybeT Action [v]
+usesE :: IdeRule k v => k -> [NormalizedFilePath'] -> MaybeT Action [v]
 usesE k = MaybeT . fmap sequence . uses k
 
 defineNoFile :: IdeRule k v => (k -> Action v) -> Rules ()
@@ -96,41 +96,41 @@ defineNoFile f = define $ \k file -> do
 
 -- | Get all transitive file dependencies of a given module.
 -- Does not include the file itself.
-getDependencies :: NormalizedFilePath -> Action (Maybe [NormalizedFilePath])
+getDependencies :: NormalizedFilePath' -> Action (Maybe [NormalizedFilePath'])
 getDependencies file = fmap transitiveModuleDeps <$> use GetDependencies file
 
 -- | Try to get hover text for the name under point.
-getAtPoint :: NormalizedFilePath -> Position -> Action (Maybe (Maybe Range, [T.Text]))
+getAtPoint :: NormalizedFilePath' -> Position -> Action (Maybe (Maybe Range, [T.Text]))
 getAtPoint file pos = fmap join $ runMaybeT $ do
   opts <- lift getIdeOptions
   spans <- useE GetSpanInfo file
   return $ AtPoint.atPoint opts spans pos
 
 -- | Goto Definition.
-getDefinition :: NormalizedFilePath -> Position -> Action (Maybe Location)
+getDefinition :: NormalizedFilePath' -> Position -> Action (Maybe Location)
 getDefinition file pos = fmap join $ runMaybeT $ do
     opts <- lift getIdeOptions
     spans <- useE GetSpanInfo file
     lift $ AtPoint.gotoDefinition (getHieFile file) opts (spansExprs spans) pos
 
 getHieFile
-  :: NormalizedFilePath -- ^ file we're editing
+  :: NormalizedFilePath' -- ^ file we're editing
   -> Module -- ^ module dep we want info for
   -> Action (Maybe (HieFile, FilePath)) -- ^ hie stuff for the module
 getHieFile file mod = do
   TransitiveDependencies {transitiveNamedModuleDeps} <- use_ GetDependencies file
   case find (\x -> nmdModuleName x == moduleName mod) transitiveNamedModuleDeps of
     Just NamedModuleDep{nmdFilePath=nfp} -> do
-        let modPath = fromNormalizedFilePath nfp
+        let modPath = fromNormalizedFilePath' nfp
         (_diags, hieFile) <- getHomeHieFile nfp
         return $ (, modPath) <$> hieFile
     _ -> getPackageHieFile mod file
 
 
-getHomeHieFile :: NormalizedFilePath -> Action ([a], Maybe HieFile)
+getHomeHieFile :: NormalizedFilePath' -> Action ([a], Maybe HieFile)
 getHomeHieFile f = do
   pm <- use_ GetParsedModule f
-  let normal_hie_f = toNormalizedFilePath hie_f
+  let normal_hie_f = toNormalizedFilePath' hie_f
       hie_f = ml_hie_file $ ms_location $ pm_mod_summary pm
   mbHieTimestamp <- use GetModificationTime normal_hie_f
   srcTimestamp   <- use_ GetModificationTime f
@@ -147,7 +147,7 @@ getHomeHieFile f = do
   return ([], hf)
 
 getPackageHieFile :: Module             -- ^ Package Module to load .hie file for
-                  -> NormalizedFilePath -- ^ Path of home module importing the package module
+                  -> NormalizedFilePath' -- ^ Path of home module importing the package module
                   -> Action (Maybe (HieFile, FilePath))
 getPackageHieFile mod file = do
     pkgState  <- hscEnv <$> use_ GhcSession file
@@ -167,7 +167,7 @@ getPackageHieFile mod file = do
         _ -> return Nothing
 
 -- | Parse the contents of a daml file.
-getParsedModule :: NormalizedFilePath -> Action (Maybe ParsedModule)
+getParsedModule :: NormalizedFilePath' -> Action (Maybe ParsedModule)
 getParsedModule file = use GetParsedModule file
 
 ------------------------------------------------------------
@@ -189,7 +189,7 @@ getParsedModuleRule =
         (_, contents) <- getFileContents file
         packageState <- hscEnv <$> use_ GhcSession file
         opt <- getIdeOptions
-        (diag, res) <- liftIO $ parseModule opt packageState (fromNormalizedFilePath file) (fmap textToStringBuffer contents)
+        (diag, res) <- liftIO $ parseModule opt packageState (fromNormalizedFilePath' file) (fmap textToStringBuffer contents)
         case res of
             Nothing -> pure (Nothing, (diag, Nothing))
             Just (contents, modu) -> do
@@ -225,9 +225,9 @@ getLocatedImportsRule =
 
 -- | Given a target file path, construct the raw dependency results by following
 -- imports recursively.
-rawDependencyInformation :: NormalizedFilePath -> Action RawDependencyInformation
+rawDependencyInformation :: NormalizedFilePath' -> Action RawDependencyInformation
 rawDependencyInformation f = do
-    let initialArtifact = ArtifactsLocation f (ModLocation (Just $ fromNormalizedFilePath f) "" "")
+    let initialArtifact = ArtifactsLocation f (ModLocation (Just $ fromNormalizedFilePath' f) "" "")
         (initialId, initialMap) = getPathId initialArtifact emptyPathIdMap
     go (IntSet.singleton $ getFilePathId initialId)
        (RawDependencyInformation IntMap.empty initialMap)
@@ -294,7 +294,7 @@ reportImportCyclesRule =
             , _relatedInformation = Nothing
             }
             where loc = srcSpanToLocation (getLoc imp)
-                  fp = toNormalizedFilePath $ srcSpanToFilename (getLoc imp)
+                  fp = toNormalizedFilePath' $ srcSpanToFilename (getLoc imp)
           getModuleName file = do
            pm <- use_ GetParsedModule file
            pure (moduleNameString . moduleName . ms_mod $ pm_mod_summary pm)
@@ -309,7 +309,7 @@ getDependenciesRule =
         let allFiles = reachableModules depInfo
         _ <- uses_ ReportImportCycles allFiles
         opts <- getIdeOptions
-        let mbFingerprints = map (fingerprintString . fromNormalizedFilePath) allFiles <$ optShakeFiles opts
+        let mbFingerprints = map (fingerprintString . fromNormalizedFilePath') allFiles <$ optShakeFiles opts
         return (fingerprintToBS . fingerprintFingerprints <$> mbFingerprints, ([], transitiveDeps depInfo file))
 
 -- Source SpanInfo is used by AtPoint and Goto Definition.
@@ -394,7 +394,7 @@ loadGhcSession = do
         GhcSessionFun <$> optGhcSession opts
     defineEarlyCutoff $ \GhcSession file -> do
         GhcSessionFun fun <- useNoFile_ GhcSessionIO
-        val <- fun $ fromNormalizedFilePath file
+        val <- fun $ fromNormalizedFilePath' file
         opts <- getIdeOptions
         return ("" <$ optShakeFiles opts, ([], Just val))
 

@@ -35,7 +35,7 @@ data Import
   deriving (Show)
 
 data ArtifactsLocation = ArtifactsLocation
-  { artifactFilePath :: !NormalizedFilePath
+  { artifactFilePath :: !NormalizedFilePath'
   , artifactModLocation :: !ModLocation
   }
     deriving (Show)
@@ -52,13 +52,13 @@ instance NFData Import where
 locateModuleFile :: MonadIO m
              => DynFlags
              -> [String]
-             -> (NormalizedFilePath -> m Bool)
+             -> (NormalizedFilePath' -> m Bool)
              -> Bool
              -> ModuleName
-             -> m (Maybe NormalizedFilePath)
+             -> m (Maybe NormalizedFilePath')
 locateModuleFile dflags exts doesExist isSource modName = do
   let candidates =
-        [ toNormalizedFilePath (prefix </> M.moduleNameSlashes modName <.> maybeBoot ext)
+        [ toNormalizedFilePath' (prefix </> M.moduleNameSlashes modName <.> maybeBoot ext)
            | prefix <- importPaths dflags, ext <- exts]
   findM doesExist candidates
   where
@@ -72,7 +72,7 @@ locateModule
     :: MonadIO m
     => DynFlags
     -> [String]
-    -> (NormalizedFilePath -> m Bool)
+    -> (NormalizedFilePath' -> m Bool)
     -> Located ModuleName
     -> Maybe FastString
     -> Bool
@@ -96,7 +96,7 @@ locateModule dflags exts doesExist modName mbPkgName isSource = do
         Just file -> toModLocation file
   where
     toModLocation file = liftIO $ do
-        loc <- mkHomeModLocation dflags (unLoc modName) (fromNormalizedFilePath file)
+        loc <- mkHomeModLocation dflags (unLoc modName) (fromNormalizedFilePath' file)
         return $ Right $ FileImport $ ArtifactsLocation file loc
 
 
