@@ -210,9 +210,10 @@ mkPragmaCompl label insertText =
     Nothing Nothing Nothing Nothing Nothing (Just insertText) (Just Snippet)
     Nothing Nothing Nothing Nothing Nothing
 
-cacheDataProducer :: HscEnv -> DynFlags -> TypecheckedModule -> [ParsedModule] -> IO CachedCompletions
-cacheDataProducer packageState dflags tm deps = do
+cacheDataProducer :: HscEnv -> TypecheckedModule -> [ParsedModule] -> IO CachedCompletions
+cacheDataProducer packageState tm deps = do
   let parsedMod = tm_parsed_module tm
+      dflags = hsc_dflags packageState
       curMod = moduleName $ ms_mod $ pm_mod_summary parsedMod
       Just (_,limports,_,_) = tm_renamed_source tm
 
@@ -306,15 +307,12 @@ toggleSnippets ClientCapabilities { _textDocument } (WithSnippets with) x
   where supported = Just True == (_textDocument >>= _completion >>= _completionItem >>= _snippetSupport)
 
 -- | Returns the cached completions for the given module and position.
-getCompletions :: IdeOptions -> CachedCompletions -> TypecheckedModule -> VFS.PosPrefixInfo -> ClientCapabilities -> WithSnippets -> IO [CompletionItem]
+getCompletions :: IdeOptions -> CachedCompletions -> ParsedModule -> VFS.PosPrefixInfo -> ClientCapabilities -> WithSnippets -> IO [CompletionItem]
 getCompletions ideOpts CC { allModNamesAsNS, unqualCompls, qualCompls, importableModules }
-               tm prefixInfo caps withSnippets = do
+               pm prefixInfo caps withSnippets = do
   let VFS.PosPrefixInfo { VFS.fullLine, VFS.prefixModule, VFS.prefixText } = prefixInfo
       enteredQual = if T.null prefixModule then "" else prefixModule <> "."
       fullPrefix  = enteredQual <> prefixText
-
-      -- default to value context if no explicit context
-      context = fromMaybe ValueContext $ getCContext pos (tm_parsed_module tm)
 
       {- correct the position by moving 'foo :: Int -> String ->    '
                                                                     ^
@@ -344,10 +342,11 @@ getCompletions ideOpts CC { allModNamesAsNS, unqualCompls, qualCompls, importabl
         where
           isTypeCompl = isTcOcc . occName . origName
           -- completions specific to the current context
-          ctxCompls' = case context of
-                        TypeContext -> filter isTypeCompl compls
-                        ValueContext -> filter (not . isTypeCompl) compls
-                        _ -> filter (not . isTypeCompl) compls
+          ctxCompls' = case getCContext pos pm of
+                        Nothing -> compls
+                        Just TypeContext -> filter isTypeCompl compls
+                        Just ValueContext -> filter (not . isTypeCompl) compls
+                        Just _ -> filter (not . isTypeCompl) compls
           -- Add whether the text to insert has backticks
           ctxCompls = map (\comp -> comp { isInfix = infixCompls }) ctxCompls'
 
@@ -373,7 +372,9 @@ getCompletions ideOpts CC { allModNamesAsNS, unqualCompls, qualCompls, importabl
       filtImportCompls = filtListWith (mkImportCompl enteredQual) importableModules
       filtPragmaCompls = filtListWithSnippet mkPragmaCompl validPragmas
       filtOptsCompls   = filtListWith mkExtCompl
-      filtKeywordCompls = if T.null prefixModule then filtListWith mkExtCompl keywords else []
+      filtKeywordCompls
+          | T.null prefixModule = filtListWith mkExtCompl (optKeywords ideOpts)
+          | otherwise = []
 
       stripLeading :: Char -> String -> String
       stripLeading _ [] = []
@@ -526,25 +527,4 @@ prefixes =
   , "$t"
   , "$c"
   , "$m"
-  ]
-
-keywords :: [T.Text]
-keywords =
-  [
-    -- From https://wiki.haskell.org/Keywords
-    "as"
-  , "case", "of"
-  , "class", "instance", "type"
-  , "data", "family", "newtype"
-  , "default"
-  , "deriving"
-  , "do", "mdo", "proc", "rec"
-  , "forall"
-  , "foreign"
-  , "hiding"
-  , "if", "then", "else"
-  , "import", "qualified", "hiding"
-  , "infix", "infixl", "infixr"
-  , "let", "in", "where"
-  , "module"
   ]

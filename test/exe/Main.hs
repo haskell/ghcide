@@ -40,12 +40,13 @@ import Test.QuickCheck
 import Test.QuickCheck.Instances ()
 import Test.Tasty
 import Test.Tasty.ExpectedFailure
+import Test.Tasty.Ingredients.Rerun
 import Test.Tasty.HUnit
 import Test.Tasty.QuickCheck
 import Data.Maybe
 
 main :: IO ()
-main = defaultMain $ testGroup "HIE"
+main = defaultMainWithRerun $ testGroup "HIE"
   [ testSession "open close" $ do
       doc <- openDoc' "Testing.hs" "haskell" ""
       void (skipManyTill anyMessage message :: Session WorkDoneProgressCreateRequest)
@@ -63,6 +64,7 @@ main = defaultMain $ testGroup "HIE"
   , pluginTests
   , preprocessorTests
   , thTests
+  , safeTests
   , unitTests
   , haddockTests
   , positionMappingTests
@@ -1494,6 +1496,36 @@ preprocessorTests = testSessionWait "preprocessor" $ do
       )
     ]
 
+
+safeTests :: TestTree
+safeTests =
+  testGroup
+    "SafeHaskell"
+    [ -- Test for https://github.com/digital-asset/ghcide/issues/424
+      testSessionWait "load" $ do
+        let sourceA =
+              T.unlines
+                ["{-# LANGUAGE Trustworthy #-}"
+                ,"module A where"
+                ,"import System.IO.Unsafe"
+                ,"import System.IO"
+                ,"trustWorthyId :: a -> a"
+                ,"trustWorthyId i = unsafePerformIO $ do"
+                ,"  putStrLn \"I'm safe\""
+                ,"  return i"]
+            sourceB =
+              T.unlines
+                ["{-# LANGUAGE Safe #-}"
+                ,"module B where"
+                ,"import A"
+                ,"safeId :: a -> a"
+                ,"safeId = trustWorthyId"
+                ]
+
+        _ <- openDoc' "A.hs" "haskell" sourceA
+        _ <- openDoc' "B.hs" "haskell" sourceB
+        expectNoMoreDiagnostics 1 ]
+
 thTests :: TestTree
 thTests =
   testGroup
@@ -1608,6 +1640,27 @@ completionTests
         docId <- openDoc' "A.hs" "haskell" source
         compls <- getCompletions docId (Position 1 9)
         liftIO $ compls @?= [keywordItem "newtype"]
+    , testSessionWait "type context" $ do
+        let source = T.unlines
+                [ "{-# OPTIONS_GHC -Wunused-binds #-}"
+                , "module A () where"
+                , "f = f"
+                ]
+        docId <- openDoc' "A.hs" "haskell" source
+        expectDiagnostics [("A.hs", [(DsWarning, (2, 0), "not used")])]
+        changeDoc docId
+             [ TextDocumentContentChangeEvent Nothing Nothing $ T.unlines
+                   [ "{-# OPTIONS_GHC -Wunused-binds #-}"
+                   , "module A () where"
+                   , "f = f"
+                   , "g :: Intege"
+                   ]
+             ]
+        -- At this point the module parses but does not typecheck.
+        -- This should be sufficient to detect that we are in a
+        -- type context and only show the completion to the type.
+        compls <- getCompletions docId (Position 3 11)
+        liftIO $ map dropDocs compls @?= [complItem "Integer"(Just CiStruct) (Just "*")]
     ]
   where
     dropDocs :: CompletionItem -> CompletionItem

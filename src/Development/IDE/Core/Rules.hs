@@ -404,17 +404,17 @@ typeCheckRuleDefinition file generateArtifacts = do
     xopt LangExt.TemplateHaskell dflags || xopt LangExt.QuasiQuotes dflags
 
 
-generateCore :: NormalizedFilePath -> Action (IdeResult (SafeHaskellMode, CgGuts, ModDetails))
-generateCore file = do
+generateCore :: RunSimplifier -> NormalizedFilePath -> Action (IdeResult (SafeHaskellMode, CgGuts, ModDetails))
+generateCore runSimplifier file = do
     deps <- use_ GetDependencies file
     (tm:tms) <- uses_ TypeCheck (file:transitiveModuleDeps deps)
     setPriority priorityGenerateCore
     packageState <- hscEnv <$> use_ GhcSession file
-    liftIO $ compileModule packageState [(tmrModSummary x, tmrModInfo x) | x <- tms] tm
+    liftIO $ compileModule runSimplifier packageState [(tmrModSummary x, tmrModInfo x) | x <- tms] tm
 
 generateCoreRule :: Rules ()
 generateCoreRule =
-    define $ \GenerateCore -> generateCore
+    define $ \GenerateCore -> generateCore (RunSimplifier True)
 
 generateByteCodeRule :: Rules ()
 generateByteCodeRule =
