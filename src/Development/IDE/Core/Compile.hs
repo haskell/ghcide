@@ -66,7 +66,7 @@ import           TcRnMonad (initIfaceLoad, tcg_th_coreplugins)
 import           TcIface                        (typecheckIface)
 import           TidyPgm
 
-import Control.Exception
+import Control.Exception.Safe
 import Control.Monad.Extra
 import Control.Monad.Except
 import Control.Monad.Trans.Except
