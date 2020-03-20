@@ -361,6 +361,7 @@ typeCheckRule = define $ \TypeCheck file ->
 data GenerateInterfaceFiles
     = DoGenerateInterfaceFiles
     | SkipGenerationOfInterfaceFiles
+    deriving (Show)
 
 -- This is factored out so it can be directly called from the GetModIface
 -- rule. Directly calling this rule means that on the initial load we can
