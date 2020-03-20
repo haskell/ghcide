@@ -271,8 +271,8 @@ mkTcModuleResult tcm = do
   where
     (tcGblEnv, details) = tm_internals_ tcm
 
-atomicFileUpdate :: FilePath -> (FilePath -> IO a) -> IO ()
-atomicFileUpdate targetPath write = do
+atomicFileWrite :: FilePath -> (FilePath -> IO a) -> IO ()
+atomicFileWrite targetPath write = do
   let dir = takeDirectory targetPath
   createDirectoryIfMissing True dir
   (tempFilePath, cleanUp) <- newTempFileWithin dir
@@ -285,7 +285,7 @@ generateAndWriteHieFile hscEnv tcm =
       Just rnsrc -> do
         hf <- runHsc hscEnv $
           GHC.mkHieFile mod_summary (fst $ tm_internals_ tcm) rnsrc ""
-        atomicFileUpdate targetPath $ flip GHC.writeHieFile hf
+        atomicFileWrite targetPath $ flip GHC.writeHieFile hf
       _ ->
         return ()
   where
@@ -297,7 +297,7 @@ generateAndWriteHieFile hscEnv tcm =
 generateAndWriteHiFile :: HscEnv -> TcModuleResult -> IO [FileDiagnostic]
 generateAndWriteHiFile hscEnv tc =
   handleGenerationErrors dflags "interface generation" $ do
-    atomicFileUpdate targetPath $ \fp ->
+    atomicFileWrite targetPath $ \fp ->
       writeIfaceFile dflags fp modIface
   where
     modIface = hm_iface $ tmrModInfo tc
