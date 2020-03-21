@@ -1,11 +1,13 @@
 
-module Development.IDE.Plugin(Plugin(..), codeActionPlugin, codeActionPluginWithRules) where
+module Development.IDE.Plugin(Plugin(..), codeActionPlugin, codeActionPluginWithRules,getPid) where
 
 import Data.Default
+import qualified Data.Text as T
 import Development.Shake
 import Development.IDE.LSP.Server
 
 import           Language.Haskell.LSP.Types
+import Development.IDE.Compat
 import Development.IDE.Core.Rules
 import qualified Language.Haskell.LSP.Core as LSP
 import Language.Haskell.LSP.Messages
@@ -35,3 +37,6 @@ codeActionPluginWithRules rr f = Plugin rr $ PartialHandlers $ \WithMessage{..} 
     }
     where
       g lsp state (CodeActionParams a b c _) = fmap List <$> f lsp state a b c
+
+getPid :: IO T.Text
+getPid = T.pack . show <$> getProcessID

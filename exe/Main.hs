@@ -81,11 +81,12 @@ main = do
     whenJust argsCwd IO.setCurrentDirectory
 
     dir <- IO.getCurrentDirectory
+    pid <- getPid
 
     let plugins = Completions.plugin <> CodeAction.plugin
         onInitialConfiguration = const $ Right ()
         onConfigurationChange  = const $ Right ()
-        options = def { LSP.executeCommandCommands = Just ["typesignature.add"]
+        options = def { LSP.executeCommandCommands = Just [pid <> ":typesignature.add"]
                       , LSP.completionTriggerCharacters = Just "."
                       }
 

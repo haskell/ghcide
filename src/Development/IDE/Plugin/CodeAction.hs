@@ -105,7 +105,11 @@ executeAddSignatureCommand
     -> ExecuteCommandParams
     -> IO (Either ResponseError Value, Maybe (ServerMethod, ApplyWorkspaceEditParams))
 executeAddSignatureCommand _lsp _ideState ExecuteCommandParams{..}
-    | _command == "typesignature.add"
+    -- _command is prefixed with a process ID, because certain clients
+    -- have a global command registry, and all commands must be
+    -- unique. And there can be more than one ghcide instance running
+    -- at a time against the same client.
+    | T.isSuffixOf "typesignature.add" _command
     , Just (List [edit]) <- _arguments
     , Success wedit <- fromJSON edit
     = return (Right Null, Just (WorkspaceApplyEdit, ApplyWorkspaceEditParams wedit))
