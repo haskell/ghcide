@@ -1971,7 +1971,7 @@ loadCradleOnlyonce = testGroup "load cradle only once"
             changeDoc doc [TextDocumentContentChangeEvent Nothing Nothing "module B where\nimport Data.Maybe"]
             msgs <- manyTill (skipManyTill anyMessage cradleLoadedMessage) (skipManyTill anyMessage (message @PublishDiagnosticsNotification))
             liftIO $ length msgs @?= 0
-            _ <- openDoc' "A.hs" "haskell" "module A where\nimport Bar"
+            _ <- openDoc' "A.hs" "haskell" "module A where\nimport LoadCradleBar"
             msgs <- manyTill (skipManyTill anyMessage cradleLoadedMessage) (skipManyTill anyMessage (message @PublishDiagnosticsNotification))
             liftIO $ length msgs @?= 0
 
