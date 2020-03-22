@@ -2106,8 +2106,10 @@ findCodeAction doc range t = head <$> findCodeActions doc range [t]
 unitTests :: TestTree
 unitTests = do
   testGroup "Unit"
-     [ testCase "empty file path" $
-         uriToFilePath' (fromNormalizedUri $ filePathToUri' "") @?= Just ""
+     [ testCase "empty file path does NOT work with the empty String literal" $
+         uriToFilePath' (fromNormalizedUri $ filePathToUri' "") @?= Just "."
+     , testCase "empty file path works using toNormalizedFilePath'" $
+         uriToFilePath' (fromNormalizedUri $ filePathToUri' (toNormalizedFilePath' "")) @?= Just ""
      ]
 
 -- | Wrapper around 'LSPTest.openDoc'' that sends file creation events
