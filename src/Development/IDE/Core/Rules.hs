@@ -292,6 +292,7 @@ reportImportCyclesRule =
             , _message = "Cyclic module dependency between " <> showCycle mods
             , _code = Nothing
             , _relatedInformation = Nothing
+            , _tags = Nothing
             }
             where loc = srcSpanToLocation (getLoc imp)
                   fp = toNormalizedFilePath' $ srcSpanToFilename (getLoc imp)

@@ -48,6 +48,7 @@ diagFromText diagSource sev loc msg = (toNormalizedFilePath' $ srcSpanToFilename
     , _message  = msg
     , _code     = Nothing
     , _relatedInformation = Nothing
+    , _tags     = Nothing
     }
 
 -- | Produce a GHC-style error from a source span and a message.

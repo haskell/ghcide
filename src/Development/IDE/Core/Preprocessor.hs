@@ -118,7 +118,8 @@ diagsFromCPPLogs filename logs =
           _code = Nothing,
           _source = Just "CPP",
           _message = T.unlines $ cdMessage d,
-          _relatedInformation = Nothing
+          _relatedInformation = Nothing,
+          _tags = Nothing
         }
 
 
