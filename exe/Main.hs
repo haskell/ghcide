@@ -86,7 +86,7 @@ main = do
     let plugins = Completions.plugin <> CodeAction.plugin
         onInitialConfiguration = const $ Right ()
         onConfigurationChange  = const $ Right ()
-        options = def { LSP.executeCommandCommands = Just [pid <> ":typesignature.add"]
+        options = def { LSP.executeCommandCommands = Just [pid <> ":ghcide:typesignature.add"]
                       , LSP.completionTriggerCharacters = Just "."
                       }
 

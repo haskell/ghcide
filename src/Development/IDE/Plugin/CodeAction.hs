@@ -84,13 +84,14 @@ codeLens
     -> CodeLensParams
     -> IO (Either ResponseError (List CodeLens))
 codeLens _lsp ideState CodeLensParams{_textDocument=TextDocumentIdentifier uri} = do
+    pid <- getPid
     fmap (Right . List) $ case uriToFilePath' uri of
       Just (toNormalizedFilePath -> filePath) -> do
         _ <- runAction ideState $ runMaybeT $ useE TypeCheck filePath
         diag <- getDiagnostics ideState
         hDiag <- getHiddenDiagnostics ideState
         pure
-          [ CodeLens _range (Just (Command title "typesignature.add" (Just $ List [toJSON edit]))) Nothing
+          [ CodeLens _range (Just (Command title (pid <> ":ghcide:typesignature.add") (Just $ List [toJSON edit]))) Nothing
           | (dFile, _, dDiag@Diagnostic{_range=_range}) <- diag ++ hDiag
           , dFile == filePath
           , (title, tedit) <- suggestSignature False dDiag
