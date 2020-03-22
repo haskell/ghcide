@@ -1658,6 +1658,7 @@ completionTests
     complItem label kind ty = CompletionItem
       { _label = label
       , _kind = kind
+      , _tags = List []
       , _detail = (":: " <>) <$> ty
       , _documentation = Nothing
       , _deprecated = Nothing
@@ -1675,6 +1676,7 @@ completionTests
     keywordItem label = CompletionItem
       { _label = label
       , _kind = Just CiKeyword
+      , _tags = List []
       , _detail = Nothing
       , _documentation = Nothing
       , _deprecated = Nothing
