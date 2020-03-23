@@ -275,7 +275,7 @@ rawDependencyInformation f = do
     updateBootMap pm boot_mod_id ArtifactsLocation{..} bm =
       if not artifactIsSource
         then
-          let msource_mod_id = lookupPathToId (rawPathIdMap pm) (toNormalizedFilePath $ dropBootSuffix artifactModLocation)
+          let msource_mod_id = lookupPathToId (rawPathIdMap pm) (toNormalizedFilePath' $ dropBootSuffix artifactModLocation)
           in case msource_mod_id of
                Just source_mod_id -> insertBootId source_mod_id (FilePathId boot_mod_id) bm
                Nothing -> bm
@@ -463,7 +463,7 @@ getHiFileRule = defineEarlyCutoff $ \GetHiFile f -> do
   --      it should be possible to construct a ModSummary parsing just the imports
   --      (see HeaderInfo in the GHC package)
   pm      <- use_ GetParsedModule f
-  let hiFile = toNormalizedFilePath $
+  let hiFile = toNormalizedFilePath' $
             case ms_hsc_src ms of
                 HsBootFile -> addBootSuffix (ml_hi_file $ ms_location ms)
                 _ -> ml_hi_file $ ms_location ms
