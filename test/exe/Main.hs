@@ -34,7 +34,6 @@ import Language.Haskell.LSP.VFS (applyChange)
 import Network.URI
 import System.Environment.Blank (setEnv)
 import System.FilePath
-import System.Info.Extra
 import System.IO.Extra
 import System.Directory
 import Test.QuickCheck
@@ -2115,11 +2114,9 @@ unitTests = do
      , testCase "empty path URI" $ do
          Just URI{..} <- pure $ parseURI (T.unpack $ getUri $ fromNormalizedUri emptyPathUri)
          uriScheme @?= "file:"
-         if isWindows
-            then uriPath @?= "/"
-            else uriPath @?= ""
+         uriPath @?= ""
      , testCase "from empty path URI" $ do
-         let uri = Uri (if isWindows then "file:///" else "file://")
+         let uri = Uri "file://"
          uriToFilePath' uri @?= Just ""
      ]
 
