@@ -47,7 +47,8 @@ ideErrorWithSource source sev fp msg = (fp, ShowDiag, LSP.Diagnostic {
     _code = Nothing,
     _source = source,
     _message = msg,
-    _relatedInformation = Nothing
+    _relatedInformation = Nothing,
+    _tags = Nothing
     })
 
 -- | Defines whether a particular diagnostic should be reported

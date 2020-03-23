@@ -32,6 +32,7 @@ import Language.Haskell.LSP.Messages
 import Language.Haskell.LSP.Types
 import Language.Haskell.LSP.Types.Capabilities
 import Language.Haskell.LSP.VFS (applyChange)
+import Network.URI
 import System.Environment.Blank (setEnv)
 import System.FilePath
 import System.IO.Extra
@@ -1668,6 +1669,7 @@ completionTests
     complItem label kind ty = CompletionItem
       { _label = label
       , _kind = kind
+      , _tags = List []
       , _detail = (":: " <>) <$> ty
       , _documentation = Nothing
       , _deprecated = Nothing
@@ -1685,6 +1687,7 @@ completionTests
     keywordItem label = CompletionItem
       { _label = label
       , _kind = Just CiKeyword
+      , _tags = List []
       , _detail = Nothing
       , _documentation = Nothing
       , _deprecated = Nothing
@@ -2124,8 +2127,17 @@ findCodeAction doc range t = head <$> findCodeActions doc range [t]
 unitTests :: TestTree
 unitTests = do
   testGroup "Unit"
-     [ testCase "empty file path" $
-         uriToFilePath' (fromNormalizedUri $ filePathToUri' "") @?= Just ""
+     [ testCase "empty file path does NOT work with the empty String literal" $
+         uriToFilePath' (fromNormalizedUri $ filePathToUri' "") @?= Just "."
+     , testCase "empty file path works using toNormalizedFilePath'" $
+         uriToFilePath' (fromNormalizedUri $ filePathToUri' (toNormalizedFilePath' "")) @?= Just ""
+     , testCase "empty path URI" $ do
+         Just URI{..} <- pure $ parseURI (T.unpack $ getUri $ fromNormalizedUri emptyPathUri)
+         uriScheme @?= "file:"
+         uriPath @?= ""
+     , testCase "from empty path URI" $ do
+         let uri = Uri "file://"
+         uriToFilePath' uri @?= Just ""
      ]
 
 -- | Wrapper around 'LSPTest.openDoc'' that sends file creation events
