@@ -66,7 +66,7 @@ codeAction
     -> TextDocumentIdentifier
     -> Range
     -> CodeActionContext
-    -> IO (Either ResponseError (List CAResult))
+    -> IO (Either ResponseError [CAResult])
 codeAction lsp state (TextDocumentIdentifier uri) _range CodeActionContext{_diagnostics=List xs} = do
     -- disable logging as its quite verbose
     -- logInfo (ideLogger ide) $ T.pack $ "Code action req: " ++ show arg
@@ -79,7 +79,7 @@ codeAction lsp state (TextDocumentIdentifier uri) _range CodeActionContext{_diag
             <*> use GhcSession `traverse` mbFile
     pkgExports <- runAction state $ (useNoFile_ . PackageExports) `traverse` env
     let dflags = hsc_dflags . hscEnv <$> env
-    pure $ Right $ List
+    pure $ Right
         [ CACodeAction $ CodeAction title (Just CodeActionQuickFix) (Just $ List [x]) (Just edit) Nothing
         | x <- xs, (title, tedit) <- suggestAction dflags (fromMaybe mempty pkgExports) ideOptions ( join parsedModule ) text x
         , let edit = WorkspaceEdit (Just $ Map.singleton uri $ List tedit) Nothing
