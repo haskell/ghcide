@@ -32,6 +32,7 @@ import Data.String
 import FastString
 import qualified Language.Haskell.LSP.Types as LSP
 import SrcLoc as GHC
+import System.Info.Extra
 import Text.ParserCombinators.ReadP as ReadP
 import Data.Maybe (fromMaybe)
 
@@ -53,7 +54,11 @@ uriToFilePath' uri
     | otherwise = LSP.uriToFilePath uri
 
 emptyPathUri :: LSP.NormalizedUri
-emptyPathUri = LSP.NormalizedUri (hash ("" :: String)) ""
+emptyPathUri =
+    -- The difference here matches the behavior of platformAwareFilePathToUri.
+    let s | isWindows = "file:///"
+          | otherwise = "file://"
+    in LSP.NormalizedUri (hash s) s
 
 filePathToUri' :: LSP.NormalizedFilePath -> LSP.NormalizedUri
 filePathToUri' = LSP.normalizedFilePathToUri
