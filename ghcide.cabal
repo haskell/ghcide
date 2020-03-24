@@ -73,7 +73,10 @@ library
         ghc-boot-th,
         ghc-boot,
         ghc >= 8.4
-    if !os(windows)
+    if os(windows)
+      build-depends:
+        Win32
+    else
       build-depends:
         unix
       c-sources:
