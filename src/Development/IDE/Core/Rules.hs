@@ -35,6 +35,7 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
 import Development.IDE.Core.Compile
 import Development.IDE.Core.OfInterest
+import Development.IDE.Types.Logger (logDebug)
 import Development.IDE.Types.Options
 import Development.IDE.Spans.Calculate
 import Development.IDE.Import.DependencyInformation
@@ -459,17 +460,15 @@ loadGhcSession = do
 
 getHiFileRule :: Rules ()
 getHiFileRule = defineEarlyCutoff $ \GetHiFile f -> do
-  session <- hscEnv <$> use_ GhcSession f
   -- get all dependencies interface files, to check for freshness
   (deps,_) <- use_ GetLocatedImports f
-
   depHis  <- traverse (use GetHiFile) (mapMaybe (fmap artifactFilePath . snd) deps)
 
   ms <- use_ GetModSummary f
-  let hiFile = case ms_hsc_src ms of
+  let hiFile = toNormalizedFilePath'
+             $ case ms_hsc_src ms of
                 HsBootFile -> addBootSuffix (ml_hi_file $ ms_location ms)
                 _ -> ml_hi_file $ ms_location ms
-      ms     = pm_mod_summary pm
 
   IdeOptions{optInterfaceLoadingDiagnostics} <- getIdeOptions
 
@@ -528,7 +527,7 @@ getModSummaryRule = define $ \GetModSummary f -> do
         filePath = fromNormalizedFilePath f
         fileName = takeFileName filePath
     (_, mFileContent) <- getFileContents f
-    fileContent <- liftIO $ maybe (hGetStringBuffer filePath) return mFileContent
+    fileContent <- liftIO $ maybe (hGetStringBuffer filePath) (pure . textToStringBuffer) mFileContent
     eImports <- liftIO $ getImports dflags fileContent fileName fileName
     case eImports of
         Left _ -> do
@@ -536,7 +535,7 @@ getModSummaryRule = define $ \GetModSummary f -> do
             return failRule
         Right (srcImports, _, L _ moduleName) -> do
             modLoc <- liftIO $ mkHomeModLocation dflags moduleName fileName
-            hieFileVersion  <- use_ GetModificationTime $ toNormalizedFilePath $ ml_hie_file modLoc
+            hieFileVersion  <- use_ GetModificationTime $ toNormalizedFilePath' $ ml_hie_file modLoc
             hieDate <- case hieFileVersion  of
                 VFSVersion _ -> error "HIE file shouldn't be in the virtual file system"
                 ModificationTime l s ->
