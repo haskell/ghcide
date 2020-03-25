@@ -19,6 +19,7 @@ module Development.IDE.Core.Compile
   , generateByteCode
   , generateAndWriteHieFile
   , generateAndWriteHiFile
+  , getModSummaryFromImports
   , loadHieFile
   , loadInterface
   , loadDepModule
@@ -53,6 +54,7 @@ import ErrUtils
 import           Finder
 import qualified Development.IDE.GHC.Compat     as GHC
 import qualified Development.IDE.GHC.Compat     as Compat
+import           GhcMake                        (implicitRequirements)
 import           GhcMonad
 import           GhcPlugins                     as GHC hiding (fst3, (<>))
 import qualified HeaderInfo                     as Hdr
@@ -70,11 +72,11 @@ import Control.Exception.Safe
 import Control.Monad.Extra
 import Control.Monad.Except
 import Control.Monad.Trans.Except
+import Data.Bifunctor                           (first, second)
 import qualified Data.Text as T
 import           Data.IORef
 import           Data.List.Extra
 import           Data.Maybe
-import           Data.Tuple.Extra
 import qualified Data.Map.Strict                          as Map
 import           System.FilePath
 import           System.Directory
@@ -250,7 +252,7 @@ hideDiag originalFlags (Reason warning, (nfp, _sh, fd))
   | not (wopt warning originalFlags) = (Reason warning, (nfp, HideDiag, fd))
 hideDiag _originalFlags t = t
 
-addRelativeImport :: NormalizedFilePath -> ParsedModule -> DynFlags -> DynFlags
+addRelativeImport :: NormalizedFilePath -> ModuleName -> DynFlags -> DynFlags
 addRelativeImport fp modu dflags = dflags
     {importPaths = nubOrd $ maybeToList (moduleImportPath fp modu) ++ importPaths dflags}
 
@@ -407,7 +409,6 @@ getImportsParsed dflags (L loc parsed) = do
     , GHC.moduleNameString (GHC.unLoc $ ideclName i) /= "GHC.Prim"
     ])
 
-
 -- | Produce a module summary from a StringBuffer.
 getModSummaryFromBuffer
     :: GhcMonad m
@@ -446,6 +447,39 @@ getModSummaryFromBuffer fp contents dflags parsed = do
     }
     where
       sourceType = if "-boot" `isSuffixOf` takeExtension fp then HsBootFile else HsSrcFile
+
+-- | Produce a module summary only for the imports
+getModSummaryFromImports :: FilePath -> SB.StringBuffer -> HscEnv -> ExceptT [FileDiagnostic] IO ModSummary
+getModSummaryFromImports fp contents hsc_env = do
+    (contents, dflags) <- ExceptT $ evalGhcEnv hsc_env $ runExceptT $ preprocessor fp (Just contents)
+    (srcImports, textualImports, L _ moduleName) <-
+        ExceptT $ first (diagFromErrMsgs "parser" dflags) <$> Hdr.getImports dflags contents fp fp
+    modLoc <- liftIO $ mkHomeModLocation dflags moduleName fp
+    required_by_imports <- liftIO $ implicitRequirements hsc_env textualImports
+
+    let mod = mkModule (thisPackage dflags) moduleName
+        finalTextual = textualImports ++ required_by_imports
+        sourceType = if "-boot" `isSuffixOf` takeExtension fp then HsBootFile else HsSrcFile
+        summary =
+            ModSummary
+                { ms_mod          = mod
+                , ms_hie_date     = Nothing
+                , ms_hs_date      = error "Rules should not depend on ms_hs_date"
+        -- When we are working with a virtual file we do not have a file date.
+        -- To avoid silent issues where something is not processed because the date
+        -- has not changed, we make sure that things blow up if they depend on the
+                , ms_hsc_src      = sourceType
+                , ms_hspp_buf     = Just contents
+                , ms_hspp_file    = fp
+                , ms_hspp_opts    = dflags
+                , ms_iface_date   = Nothing
+                , ms_location     = modLoc
+                , ms_obj_date     = Nothing
+                , ms_parsed_mod   = Nothing
+                , ms_srcimps      = srcImports
+                , ms_textual_imps = finalTextual
+                }
+    return summary
 
 
 -- | Given a buffer, flags, file path and module summary, produce a
