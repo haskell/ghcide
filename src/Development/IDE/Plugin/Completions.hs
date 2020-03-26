@@ -1,9 +1,9 @@
+{-# LANGUAGE CPP          #-}
 {-# LANGUAGE TypeFamilies #-}
 
 module Development.IDE.Plugin.Completions(plugin) where
 
 import Control.Applicative
-import Data.Maybe
 import Language.Haskell.LSP.Messages
 import Language.Haskell.LSP.Types
 import qualified Language.Haskell.LSP.Core as LSP
@@ -22,8 +22,11 @@ import Development.IDE.Core.RuleTypes
 import Development.IDE.Core.Shake
 import Development.IDE.GHC.Util
 import Development.IDE.LSP.Server
-import Development.IDE.Import.DependencyInformation
 
+#ifdef GHC_LIB
+import Data.Maybe
+import Development.IDE.Import.DependencyInformation
+#endif
 
 plugin :: Plugin c
 plugin = Plugin produceCompletions setHandlersCompletion
@@ -31,8 +34,12 @@ plugin = Plugin produceCompletions setHandlersCompletion
 produceCompletions :: Rules ()
 produceCompletions =
     define $ \ProduceCompletions file -> do
+#ifdef GHC_LIB
         deps <- maybe (TransitiveDependencies [] [] []) fst <$> useWithStale GetDependencies file
         parsedDeps <- mapMaybe (fmap fst) <$> usesWithStale GetParsedModule (transitiveModuleDeps deps)
+#else
+        let parsedDeps = []
+#endif
         tm <- fmap fst <$> useWithStale TypeCheck file
         packageState <- fmap (hscEnv . fst) <$> useWithStale GhcSession file
         case (tm, packageState) of

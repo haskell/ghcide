@@ -1,8 +1,9 @@
 -- Copyright (c) 2019 The DAML Authors. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
 
-{-# LANGUAGE TypeFamilies               #-}
-{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE CPP                   #-}
+{-# LANGUAGE TypeFamilies          #-}
+{-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE PatternSynonyms       #-}
 
@@ -63,7 +64,7 @@ import StringBuffer (hGetStringBuffer)
 
 import qualified GHC.LanguageExtensions as LangExt
 import HscTypes
-import DynFlags (xopt)
+import DynFlags (gopt_set, xopt)
 import GHC.Generics(Generic)
 
 import qualified Development.IDE.Spans.AtPoint as AtPoint
@@ -71,6 +72,7 @@ import Development.IDE.Core.Service
 import Development.IDE.Core.Shake
 import Development.Shake.Classes
 import Control.Monad.Trans.Except (runExceptT)
+import Data.ByteString (ByteString)
 
 -- | This is useful for rules to convert rules that can only produce errors or
 -- a result into the more general IdeResult type that supports producing
@@ -189,17 +191,21 @@ priorityFilesOfInterest = Priority (-2)
 getParsedModuleRule :: Rules ()
 getParsedModuleRule =
     defineEarlyCutoff $ \GetParsedModule file -> do
-        (_, contents) <- getFileContents file
         packageState <- hscEnv <$> use_ GhcSession file
         opt <- getIdeOptions
-        (diag, res) <- liftIO $ parseModule opt packageState (fromNormalizedFilePath file) (fmap textToStringBuffer contents)
-        case res of
-            Nothing -> pure (Nothing, (diag, Nothing))
-            Just (contents, modu) -> do
-                mbFingerprint <- if isNothing $ optShakeFiles opt
-                    then pure Nothing
-                    else liftIO $ Just . fingerprintToBS <$> fingerprintFromStringBuffer contents
-                pure (mbFingerprint, (diag, Just modu))
+        (_, contents) <- getFileContents file
+        liftIO $ getParsedModuleDefinition packageState opt file contents
+
+getParsedModuleDefinition :: HscEnv -> IdeOptions -> NormalizedFilePath -> Maybe T.Text -> IO (Maybe ByteString, ([FileDiagnostic], Maybe ParsedModule))
+getParsedModuleDefinition packageState opt file contents = do
+    (diag, res) <- parseModule opt packageState (fromNormalizedFilePath file) (fmap textToStringBuffer contents)
+    case res of
+        Nothing -> pure (Nothing, (diag, Nothing))
+        Just (contents, modu) -> do
+            mbFingerprint <- if isNothing $ optShakeFiles opt
+                then pure Nothing
+                else Just . fingerprintToBS <$> fingerprintFromStringBuffer contents
+            pure (mbFingerprint, (diag, Just modu))
 
 getLocatedImportsRule :: Rules ()
 getLocatedImportsRule =
@@ -342,22 +348,27 @@ getSpanInfoRule :: Rules ()
 getSpanInfoRule =
     define $ \GetSpanInfo file -> do
         tc <- use_ TypeCheck file
+        packageState <- hscEnv <$> use_ GhcSession file
         deps <- maybe (TransitiveDependencies [] [] []) fst <$> useWithStale GetDependencies file
         let tdeps = transitiveModuleDeps deps
+#ifdef GHC_LIB
         parsedDeps <- uses_ GetParsedModule tdeps
+#else
+        let parsedDeps = []
+#endif
         ifaces <- uses_ GetModIface tdeps
         (fileImports, _) <- use_ GetLocatedImports file
-        packageState <- hscEnv <$> use_ GhcSession file
         let imports = second (fmap artifactFilePath) <$> fileImports
-        x <- liftIO $ getSrcSpanInfos packageState imports tc (zip parsedDeps $ map hirModIface ifaces)
+        x <- liftIO $ getSrcSpanInfos packageState imports tc parsedDeps (map hirModIface ifaces)
         return ([], Just x)
 
 -- Typechecks a module.
 typeCheckRule :: Rules ()
-typeCheckRule = define $ \TypeCheck file ->
+typeCheckRule = define $ \TypeCheck file -> do
+    pm <- use_ GetParsedModule file
     -- do not generate interface files as this rule is called
     -- for files of interest on every keystroke
-    typeCheckRuleDefinition file SkipGenerationOfInterfaceFiles
+    typeCheckRuleDefinition file pm SkipGenerationOfInterfaceFiles
 
 data GenerateInterfaceFiles
     = DoGenerateInterfaceFiles
@@ -370,10 +381,10 @@ data GenerateInterfaceFiles
 -- retain the information forever in the shake graph.
 typeCheckRuleDefinition
     :: NormalizedFilePath     -- ^ Path to source file
+    -> ParsedModule
     -> GenerateInterfaceFiles -- ^ Should generate .hi and .hie files ?
     -> Action (IdeResult TcModuleResult)
-typeCheckRuleDefinition file generateArtifacts = do
-  pm   <- use_ GetParsedModule file
+typeCheckRuleDefinition file pm generateArtifacts = do
   deps <- use_ GetDependencies file
   hsc  <- hscEnv <$> use_ GhcSession file
   -- Figure out whether we need TemplateHaskell or QuasiQuotes support
@@ -530,11 +541,22 @@ getModIfaceRule = define $ \GetModIface f -> do
             tmr <- use TypeCheck f
             return ([], extract tmr)
           | otherwise -> do
-            -- Otherwise the interface file does not exist or is out of date. Invoke typechecking directly to update it without incurring a dependency on the typecheck rule.
-            (diags, tmr) <- typeCheckRuleDefinition f DoGenerateInterfaceFiles
-            -- Bang pattern is important to avoid leaking 'tmr'
-            let !res = extract tmr
-            return (diags, res)
+            -- the interface file does not exist or is out of date.
+            -- Invoke typechecking directly to update it without incurring a dependency
+            -- on the parsed module and the typecheck rules
+            hsc <- hscEnv <$> use_ GhcSession f
+            opt <- getIdeOptions
+            (_, contents) <- getFileContents f
+            -- Embed --haddocks in the interface file
+            hsc <- pure hsc{hsc_dflags = gopt_set (hsc_dflags hsc) Opt_Haddock}
+            (_, (diags, mb_pm)) <- liftIO $ getParsedModuleDefinition hsc opt f contents
+            case mb_pm of
+                Nothing -> return (diags, Nothing)
+                Just pm -> do
+                    (diags', tmr) <- typeCheckRuleDefinition f pm DoGenerateInterfaceFiles
+                    -- Bang pattern is important to avoid leaking 'tmr'
+                    let !res = extract tmr
+                    return (diags <> diags', res)
     where
       extract Nothing = Nothing
       extract (Just tmr) =
