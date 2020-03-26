@@ -453,7 +453,7 @@ getModSummaryFromImports :: FilePath -> SB.StringBuffer -> HscEnv -> ExceptT [Fi
 getModSummaryFromImports fp contents hsc_env = do
     (contents, dflags) <- ExceptT $ evalGhcEnv hsc_env $ runExceptT $ preprocessor fp (Just contents)
     (srcImports, textualImports, L _ moduleName) <-
-        ExceptT $ first (diagFromErrMsgs "parser" dflags) <$> Hdr.getImports dflags contents fp fp
+        ExceptT $ first (diagFromErrMsgs "parser" dflags) <$> GHC.getHeaderImports dflags contents fp fp
     modLoc <- liftIO $ mkHomeModLocation dflags moduleName fp
     required_by_imports <- liftIO $ implicitRequirements hsc_env textualImports
 
@@ -463,7 +463,9 @@ getModSummaryFromImports fp contents hsc_env = do
         summary =
             ModSummary
                 { ms_mod          = mod
+#if MIN_GHC_API_VERSION(8,8,0)
                 , ms_hie_date     = Nothing
+#endif
                 , ms_hs_date      = error "Rules should not depend on ms_hs_date"
         -- When we are working with a virtual file we do not have a file date.
         -- To avoid silent issues where something is not processed because the date
