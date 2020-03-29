@@ -451,9 +451,9 @@ getModSummaryFromBuffer fp dflags parsed = do
 
 -- | Given a buffer, env and filepath, produce a module summary by parsing only the imports.
 --   Runs preprocessors as needed.
-getModSummaryFromImports :: FilePath -> SB.StringBuffer -> HscEnv -> ExceptT [FileDiagnostic] IO ModSummary
+getModSummaryFromImports :: FilePath -> Maybe SB.StringBuffer -> HscEnv -> ExceptT [FileDiagnostic] IO ModSummary
 getModSummaryFromImports fp contents hsc_env = do
-    (contents, dflags) <- ExceptT $ evalGhcEnv hsc_env $ runExceptT $ preprocessor fp (Just contents)
+    (contents, dflags) <- ExceptT $ evalGhcEnv hsc_env $ runExceptT $ preprocessor fp contents
     (srcImports, textualImports, L _ moduleName) <-
         ExceptT $ first (diagFromErrMsgs "parser" dflags) <$> GHC.getHeaderImports dflags contents fp fp
     liftIO $ evaluate $ rnf srcImports

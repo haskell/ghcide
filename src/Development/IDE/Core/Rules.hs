@@ -60,7 +60,6 @@ import           Development.IDE.GHC.Error
 import           Development.Shake                        hiding (Diagnostic)
 import Development.IDE.Core.RuleTypes
 import Development.IDE.Spans.Type
-import StringBuffer (hGetStringBuffer)
 
 import qualified GHC.LanguageExtensions as LangExt
 import HscTypes
@@ -519,10 +518,8 @@ getHiFileRule = defineEarlyCutoff $ \GetHiFile f -> do
 getModSummaryRule :: Rules ()
 getModSummaryRule = define $ \GetModSummary f -> do
     session <- hscEnv <$> use_ GhcSession f
-    let filePath = fromNormalizedFilePath f
     (_, mFileContent) <- getFileContents f
-    fileContent <- liftIO $ maybe (hGetStringBuffer filePath) (pure . textToStringBuffer) mFileContent
-    modS <- liftIO $ runExceptT $ getModSummaryFromImports (fromNormalizedFilePath f) fileContent session
+    modS <- liftIO $ runExceptT $ getModSummaryFromImports (fromNormalizedFilePath f) (textToStringBuffer <$> mFileContent) session
     return $ either (,Nothing) (([], ) . Just) modS
 
 getModIfaceRule :: Rules ()
