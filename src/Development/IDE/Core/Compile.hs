@@ -82,6 +82,8 @@ import           System.FilePath
 import           System.Directory
 import           System.IO.Extra
 import Data.Either.Extra (maybeToEither)
+import Control.DeepSeq (rnf)
+import Control.Exception (evaluate)
 
 
 -- | Given a string buffer, return the string (after preprocessing) and the 'ParsedModule'.
@@ -454,6 +456,8 @@ getModSummaryFromImports fp contents hsc_env = do
     (contents, dflags) <- ExceptT $ evalGhcEnv hsc_env $ runExceptT $ preprocessor fp (Just contents)
     (srcImports, textualImports, L _ moduleName) <-
         ExceptT $ first (diagFromErrMsgs "parser" dflags) <$> GHC.getHeaderImports dflags contents fp fp
+    liftIO $ evaluate $ rnf srcImports
+    liftIO $ evaluate $ rnf textualImports
     modLoc <- liftIO $ mkHomeModLocation dflags moduleName fp
     required_by_imports <- liftIO $ implicitRequirements hsc_env textualImports
 

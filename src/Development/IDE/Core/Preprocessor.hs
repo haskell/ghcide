@@ -29,6 +29,8 @@ import Data.IORef (IORef, modifyIORef, newIORef, readIORef)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Outputable (showSDoc)
+import Control.DeepSeq (NFData(rnf))
+import Control.Exception (evaluate)
 
 
 -- | Given a file and some contents, apply any necessary preprocessors,
@@ -136,6 +138,7 @@ parsePragmasIntoDynFlags
 parsePragmasIntoDynFlags fp contents = catchSrcErrors "pragmas" $ do
     dflags0  <- getSessionDynFlags
     let opts = Hdr.getOptions dflags0 contents fp
+    liftIO $ evaluate $ rnf opts
     (dflags, _, _) <- parseDynamicFilePragma dflags0 opts
     return dflags
 
