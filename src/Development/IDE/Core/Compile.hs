@@ -415,11 +415,10 @@ getImportsParsed dflags (L loc parsed) = do
 getModSummaryFromBuffer
     :: GhcMonad m
     => FilePath
-    -> SB.StringBuffer
     -> DynFlags
     -> GHC.ParsedSource
     -> ExceptT [FileDiagnostic] m ModSummary
-getModSummaryFromBuffer fp contents dflags parsed = do
+getModSummaryFromBuffer fp dflags parsed = do
   (modName, imports) <- liftEither $ getImportsParsed dflags parsed
 
   modLoc <- liftIO $ mkHomeModLocation dflags modName fp
@@ -435,7 +434,7 @@ getModSummaryFromBuffer fp contents dflags parsed = do
     , ms_textual_imps = [imp | (False, imp) <- imports]
     , ms_hspp_file    = fp
     , ms_hspp_opts    = dflags
-    , ms_hspp_buf     = Just contents
+    , ms_hspp_buf     = Nothing
 
     -- defaults:
     , ms_hsc_src      = sourceType
@@ -450,7 +449,8 @@ getModSummaryFromBuffer fp contents dflags parsed = do
     where
       sourceType = if "-boot" `isSuffixOf` takeExtension fp then HsBootFile else HsSrcFile
 
--- | Produce a module summary only for the imports
+-- | Given a buffer, env and filepath, produce a module summary by parsing only the imports.
+--   Runs preprocessors as needed.
 getModSummaryFromImports :: FilePath -> SB.StringBuffer -> HscEnv -> ExceptT [FileDiagnostic] IO ModSummary
 getModSummaryFromImports fp contents hsc_env = do
     (contents, dflags) <- ExceptT $ evalGhcEnv hsc_env $ runExceptT $ preprocessor fp (Just contents)
@@ -475,7 +475,7 @@ getModSummaryFromImports fp contents hsc_env = do
         -- To avoid silent issues where something is not processed because the date
         -- has not changed, we make sure that things blow up if they depend on the
                 , ms_hsc_src      = sourceType
-                , ms_hspp_buf     = Just contents
+                , ms_hspp_buf     = Nothing
                 , ms_hspp_file    = fp
                 , ms_hspp_opts    = dflags
                 , ms_iface_date   = Nothing
@@ -488,7 +488,7 @@ getModSummaryFromImports fp contents hsc_env = do
     return summary
 
 
--- | Given a buffer, flags, file path and module summary, produce a
+-- | Given a buffer, flags, and file path, produce a
 -- parsed module (or errors) and any parse warnings. Does not run any preprocessors
 parseFileContents
        :: GhcMonad m
@@ -530,7 +530,7 @@ parseFileContents customPreprocessor dflags filename contents = do
                let IdePreprocessedSource preproc_warns errs parsed = customPreprocessor rdr_module
                unless (null errs) $ throwE $ diagFromStrings "parser" DsError errs
                let preproc_warnings = diagFromStrings "parser" DsWarning preproc_warns
-               ms <- getModSummaryFromBuffer filename contents dflags parsed
+               ms <- getModSummaryFromBuffer filename dflags parsed
                let pm =
                      ParsedModule {
                          pm_mod_summary = ms
