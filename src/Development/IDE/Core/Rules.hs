@@ -45,6 +45,7 @@ import           Development.IDE.Types.Diagnostics
 import Development.IDE.Types.Location
 import Development.IDE.GHC.Compat hiding (parseModule, typecheckModule)
 import Development.IDE.GHC.Util
+import Development.IDE.GHC.WithDynFlags
 import Data.Coerce
 import Data.Either.Extra
 import Data.Maybe
@@ -517,9 +518,10 @@ getHiFileRule = defineEarlyCutoff $ \GetHiFile f -> do
 
 getModSummaryRule :: Rules ()
 getModSummaryRule = define $ \GetModSummary f -> do
-    session <- hscEnv <$> use_ GhcSession f
+    dflags <- hsc_dflags . hscEnv <$> use_ GhcSession f
     (_, mFileContent) <- getFileContents f
-    modS <- liftIO $ runExceptT $ getModSummaryFromImports (fromNormalizedFilePath f) (textToStringBuffer <$> mFileContent) session
+    modS <- liftIO $ evalWithDynFlags dflags $ runExceptT $
+        getModSummaryFromImports (fromNormalizedFilePath f) (textToStringBuffer <$> mFileContent)
     return $ either (,Nothing) (([], ) . Just) modS
 
 getModIfaceRule :: Rules ()

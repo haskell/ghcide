@@ -54,7 +54,6 @@ import ErrUtils
 import           Finder
 import qualified Development.IDE.GHC.Compat     as GHC
 import qualified Development.IDE.GHC.Compat     as Compat
-import           GhcMake                        (implicitRequirements)
 import           GhcMonad
 import           GhcPlugins                     as GHC hiding (fst3, (<>))
 import qualified HeaderInfo                     as Hdr
@@ -84,6 +83,7 @@ import           System.IO.Extra
 import Data.Either.Extra (maybeToEither)
 import Control.DeepSeq (rnf)
 import Control.Exception (evaluate)
+import Exception (ExceptionMonad)
 
 
 -- | Given a string buffer, return the string (after preprocessing) and the 'ParsedModule'.
@@ -451,18 +451,20 @@ getModSummaryFromBuffer fp dflags parsed = do
 
 -- | Given a buffer, env and filepath, produce a module summary by parsing only the imports.
 --   Runs preprocessors as needed.
-getModSummaryFromImports :: FilePath -> Maybe SB.StringBuffer -> HscEnv -> ExceptT [FileDiagnostic] IO ModSummary
-getModSummaryFromImports fp contents hsc_env = do
-    (contents, dflags) <- ExceptT $ evalGhcEnv hsc_env $ runExceptT $ preprocessor fp contents
+getModSummaryFromImports
+  :: (HasDynFlags m, ExceptionMonad m, MonadIO m)
+  => FilePath
+  -> Maybe SB.StringBuffer
+  -> ExceptT [FileDiagnostic] m ModSummary
+getModSummaryFromImports fp contents = do
+    (contents, dflags) <- preprocessor fp contents
     (srcImports, textualImports, L _ moduleName) <-
-        ExceptT $ first (diagFromErrMsgs "parser" dflags) <$> GHC.getHeaderImports dflags contents fp fp
+        ExceptT $ liftIO $ first (diagFromErrMsgs "parser" dflags) <$> GHC.getHeaderImports dflags contents fp fp
     liftIO $ evaluate $ rnf srcImports
     liftIO $ evaluate $ rnf textualImports
     modLoc <- liftIO $ mkHomeModLocation dflags moduleName fp
-    required_by_imports <- liftIO $ implicitRequirements hsc_env textualImports
 
     let mod = mkModule (thisPackage dflags) moduleName
-        finalTextual = textualImports ++ required_by_imports
         sourceType = if "-boot" `isSuffixOf` takeExtension fp then HsBootFile else HsSrcFile
         summary =
             ModSummary
@@ -483,7 +485,7 @@ getModSummaryFromImports fp contents hsc_env = do
                 , ms_obj_date     = Nothing
                 , ms_parsed_mod   = Nothing
                 , ms_srcimps      = srcImports
-                , ms_textual_imps = finalTextual
+                , ms_textual_imps = textualImports
                 }
     return summary
 

@@ -31,11 +31,13 @@ import qualified Data.Text as T
 import Outputable (showSDoc)
 import Control.DeepSeq (NFData(rnf))
 import Control.Exception (evaluate)
+import Control.Monad.IO.Class (MonadIO)
+import Exception (ExceptionMonad)
 
 
 -- | Given a file and some contents, apply any necessary preprocessors,
 --   e.g. unlit/cpp. Return the resulting buffer and the DynFlags it implies.
-preprocessor :: GhcMonad m => FilePath -> Maybe StringBuffer -> ExceptT [FileDiagnostic] m (StringBuffer, DynFlags)
+preprocessor :: (ExceptionMonad m, HasDynFlags m, MonadIO m) => FilePath -> Maybe StringBuffer -> ExceptT [FileDiagnostic] m (StringBuffer, DynFlags)
 preprocessor filename mbContents = do
     -- Perform unlit
     (isOnDisk, contents) <-
@@ -131,12 +133,12 @@ isLiterate x = takeExtension x `elem` [".lhs",".lhs-boot"]
 
 -- | This reads the pragma information directly from the provided buffer.
 parsePragmasIntoDynFlags
-    :: GhcMonad m
+    :: (ExceptionMonad m, HasDynFlags m, MonadIO m)
     => FilePath
     -> SB.StringBuffer
     -> m (Either [FileDiagnostic] DynFlags)
 parsePragmasIntoDynFlags fp contents = catchSrcErrors "pragmas" $ do
-    dflags0  <- getSessionDynFlags
+    dflags0  <- getDynFlags
     let opts = Hdr.getOptions dflags0 contents fp
     liftIO $ evaluate $ rnf opts
     (dflags, _, _) <- parseDynamicFilePragma dflags0 opts

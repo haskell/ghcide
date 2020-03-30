@@ -36,6 +36,7 @@ import Panic
 import           ErrUtils
 import           SrcLoc
 import qualified Outputable                 as Out
+import Exception (ExceptionMonad)
 
 
 
@@ -128,7 +129,7 @@ realSpan = \case
 
 -- | Run something in a Ghc monad and catch the errors (SourceErrors and
 -- compiler-internal exceptions like Panic or InstallationError).
-catchSrcErrors :: GhcMonad m => T.Text -> m a -> m (Either [FileDiagnostic] a)
+catchSrcErrors :: (HasDynFlags m, ExceptionMonad m) => T.Text -> m a -> m (Either [FileDiagnostic] a)
 catchSrcErrors fromWhere ghcM = do
       dflags <- getDynFlags
       handleGhcException (ghcExceptionToDiagnostics dflags) $
