@@ -1,5 +1,6 @@
 {-# LANGUAGE CPP          #-}
 {-# LANGUAGE TypeFamilies #-}
+#include "ghc-api-version.h"
 
 module Development.IDE.Plugin.Completions(plugin) where
 
@@ -23,7 +24,7 @@ import Development.IDE.Core.Shake
 import Development.IDE.GHC.Util
 import Development.IDE.LSP.Server
 
-#ifdef GHC_LIB
+#if !MIN_GHC_API_VERSION(8,6,0) || defined(GHC_LIB)
 import Data.Maybe
 import Development.IDE.Import.DependencyInformation
 #endif
@@ -34,11 +35,14 @@ plugin = Plugin produceCompletions setHandlersCompletion
 produceCompletions :: Rules ()
 produceCompletions =
     define $ \ProduceCompletions file -> do
-#ifdef GHC_LIB
+
+-- When possible, rely on the haddocks embedded in our interface files
+-- This creates problems on ghc-lib, see comment on 'getDocumentationTryGhc'
+#if MIN_GHC_API_VERSION(8,6,0) && !defined(GHC_LIB)
+        let parsedDeps = []
+#else
         deps <- maybe (TransitiveDependencies [] [] []) fst <$> useWithStale GetDependencies file
         parsedDeps <- mapMaybe (fmap fst) <$> usesWithStale GetParsedModule (transitiveModuleDeps deps)
-#else
-        let parsedDeps = []
 #endif
         tm <- fmap fst <$> useWithStale TypeCheck file
         packageState <- fmap (hscEnv . fst) <$> useWithStale GhcSession file

@@ -6,6 +6,7 @@
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE PatternSynonyms       #-}
+#include "ghc-api-version.h"
 
 -- | A Shake implementation of the compiler service, built
 --   using the "Shaker" abstraction layer for in-memory use.
@@ -351,11 +352,15 @@ getSpanInfoRule =
         packageState <- hscEnv <$> use_ GhcSession file
         deps <- maybe (TransitiveDependencies [] [] []) fst <$> useWithStale GetDependencies file
         let tdeps = transitiveModuleDeps deps
-#ifdef GHC_LIB
-        parsedDeps <- uses_ GetParsedModule tdeps
-#else
+
+-- When possible, rely on the haddocks embedded in our interface files
+-- This creates problems on ghc-lib, see comment on 'getDocumentationTryGhc'
+#if MIN_GHC_API_VERSION(8,6,0) && !defined(GHC_LIB)
         let parsedDeps = []
+#else
+        parsedDeps <- uses_ GetParsedModule tdeps
 #endif
+
         ifaces <- uses_ GetModIface tdeps
         (fileImports, _) <- use_ GetLocatedImports file
         let imports = second (fmap artifactFilePath) <$> fileImports
