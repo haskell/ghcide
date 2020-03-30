@@ -140,7 +140,10 @@ parsePragmasIntoDynFlags
 parsePragmasIntoDynFlags fp contents = catchSrcErrors "pragmas" $ do
     dflags0  <- getDynFlags
     let opts = Hdr.getOptions dflags0 contents fp
+
+    -- Force bits that might keep the dflags and stringBuffer alive unnecessarily
     liftIO $ evaluate $ rnf opts
+
     (dflags, _, _) <- parseDynamicFilePragma dflags0 opts
     return dflags
 

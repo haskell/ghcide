@@ -460,8 +460,11 @@ getModSummaryFromImports fp contents = do
     (contents, dflags) <- preprocessor fp contents
     (srcImports, textualImports, L _ moduleName) <-
         ExceptT $ liftIO $ first (diagFromErrMsgs "parser" dflags) <$> GHC.getHeaderImports dflags contents fp fp
+
+    -- Force bits that might keep the string buffer and DynFlags alive unnecessarily
     liftIO $ evaluate $ rnf srcImports
     liftIO $ evaluate $ rnf textualImports
+
     modLoc <- liftIO $ mkHomeModLocation dflags moduleName fp
 
     let mod = mkModule (thisPackage dflags) moduleName
