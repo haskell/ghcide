@@ -149,7 +149,7 @@ library
         Development.IDE.Plugin.CodeAction.RuleTypes
         Development.IDE.Plugin.Completions.Logic
         Development.IDE.Plugin.Completions.Types
-    if impl(ghc > 8.7) || flag(ghc-lib)
+    if (impl(ghc > 8.7) && impl(ghc < 8.10)) || flag(ghc-lib)
       other-modules:
         Development.IDE.GHC.HieAst
     ghc-options: -Wall -Wno-name-shadowing

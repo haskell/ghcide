@@ -536,7 +536,11 @@ getHiFileRule = defineEarlyCutoff $ \GetHiFile f -> do
               case r of
                 Right iface -> do
                   let result = HiFileResult ms iface
+#if MIN_GHC_API_VERSION(8,10,0)
+                  return (Just (fingerprintToBS (mi_mod_hash $ mi_final_exts iface)), ([], Just result))
+#else
                   return (Just (fingerprintToBS (mi_mod_hash iface)), ([], Just result))
+#endif
                 Left err -> do
                   let diag = ideErrorWithSource (Just "interface file loading") (Just DsError) f . T.pack $ err
                   return (Nothing, (pure diag, Nothing))
