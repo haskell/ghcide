@@ -52,9 +52,14 @@ import Avail
 import ErrUtils (ErrorMessages)
 import FastString (FastString)
 
+#if MIN_GHC_API_VERSION(8,10,0)
+import HieAst (mkHieFile)
+#elif MIN_GHC_API_VERSION(8,8,0)
+import Development.IDE.GHC.HieAst (mkHieFile)
+#endif
+
 #if MIN_GHC_API_VERSION(8,8,0)
 import Control.Applicative ((<|>))
-import Development.IDE.GHC.HieAst
 import HieBin
 import HieTypes
 

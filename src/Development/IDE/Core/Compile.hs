@@ -288,7 +288,11 @@ generateAndWriteHieFile hscEnv tcm =
     case tm_renamed_source tcm of
       Just rnsrc -> do
         hf <- runHsc hscEnv $
+#if MIN_GHC_API_VERSION(8,10,0)
+          GHC.mkHieFile mod_summary (fst $ tm_internals_ tcm) rnsrc
+#else
           GHC.mkHieFile mod_summary (fst $ tm_internals_ tcm) rnsrc ""
+#endif
         atomicFileWrite targetPath $ flip GHC.writeHieFile hf
       _ ->
         return ()
