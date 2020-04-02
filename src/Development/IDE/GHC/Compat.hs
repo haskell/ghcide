@@ -25,6 +25,7 @@ module Development.IDE.GHC.Compat(
     includePathsGlobal,
     includePathsQuote,
     addIncludePathsQuote,
+    getModuleHash,
     pattern DerivD,
     pattern ForD,
     pattern InstD,
@@ -43,6 +44,7 @@ module Development.IDE.GHC.Compat(
 import StringBuffer
 import DynFlags
 import FieldLabel
+import Fingerprint (Fingerprint)
 import qualified Module
 
 import qualified GHC
@@ -53,7 +55,8 @@ import ErrUtils (ErrorMessages)
 import FastString (FastString)
 
 #if MIN_GHC_API_VERSION(8,10,0)
-import HieAst (mkHieFile)
+import HieAst (mkHieFile)  -- reexport
+import HscTypes (mi_mod_hash)
 #elif MIN_GHC_API_VERSION(8,8,0)
 import Development.IDE.GHC.HieAst (mkHieFile)
 #endif
@@ -280,4 +283,11 @@ getHeaderImports = Hdr.getImports
 getHeaderImports a b c d =
     catch (Right <$> Hdr.getImports a b c d)
           (return . Left . srcErrorMessages)
+#endif
+
+getModuleHash :: ModIface -> Fingerprint
+#if MIN_GHC_API_VERSION(8,10,0)
+getModuleHash = mi_mod_hash . mi_final_exts
+#else
+getModuleHash = mi_mod_hash
 #endif
