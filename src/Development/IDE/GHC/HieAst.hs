@@ -94,12 +94,12 @@ type HieM = ReaderT HieState Hsc
 mkHieFile :: ModSummary
           -> TcGblEnv
           -> RenamedSource
+          -> BS.ByteString
           -> Hsc HieFile
-mkHieFile ms ts rs = do
+mkHieFile ms ts rs src = do
   let tc_binds = tcg_binds ts
   (asts', arr) <- getCompressedAsts tc_binds rs
   let Just src_file = ml_hs_file $ ms_location ms
-  src <- liftIO $ BS.readFile src_file
   return $ HieFile
       { hie_hs_file = src_file
       , hie_module = ms_mod ms
@@ -1786,3 +1786,4 @@ instance ToHie (IEContext (Located (FieldLbl Name))) where
       FieldLabel _ _ n ->
         [ toHie $ C (IEThing c) $ L span n
         ]
+
