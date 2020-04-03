@@ -150,6 +150,11 @@ library
         Development.IDE.Plugin.Completions.Logic
         Development.IDE.Plugin.Completions.Types
     if (impl(ghc > 8.7) && impl(ghc < 8.10)) || flag(ghc-lib)
+      hs-source-dirs: src-ghc88
+      other-modules:
+        Development.IDE.GHC.HieAst
+    if (impl(ghc > 8.9))
+      hs-source-dirs: src-ghc810
       other-modules:
         Development.IDE.GHC.HieAst
     ghc-options: -Wall -Wno-name-shadowing
