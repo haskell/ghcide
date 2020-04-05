@@ -74,6 +74,7 @@ import Development.IDE.Core.Shake
 import Development.Shake.Classes
 import Control.Monad.Trans.Except (runExceptT)
 import Data.ByteString (ByteString)
+import Control.Concurrent.Async (concurrently)
 
 -- | This is useful for rules to convert rules that can only produce errors or
 -- a result into the more general IdeResult type that supports producing
@@ -190,24 +191,32 @@ priorityFilesOfInterest :: Priority
 priorityFilesOfInterest = Priority (-2)
 
 getParsedModuleRule :: Rules ()
-getParsedModuleRule =
-    defineEarlyCutoff $ \GetParsedModule file -> do
-        hsc <- hscEnv <$> use_ GhcSession file
-        opt <- getIdeOptions
-        (_, contents) <- getFileContents file
+getParsedModuleRule = defineEarlyCutoff $ \GetParsedModule file -> do
+    hsc <- hscEnv <$> use_ GhcSession file
+    opt <- getIdeOptions
+    (_, contents) <- getFileContents file
 
-        (fingerPrint, (diags, res)) <- liftIO $ getParsedModuleDefinition hsc opt file contents
+    let dflags    = hsc_dflags hsc
+        mainParse = getParsedModuleDefinition hsc opt file contents
 
-        -- Parse again (if necessary) to capture Haddock parse errors
-        -- This is important because we parse non interest files with Haddock on
-        diagsHaddock <- case gopt Opt_Haddock (hsc_dflags hsc) of
-            True -> return []
-            False -> do
-                let hscHaddock = hsc{hsc_dflags = gopt_set (hsc_dflags hsc) Opt_Haddock}
-                (_, (!diagsHaddock, _)) <- liftIO $ getParsedModuleDefinition hscHaddock opt file contents
-                return diagsHaddock
+    -- Parse again (if necessary) to capture Haddock parse errors
+    if gopt Opt_Haddock dflags
+        then
+            liftIO mainParse
+        else do
+            let hscHaddock = hsc{hsc_dflags = gopt_set dflags Opt_Haddock}
+                haddockParse = do
+                    (_, (!diagsHaddock, _)) <-
+                        getParsedModuleDefinition hscHaddock opt file contents
+                    return diagsHaddock
 
-        return (fingerPrint, (mergeDiagnostics diags diagsHaddock, res))
+            ((fingerPrint, (diags, res)), diagsHaddock) <-
+                -- parse twice, with and without Haddocks, concurrently
+                -- we cannot ignore Haddock parse errors because files of
+                -- non-interest are always parsed with Haddocks
+                liftIO $ concurrently mainParse haddockParse
+
+            return (fingerPrint, (mergeDiagnostics diags diagsHaddock, res))
 
 getParsedModuleDefinition :: HscEnv -> IdeOptions -> NormalizedFilePath -> Maybe T.Text -> IO (Maybe ByteString, ([FileDiagnostic], Maybe ParsedModule))
 getParsedModuleDefinition packageState opt file contents = do
