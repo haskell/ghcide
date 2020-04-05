@@ -192,10 +192,22 @@ priorityFilesOfInterest = Priority (-2)
 getParsedModuleRule :: Rules ()
 getParsedModuleRule =
     defineEarlyCutoff $ \GetParsedModule file -> do
-        packageState <- hscEnv <$> use_ GhcSession file
+        hsc <- hscEnv <$> use_ GhcSession file
         opt <- getIdeOptions
         (_, contents) <- getFileContents file
-        liftIO $ getParsedModuleDefinition packageState opt file contents
+
+        (fingerPrint, (diags, res)) <- liftIO $ getParsedModuleDefinition hsc opt file contents
+
+        -- Parse again (if necessary) to capture Haddock parse errors
+        -- This is important because we parse non interest files with Haddock on
+        diagsHaddock <- case gopt Opt_Haddock (hsc_dflags hsc) of
+            True -> return []
+            False -> do
+                let hscHaddock = hsc{hsc_dflags = gopt_set (hsc_dflags hsc) Opt_Haddock}
+                (_, (!diagsHaddock, _)) <- liftIO $ getParsedModuleDefinition hscHaddock opt file contents
+                return diagsHaddock
+
+        return (fingerPrint, (mergeDiagnostics diags diagsHaddock, res))
 
 getParsedModuleDefinition :: HscEnv -> IdeOptions -> NormalizedFilePath -> Maybe T.Text -> IO (Maybe ByteString, ([FileDiagnostic], Maybe ParsedModule))
 getParsedModuleDefinition packageState opt file contents = do

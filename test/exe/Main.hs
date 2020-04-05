@@ -412,6 +412,19 @@ diagnosticTests = testGroup "diagnostics"
           liftIO $ unless ("redundant" `T.isInfixOf` msg) $
               assertFailure ("Expected redundant import but got " <> T.unpack msg)
           closeDoc a
+  , testSessionWait "haddock parse error" $ do
+      let fooContent = T.unlines
+            [ "module Foo where"
+            , "foo :: Int"
+            , "foo = 1 {-|-}"
+            ]
+      _ <- openDoc' "Foo.hs" "haskell" fooContent
+      expectDiagnostics
+        [ ( "Foo.hs"
+          , [(DsError, (2, 8), "Parse error on input")
+            ]
+          )
+        ]
   ]
 
 codeActionTests :: TestTree
