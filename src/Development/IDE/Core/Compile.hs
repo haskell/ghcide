@@ -68,6 +68,7 @@ import           Data.Maybe
 import           Data.Tuple.Extra
 import qualified Data.Map.Strict                          as Map
 import           System.FilePath
+import System.IO
 
 
 -- | Given a string buffer, return the string (after preprocessing) and the 'ParsedModule'.
@@ -81,6 +82,7 @@ parseModule IdeOptions{..} env filename mbContents =
     fmap (either (, Nothing) id) $
     runGhcEnv env $ runExceptT $ do
         (contents, dflags) <- preprocessor filename mbContents
+        liftIO $ hPutStrLn stderr (show $ lexemeToString contents (len contents))
         (diag, modu) <- parseFileContents optPreprocessor dflags filename contents
         return (diag, Just (contents, modu))
 

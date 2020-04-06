@@ -14,6 +14,7 @@ module Development.IDE.Core.FileStore(
     makeLSPVFSHandle
     ) where
 
+import System.IO
 import Development.IDE.GHC.Orphans()
 import           Development.IDE.Core.Shake
 import Control.Concurrent.Extra
@@ -95,13 +96,15 @@ getModificationTimeRule :: VFSHandle -> Rules ()
 getModificationTimeRule vfs =
     defineEarlyCutoff $ \GetModificationTime file -> do
         let file' = fromNormalizedFilePath file
-        let wrap time@(l,s) = (Just $ BS.pack $ show time, ([], Just $ ModificationTime l s))
+        let wrap time@(l,s) = do
+                hPutStrLn stderr (show $ BS.pack $ show time)
+                pure (Just $ BS.pack $ show time, ([], Just $ ModificationTime l s))
         alwaysRerun
         mbVirtual <- liftIO $ getVirtualFile vfs $ filePathToUri' file
         case mbVirtual of
             Just (virtualFileVersion -> ver) ->
                 pure (Just $ BS.pack $ show ver, ([], Just $ VFSVersion ver))
-            Nothing -> liftIO $ fmap wrap (getModTime file')
+            Nothing -> liftIO $ (wrap =<< getModTime file')
               `catch` \(e :: IOException) -> do
                 let err | isDoesNotExistError e = "File does not exist: " ++ file'
                         | otherwise = "IO error while reading " ++ file' ++ ", " ++ displayException e
@@ -130,6 +133,7 @@ getModificationTimeRule vfs =
             Posix.throwErrnoPathIfMinus1Retry_ "getmodtime" f $ c_getModTime f' secPtr nsecPtr
             sec <- peek secPtr
             nsec <- peek nsecPtr
+            hPutStrLn stderr (show (f, sec, nsec))
             pure (fromEnum sec, fromIntegral nsec)
 
 -- Sadly even unix’s getFileStatus + modificationTimeHiRes is still about twice as slow

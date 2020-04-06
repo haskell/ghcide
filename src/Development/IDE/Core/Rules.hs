@@ -25,6 +25,7 @@ module Development.IDE.Core.Rules(
     generateCore,
     ) where
 
+import System.IO
 import Fingerprint
 
 import Data.Binary
@@ -189,6 +190,7 @@ getParsedModuleRule =
         (_, contents) <- getFileContents file
         packageState <- hscEnv <$> use_ GhcSession file
         opt <- getIdeOptions
+        liftIO $ hPutStrLn stderr "parsing module"
         (diag, res) <- liftIO $ parseModule opt packageState (fromNormalizedFilePath file) (fmap textToStringBuffer contents)
         case res of
             Nothing -> pure (Nothing, (diag, Nothing))
@@ -196,6 +198,7 @@ getParsedModuleRule =
                 mbFingerprint <- if isNothing $ optShakeFiles opt
                     then pure Nothing
                     else liftIO $ Just . fingerprintToBS <$> fingerprintFromStringBuffer contents
+                liftIO $ hPutStrLn stderr ("fingerprint: " <> show mbFingerprint)
                 pure (mbFingerprint, (diag, Just modu))
 
 getLocatedImportsRule :: Rules ()
@@ -346,6 +349,7 @@ typeCheckRule =
                   else uses_ TypeCheck (transitiveModuleDeps deps)
         setPriority priorityTypeCheck
         IdeOptions{ optDefer = defer} <- getIdeOptions
+        liftIO $ hPutStrLn stderr "typechecking"
         liftIO $ typecheckModule defer packageState tms pm
     where
         uses_th_qq dflags = xopt LangExt.TemplateHaskell dflags || xopt LangExt.QuasiQuotes dflags
