@@ -5,6 +5,7 @@ Forked from GHC v8.10.1 to work around the readFile side effect in mkHiefile
 
 Main functions for .hie file generation
 -}
+{- HLINT ignore -}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
@@ -1925,5 +1926,3 @@ instance ToHie (IEContext (Located (FieldLbl Name))) where
       FieldLabel _ _ n ->
         [ toHie $ C (IEThing c) $ L span n
         ]
-
-
