@@ -478,7 +478,7 @@ getModSummaryFromImports fp contents = do
                 , ms_hs_date      = error "Rules should not depend on ms_hs_date"
         -- When we are working with a virtual file we do not have a file date.
         -- To avoid silent issues where something is not processed because the date
-        -- has not changed, we make sure that things blow up if they depend on the
+        -- has not changed, we make sure that things blow up if they depend on the date.
                 , ms_hsc_src      = sourceType
                 , ms_hspp_buf     = Nothing
                 , ms_hspp_file    = fp
