@@ -5,6 +5,7 @@ module Development.IDE.Core.PositionMapping
   , toCurrentRange
   , fromCurrentRange
   , applyChange
+  , composeMapping
   , idMapping
   -- toCurrent and fromCurrent are mainly exposed for testing
   , toCurrent
@@ -31,10 +32,17 @@ fromCurrentRange mapping (Range a b) =
 idMapping :: PositionMapping
 idMapping = PositionMapping Just Just
 
+-- | Compose two position mappings. Composes in the same way as function
+-- composition (ie the second argument is applyed to the position first).
+composeMapping :: PositionMapping -> PositionMapping -> PositionMapping
+composeMapping (PositionMapping to1 from1) (PositionMapping to2 from2) =
+  PositionMapping (to1 <=< to2)
+                  (from1 >=> from2)
+
 applyChange :: PositionMapping -> TextDocumentContentChangeEvent -> PositionMapping
-applyChange posMapping (TextDocumentContentChangeEvent (Just r) _ t) = PositionMapping
-    { toCurrentPosition = toCurrent r t <=< toCurrentPosition posMapping
-    , fromCurrentPosition = fromCurrentPosition posMapping <=< fromCurrent r t
+applyChange PositionMapping{..} (TextDocumentContentChangeEvent (Just r) _ t) = PositionMapping
+    { toCurrentPosition = \x -> toCurrent r t =<< toCurrentPosition x
+    , fromCurrentPosition = \x -> fromCurrentPosition  =<< fromCurrent r t x
     }
 applyChange posMapping _ = posMapping
 
