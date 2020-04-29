@@ -536,7 +536,7 @@ usesWithStale key files = do
 
 withProgress :: (Eq a, Hashable a) => Var (HMap.HashMap a Int) -> a -> Action b -> Action b
 withProgress var file = actionBracket (f succ) (const $ f pred) . const
-    where f shift = modifyVar_ var $ return . HMap.alter (Just . shift . fromMaybe 0) file
+    where f shift = modifyVar_ var $ \x -> return (HMap.alter (Just . shift . fromMaybe 0) file x)
 
 
 defineEarlyCutoff
