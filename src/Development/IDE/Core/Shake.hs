@@ -53,7 +53,7 @@ import qualified Data.ByteString.Char8 as BS
 import           Data.Dynamic
 import           Data.Maybe
 import Data.Map.Strict (Map)
-import           Data.List.Extra (foldl', partition, takeEnd)
+import           Data.List.Extra (partition, takeEnd)
 import qualified Data.Set as Set
 import qualified Data.Text as T
 import Data.Traversable (for)
@@ -97,7 +97,7 @@ data ShakeExtras = ShakeExtras
     ,publishedDiagnostics :: Var (HMap.HashMap NormalizedUri [Diagnostic])
     -- ^ This represents the set of diagnostics that we have published.
     -- Due to debouncing not every change might get published.
-    ,positionMapping :: Var (HMap.HashMap NormalizedUri (Map TextDocumentVersion (PositionMapping, PositionMapping)))
+    ,positionMapping :: Var (HMap.HashMap NormalizedUri (Map TextDocumentVersion (PositionDelta, PositionMapping)))
     -- ^ Map from a text document version to a PositionMapping that describes how to map
     -- positions in a version of that document to positions in the latest version
     -- First mapping is delta from previous version and second one is an
@@ -208,7 +208,7 @@ mappingForVersion
     -> TextDocumentVersion
     -> PositionMapping
 mappingForVersion allMappings file ver =
-    maybe idMapping snd $
+    maybe zeroMapping snd $
     Map.lookup ver =<<
     HMap.lookup (filePathToUri' file) allMappings
 
@@ -833,7 +833,7 @@ filterVersionMap =
     HMap.intersectionWith $ \versionsToKeep versionMap -> Map.restrictKeys versionMap versionsToKeep
 
 updatePositionMapping :: IdeState -> VersionedTextDocumentIdentifier -> List TextDocumentContentChangeEvent -> IO ()
-updatePositionMapping IdeState{shakeExtras = ShakeExtras{positionMapping}} VersionedTextDocumentIdentifier{..} changes = do
+updatePositionMapping IdeState{shakeExtras = ShakeExtras{positionMapping}} VersionedTextDocumentIdentifier{..} (List changes) = do
     modifyVar_ positionMapping $ \allMappings -> do
         let uri = toNormalizedUri _uri
         let mappingForUri = HMap.lookupDefault Map.empty uri allMappings
@@ -841,9 +841,9 @@ updatePositionMapping IdeState{shakeExtras = ShakeExtras{positionMapping}} Versi
                 -- Very important to use mapAccum here so that the tails of
                 -- each mapping can be shared, otherwise quadratic space is
                 -- used which is evident in long running sessions.
-                Map.mapAccumRWithKey (\acc _k (delta, _) -> let new = composeMapping delta acc in (new, (delta, acc)))
-                  idMapping
-                  (Map.insert _version (shared_change, idMapping) mappingForUri)
+                Map.mapAccumRWithKey (\acc _k (delta, _) -> let new = addDelta delta acc in (new, (delta, acc)))
+                  zeroMapping
+                  (Map.insert _version (shared_change, zeroMapping) mappingForUri)
         pure $! HMap.insert uri updatedMapping allMappings
   where
-    shared_change = foldl' applyChange idMapping changes
+    shared_change = mkDelta changes
