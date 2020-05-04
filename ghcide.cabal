@@ -56,6 +56,7 @@ library
         haskell-lsp-types == 0.22.*,
         haskell-lsp == 0.22.*,
         hie-compat,
+        hiedb,
         mtl,
         network-uri,
         parallel,
@@ -239,6 +240,8 @@ executable ghcide
     if flag(ghc-lib)
       buildable: False
     default-language:   Haskell2010
+    include-dirs:
+        include
     hs-source-dirs:     exe
     ghc-options:
                 -threaded
@@ -253,6 +256,13 @@ executable ghcide
                 "-with-rtsopts=-I0 -qg -A128M"
     main-is: Main.hs
     build-depends:
+        time,
+        async,
+        bytestring,
+        base16-bytestring,
+        cryptohash-sha1,
+        hslogger,
+        hiedb,
         aeson,
         base == 4.*,
         data-default,
@@ -260,6 +270,7 @@ executable ghcide
         extra,
         filepath,
         gitrev,
+        ghc,
         hashable,
         haskell-lsp,
         haskell-lsp-types,
@@ -269,7 +280,8 @@ executable ghcide
         lens,
         optparse-applicative,
         text,
-        unordered-containers
+        unordered-containers,
+        sqlite-simple
     other-modules:
         Arguments
         Paths_ghcide

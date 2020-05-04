@@ -8,6 +8,7 @@ module Development.IDE.Session
   ,defaultLoadingOptions
   ,loadSession
   ,loadSessionWithOptions
+  ,cacheDir
   ) where
 
 -- Unfortunately, we cannot use loadSession with ghc-lib since hie-bios uses

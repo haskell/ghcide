@@ -32,6 +32,7 @@ import qualified Language.Haskell.LSP.Types.Capabilities as LSP
 
 import           Development.IDE.Core.Shake
 import Control.Monad
+import HieDb.Types
 
 
 
@@ -49,8 +50,10 @@ initialise :: LSP.ClientCapabilities
            -> Debouncer LSP.NormalizedUri
            -> IdeOptions
            -> VFSHandle
+           -> HieDb
+           -> HieWriterChan
            -> IO IdeState
-initialise caps mainRule getLspId toDiags wProg wIndefProg logger debouncer options vfs =
+initialise caps mainRule getLspId toDiags wProg wIndefProg logger debouncer options vfs hiedb hiedbChan =
     shakeOpen
         getLspId
         toDiags
@@ -62,6 +65,8 @@ initialise caps mainRule getLspId toDiags wProg wIndefProg logger debouncer opti
         (optShakeProfiling options)
         (optReportProgress options)
         (optTesting options)
+        hiedb
+        hiedbChan
         shakeOptions
           { shakeThreads = optThreads options
           , shakeFiles   = fromMaybe "/dev/null" (optShakeFiles options)

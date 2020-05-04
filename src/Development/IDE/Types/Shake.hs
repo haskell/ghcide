@@ -12,7 +12,7 @@ import Language.Haskell.LSP.Types
 data Value v
     = Succeeded TextDocumentVersion v
     | Stale TextDocumentVersion v
-    | Failed
+    | Failed Bool
     deriving (Functor, Generic, Show)
 
 instance NFData v => NFData (Value v)
@@ -22,7 +22,7 @@ instance NFData v => NFData (Value v)
 currentValue :: Value v -> Maybe v
 currentValue (Succeeded _ v) = Just v
 currentValue (Stale _ _) = Nothing
-currentValue Failed = Nothing
+currentValue Failed{} = Nothing
 
 -- | The state of the all values.
 type Values = HashMap (NormalizedFilePath, Key) (Value Dynamic)

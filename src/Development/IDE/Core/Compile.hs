@@ -21,7 +21,8 @@ module Development.IDE.Core.Compile
   , generateObjectCode
   , generateByteCode
   , generateHieAsts
-  , writeHieFile
+  , writeAndIndexHieFile
+  , indexHieFile
   , writeHiFile
   , getModSummaryFromImports
   , loadHieFile
@@ -37,11 +38,16 @@ import Development.IDE.Core.Preprocessor
 import Development.IDE.Core.Shake
 import Development.IDE.GHC.Error
 import Development.IDE.GHC.Warnings
+import Development.IDE.Spans.Common
 import Development.IDE.Types.Diagnostics
 import Development.IDE.GHC.Orphans()
 import Development.IDE.GHC.Util
 import Development.IDE.Types.Options
 import Development.IDE.Types.Location
+import Outputable
+import Control.Concurrent.Chan
+
+import HieDb
 
 import Language.Haskell.LSP.Types (DiagnosticTag(..))
 
@@ -94,6 +100,9 @@ import qualified GHC.LanguageExtensions as LangExt
 import PrelNames
 import HeaderInfo
 import Maybes (orElse)
+
+import Control.Concurrent.Extra (modifyVar_,modifyVar)
+import qualified Data.HashSet as HashSet
 
 -- | Given a string buffer, return the string (after preprocessing) and the 'ParsedModule'.
 parseModule
@@ -390,12 +399,29 @@ generateHieAsts hscEnv tcm =
   where
     dflags = hsc_dflags hscEnv
 
-writeHieFile :: HscEnv -> ModSummary -> [GHC.AvailInfo] -> HieASTs Type -> BS.ByteString -> IO [FileDiagnostic]
-writeHieFile hscEnv mod_summary exports ast source =
+indexHieFile :: HieDbWriter -> ModSummary -> NormalizedFilePath -> Compat.HieFile -> IO ()
+indexHieFile dbwriter mod_summary srcPath hf = do
+  index <- modifyVar (pendingIndexes dbwriter) $ \pending -> pure $
+    if HashSet.member srcPath pending
+      then (pending,False)
+      else (HashSet.insert srcPath pending, True)
+  when index $ writeChan (channel dbwriter) $ \db -> do
+    hPutStrLn stderr $ "Started indexing .hie file: " ++ targetPath ++ " for: " ++ show srcPath
+    addRefsFromLoaded db targetPath (Just $ fromNormalizedFilePath srcPath) True modtime hf
+    modifyVar_ (pendingIndexes dbwriter) (pure . HashSet.delete srcPath)
+    hPutStrLn stderr $ "Finished indexing .hie file: " ++ targetPath
+  where
+    modtime      = ms_hs_date mod_summary
+    mod_location = ms_location mod_summary
+    targetPath   = Compat.ml_hie_file mod_location
+
+writeAndIndexHieFile :: HscEnv -> HieDbWriter -> ModSummary -> NormalizedFilePath -> [GHC.AvailInfo] -> HieASTs Type -> BS.ByteString -> IO [FileDiagnostic]
+writeAndIndexHieFile hscEnv hiechan mod_summary srcPath exports ast source =
   handleGenerationErrors dflags "extended interface write/compression" $ do
     hf <- runHsc hscEnv $
       GHC.mkHieFile' mod_summary exports ast source
     atomicFileWrite targetPath $ flip GHC.writeHieFile hf
+    indexHieFile hiechan mod_summary srcPath hf
   where
     dflags       = hsc_dflags hscEnv
     mod_location = ms_location mod_summary
@@ -403,7 +429,7 @@ writeHieFile hscEnv mod_summary exports ast source =
 
 writeHiFile :: HscEnv -> HiFileResult -> IO [FileDiagnostic]
 writeHiFile hscEnv tc =
-  handleGenerationErrors dflags "interface generation" $ do
+  handleGenerationErrors dflags "interface write" $ do
     atomicFileWrite targetPath $ \fp ->
       writeIfaceFile dflags fp modIface
   where
@@ -736,7 +762,7 @@ getDocsBatch hsc_env _mod _names = do
                else pure (Right ( Map.lookup name dmap
                                 , Map.findWithDefault Map.empty name amap))
     case res of
-        Just x -> return $ map (first prettyPrint) x
+        Just x -> return $ map (first $ T.unpack . showGhc) x
         Nothing -> throwErrors errs
   where
     throwErrors = liftIO . throwIO . mkSrcErr

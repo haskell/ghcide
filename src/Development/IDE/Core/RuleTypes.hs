@@ -5,6 +5,7 @@
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE GADTs #-}
 
 -- | A Shake implementation of the compiler service, built
 --   using the "Shaker" abstraction layer for in-memory use.
@@ -134,18 +135,28 @@ instance Show HiFileResult where
 
 -- | Save the uncompressed AST here, we compress it just before writing to disk
 data HieAstResult
-  = HAR
+  = forall a. HAR
   { hieModule :: Module
-  , hieAst :: !(HieASTs Type)
-  , refMap :: RefMap
+  , hieAst :: !(HieASTs a)
+  , refMap :: RefMap a
   -- ^ Lazy because its value only depends on the hieAst, which is bundled in this type
   -- Lazyness can't cause leaks here because the lifetime of `refMap` will be the same
   -- as that of `hieAst`
+  , hieKind :: !(HieKind a)
+  -- ^ Is this hie file loaded from the disk, or freshly computed?
   }
 
-instance NFData HieAstResult where
-    rnf (HAR m hf _rm) = rnf m `seq` rwhnf hf
+data HieKind a where
+  HieFromDisk :: !HieFile -> HieKind TypeIndex
+  HieFresh :: HieKind Type
 
+instance NFData (HieKind a) where
+    rnf (HieFromDisk hf) = rnf hf
+    rnf HieFresh = ()
+ 
+instance NFData HieAstResult where
+    rnf (HAR m hf _rm kind) = rnf m `seq` rwhnf hf `seq` rnf kind
+ 
 instance Show HieAstResult where
     show = show . hieModule
 

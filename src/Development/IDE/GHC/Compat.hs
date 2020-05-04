@@ -151,7 +151,7 @@ upNameCache = updNameCache
 #endif
 
 
-type RefMap = Map Identifier [(Span, IdentifierDetails Type)]
+type RefMap a = Map Identifier [(Span, IdentifierDetails a)]
 
 mkHieFile' :: ModSummary
            -> [AvailInfo]
