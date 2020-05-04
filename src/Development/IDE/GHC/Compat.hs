@@ -121,6 +121,7 @@ import FastString (FastString)
 #if MIN_GHC_API_VERSION(8,6,0)
 import Development.IDE.GHC.HieAst (mkHieFile,enrichHie)
 import Development.IDE.GHC.HieBin
+import Data.Map (Map)
 
 #if MIN_GHC_API_VERSION(8,8,0)
 import HieUtils

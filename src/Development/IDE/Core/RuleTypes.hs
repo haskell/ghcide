@@ -14,7 +14,7 @@ module Development.IDE.Core.RuleTypes(
 import           Control.DeepSeq
 import Data.Binary
 import           Development.IDE.Import.DependencyInformation
-import Development.IDE.GHC.Compat
+import Development.IDE.GHC.Compat hiding (HieFileResult)
 import Development.IDE.GHC.Util
 import Development.IDE.Core.Shake (KnownTargets)
 import           Data.Hashable
@@ -26,7 +26,7 @@ import           GHC.Generics                             (Generic)
 import Module (InstalledUnitId)
 import HscTypes (hm_iface, CgGuts, Linkable, HomeModInfo, ModDetails)
 
-import           Development.IDE.Spans.Type
+import           Development.IDE.Spans.Common
 import           Development.IDE.Import.FindImports (ArtifactsLocation)
 import Data.ByteString (ByteString)
 
@@ -112,9 +112,16 @@ type instance RuleResult TypeCheck = TcModuleResult
 
 -- | The uncompressed HieAST
 type instance RuleResult GetHieAst = HieAstResult
- 
 -- | Information about what spans occur where, requires TypeCheck
-type instance RuleResult GetSpanInfo = SpansInfo
+
+newtype PDocMap = PDocMap {getDocMap :: DocMap}
+instance NFData PDocMap where
+    rnf = rwhnf
+
+instance Show PDocMap where
+    show = const "docmap"
+
+type instance RuleResult GetDocMap = PDocMap
 
 -- | Convert to Core, requires TypeCheck*
 type instance RuleResult GenerateCore = (SafeHaskellMode, CgGuts, ModDetails)
@@ -208,11 +215,12 @@ instance Hashable TypeCheck
 instance NFData   TypeCheck
 instance Binary   TypeCheck
 
-data GetSpanInfo = GetSpanInfo
+data GetDocMap = GetDocMap
     deriving (Eq, Show, Typeable, Generic)
-instance Hashable GetSpanInfo
-instance NFData   GetSpanInfo
-instance Binary   GetSpanInfo
+
+instance Hashable GetDocMap
+instance NFData   GetDocMap
+instance Binary   GetDocMap
 
 data GetHieAst = GetHieAst
     deriving (Eq, Show, Typeable, Generic)
