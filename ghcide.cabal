@@ -173,9 +173,7 @@ library
         Development.IDE.Import.FindImports
         Development.IDE.LSP.Notifications
         Development.IDE.Spans.AtPoint
-        Development.IDE.Spans.Calculate
         Development.IDE.Spans.Documentation
-        Development.IDE.Spans.Type
         Development.IDE.Plugin.CodeAction.PositionIndexed
         Development.IDE.Plugin.CodeAction.Rules
         Development.IDE.Plugin.CodeAction.RuleTypes

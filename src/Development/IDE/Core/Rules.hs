@@ -24,6 +24,7 @@ module Development.IDE.Core.Rules(
     getAtPoint,
     getDefinition,
     getTypeDefinition,
+    highlightAtPoint,
     getDependencies,
     getParsedModule,
     generateCore,
@@ -39,7 +40,7 @@ import Control.Monad.Trans.Maybe
 import Development.IDE.Core.Compile
 import Development.IDE.Core.OfInterest
 import Development.IDE.Types.Options
-import Development.IDE.Spans.Calculate
+import Development.IDE.Spans.Documentation
 import Development.IDE.Import.DependencyInformation
 import Development.IDE.Import.FindImports
 import           Development.IDE.Core.FileExists
@@ -62,9 +63,9 @@ import qualified Data.Text.Encoding                       as T
 import           Development.IDE.GHC.Error
 import           Development.Shake                        hiding (Diagnostic)
 import Development.IDE.Core.RuleTypes
-import Development.IDE.Spans.Type
 import qualified Data.ByteString.Char8 as BS
 import Development.IDE.Core.PositionMapping
+import           Language.Haskell.LSP.Types (DocumentHighlight (..))
 
 import qualified GHC.LanguageExtensions as LangExt
 import HscTypes
@@ -133,26 +134,35 @@ getAtPoint :: NormalizedFilePath -> Position -> IdeAction (Maybe (Maybe Range, [
 getAtPoint file pos = fmap join $ runMaybeT $ do
   ide <- ask
   opts <- liftIO $ getIdeOptionsIO ide
-  (spans, mapping) <- useE  GetSpanInfo file
+
+  (HFR hf _, mapping) <- useE GetHieFile file
+  PDocMap dm <- lift $ maybe (PDocMap mempty) fst <$> (runMaybeT $ useE GetDocMap file)
+
   !pos' <- MaybeT (return $ fromCurrentPosition mapping pos)
-  return $ AtPoint.atPoint opts spans pos'
+  return $ AtPoint.atPoint opts hf dm pos'
 
 -- | Goto Definition.
 getDefinition :: NormalizedFilePath -> Position -> IdeAction (Maybe Location)
 getDefinition file pos = runMaybeT $ do
     ide <- ask
     opts <- liftIO $ getIdeOptionsIO ide
-    (spans,mapping) <- useE GetSpanInfo file
+    (HFR hf _, mapping) <- useE GetHieFile file
     !pos' <- MaybeT (return $ fromCurrentPosition mapping pos)
-    AtPoint.gotoDefinition (getHieFile ide file) opts (spansExprs spans) pos'
+    AtPoint.gotoDefinition (getHieFile ide file) opts hf pos'
 
 getTypeDefinition :: NormalizedFilePath -> Position -> IdeAction (Maybe [Location])
 getTypeDefinition file pos = runMaybeT $ do
     ide <- ask
     opts <- liftIO $ getIdeOptionsIO ide
-    (spans,mapping) <- useE GetSpanInfo file
+    (HFR hf _, mapping) <- useE GetHieFile file
     !pos' <- MaybeT (return $ fromCurrentPosition mapping pos)
-    AtPoint.gotoTypeDefinition (getHieFile ide file) opts (spansExprs spans) pos'
+    AtPoint.gotoTypeDefinition (getHieFile ide file) opts hf pos'
+
+highlightAtPoint :: NormalizedFilePath -> Position -> IdeAction (Maybe [DocumentHighlight])
+highlightAtPoint file pos = runMaybeT $ do
+    (HFR hf rf,mapping) <- useE GetHieFile file
+    !pos' <- MaybeT (return $ fromCurrentPosition mapping pos)
+    AtPoint.documentHighlight hf rf pos'
 
 getHieFile
   :: ShakeExtras
@@ -504,27 +514,42 @@ getDependenciesRule =
         let mbFingerprints = map (fingerprintString . fromNormalizedFilePath) allFiles <$ optShakeFiles opts
         return (fingerprintToBS . fingerprintFingerprints <$> mbFingerprints, ([], transitiveDeps depInfo file))
 
--- Source SpanInfo is used by AtPoint and Goto Definition.
-getSpanInfoRule :: Rules ()
-getSpanInfoRule =
-    define $ \GetSpanInfo file -> do
-        tc <- use_ TypeCheck file
-        packageState <- hscEnv <$> use_ GhcSessionDeps file
+getHieFileRule :: Rules ()
+getHieFileRule =
+    define $ \GetHieFile f -> do
+      tcm <- use_ TypeCheck f
+      hf <- case tmrHieFile tcm of
+        Just hf -> pure ([],Just hf)
+        Nothing -> do
+          hsc  <- hscEnv <$> use_ GhcSession f
+          src <- getSourceFileSource f
+          liftIO $ generateAndWriteHieFile hsc (tmrModule tcm) src
+      let refmap = generateReferencesMap . getAsts . hie_asts
+      pure $ fmap (\x -> HFR x $ refmap x) <$> hf
+
+
+getDocMapRule :: Rules ()
+getDocMapRule =
+    define $ \GetDocMap file -> do
+      hmi <- hirModIface <$> use_ GetModIface file
+      hsc <- hscEnv <$> use_ GhcSessionDeps file
+      HFR _ rf <- use_ GetHieFile file
+
+      deps <- maybe (TransitiveDependencies [] [] []) fst <$> useWithStale GetDependencies file
+      let tdeps = transitiveModuleDeps deps
 
 -- When possible, rely on the haddocks embedded in our interface files
 -- This creates problems on ghc-lib, see comment on 'getDocumentationTryGhc'
 #if MIN_GHC_API_VERSION(8,6,0) && !defined(GHC_LIB)
-        let parsedDeps = []
+      let parsedDeps = []
 #else
-        deps <- maybe (TransitiveDependencies [] [] []) fst <$> useWithStale GetDependencies file
-        let tdeps = transitiveModuleDeps deps
-        parsedDeps <- mapMaybe (fmap fst) <$> usesWithStale GetParsedModule tdeps
+      parsedDeps <- uses_ GetParsedModule tdeps
 #endif
 
-        (fileImports, _) <- use_ GetLocatedImports file
-        let imports = second (fmap artifactFilePath) <$> fileImports
-        x <- liftIO $ getSrcSpanInfos packageState imports tc parsedDeps
-        return ([], Just x)
+      ifaces <- uses_ GetModIface tdeps
+
+      docMap <- liftIO $ evalGhcEnv hsc $ mkDocMap parsedDeps rf hmi (map hirModIface ifaces)
+      return ([],Just $ PDocMap docMap)
 
 -- Typechecks a module.
 typeCheckRule :: Rules ()
@@ -567,16 +592,17 @@ typeCheckRuleDefinition hsc pm isFoi source = do
     res <- typecheckModule defer hsc pm
     case res of
       (diags, Just (hsc,tcm)) -> do
-        case isFoi of
-          IsFOI Modified -> return (diags, Just tcm)
-          _ -> do -- If the file is saved on disk, or is not a FOI, we write out ifaces
+        let doGenerate = case isFoi of
+              -- If the file is Modified in VFS we do not write out ifaces
+              IsFOI Modified -> False
+              -- If the file is on disk, we write out interface files as long as there are
+              -- no deferred type errors, as we won't get proper diagnostics otherwise
+              _ -> not $ tmrDeferedError tcm
+        if not doGenerate
+          then return (diags, Just tcm)
+          else do
             diagsHie <- generateAndWriteHieFile hsc (tmrModule tcm) (fromMaybe "" source)
-            -- Don't save interface files for modules that compiled due to defering
-            -- type errors, as we won't get proper diagnostics if we load these from
-            -- disk
-            diagsHi  <- if not $ tmrDeferedError tcm
-                        then writeHiFile hsc tcm
-                        else pure mempty
+            diagsHi  <- writeHiFile hsc tcm
             return (diags <> diagsHi <> diagsHie, Just tcm)
       (diags, res) ->
         return (diags, snd <$> res)
@@ -839,7 +865,8 @@ mainRule = do
     reportImportCyclesRule
     getDependenciesRule
     typeCheckRule
-    getSpanInfoRule
+    getHieFileRule
+    getDocMapRule
     generateCoreRule
     generateByteCodeRule
     loadGhcSession

@@ -116,7 +116,7 @@ initializeResponseTests = withResource acquire release tests where
     -- for now
     , chk "NO goto implementation"  _implementationProvider (Just $ GotoOptionsStatic True)
     , chk "NO find references"          _referencesProvider  Nothing
-    , chk "NO doc highlight"     _documentHighlightProvider  Nothing
+    , chk "   doc highlight"     _documentHighlightProvider  (Just True)
     , chk "   doc symbol"           _documentSymbolProvider  (Just True)
     , chk "NO workspace symbol"    _workspaceSymbolProvider  Nothing
     , chk "   code action"             _codeActionProvider $ Just $ CodeActionOptionsStatic True
@@ -197,8 +197,7 @@ diagnosticTests = testGroup "diagnostics"
             , "foo :: Int -> Int -> Int"
             , "foo a b = a + ab"
             , "bar :: Int -> Int -> Int"
-            , "bar a b = cd + b"
-            ]
+            , "bar a b = cd + b" ]
       _ <- createDoc "Testing.hs" "haskell" content
       expectDiagnostics
         [ ( "Testing.hs"

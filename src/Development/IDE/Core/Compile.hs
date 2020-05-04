@@ -270,7 +270,7 @@ mkTcModuleResult tcm upgradedError = do
     (iface, _) <- liftIO $ mkIfaceTc session Nothing sf details tcGblEnv
 #endif
     let mod_info = HomeModInfo iface details Nothing
-    return $ TcModuleResult tcm mod_info upgradedError
+    return $ TcModuleResult tcm mod_info upgradedError Nothing
   where
     (tcGblEnv, details) = tm_internals_ tcm
 
@@ -281,7 +281,7 @@ atomicFileWrite targetPath write = do
   (tempFilePath, cleanUp) <- newTempFileWithin dir
   (write tempFilePath >> renameFile tempFilePath targetPath) `onException` cleanUp
 
-generateAndWriteHieFile :: HscEnv -> TypecheckedModule -> BS.ByteString -> IO [FileDiagnostic]
+generateAndWriteHieFile :: HscEnv -> TypecheckedModule -> BS.ByteString -> IO ([FileDiagnostic],Maybe Compat.HieFile)
 generateAndWriteHieFile hscEnv tcm source =
   handleGenerationErrors dflags "extended interface generation" $ do
     case tm_renamed_source tcm of
@@ -289,8 +289,9 @@ generateAndWriteHieFile hscEnv tcm source =
         hf <- runHsc hscEnv $
           GHC.mkHieFile mod_summary (fst $ tm_internals_ tcm) rnsrc source
         atomicFileWrite targetPath $ flip GHC.writeHieFile hf
+        pure (Just hf)
       _ ->
-        return ()
+        return Nothing
   where
     dflags       = hsc_dflags hscEnv
     mod_summary  = pm_mod_summary $ tm_parsed_module tcm
@@ -299,19 +300,20 @@ generateAndWriteHieFile hscEnv tcm source =
 
 writeHiFile :: HscEnv -> TcModuleResult -> IO [FileDiagnostic]
 writeHiFile hscEnv tc =
-  handleGenerationErrors dflags "interface generation" $ do
+  fst <$> (handleGenerationErrors dflags "interface generation" $ do
     atomicFileWrite targetPath $ \fp ->
       writeIfaceFile dflags fp modIface
+    pure Nothing)
   where
     modIface = hm_iface $ tmrModInfo tc
     targetPath = ml_hi_file $ ms_location $ tmrModSummary tc
     dflags = hsc_dflags hscEnv
 
-handleGenerationErrors :: DynFlags -> T.Text -> IO () -> IO [FileDiagnostic]
+handleGenerationErrors :: DynFlags -> T.Text -> IO (Maybe a) -> IO ([FileDiagnostic],Maybe a)
 handleGenerationErrors dflags source action =
-  action >> return [] `catches`
-    [ Handler $ return . diagFromGhcException source dflags
-    , Handler $ return . diagFromString source DsError (noSpan "<internal>")
+  (([],) <$> action) `catches`
+    [ Handler $ return . (,Nothing) . diagFromGhcException source dflags
+    , Handler $ return . (,Nothing) . diagFromString source DsError (noSpan "<internal>")
     . (("Error during " ++ T.unpack source) ++) . show @SomeException
     ]
 
