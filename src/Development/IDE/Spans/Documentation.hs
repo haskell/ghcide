@@ -9,6 +9,8 @@ module Development.IDE.Spans.Documentation (
     getDocumentation
   , getDocumentationTryGhc
   , getDocumentationsTryGhc
+  , DocMap
+  , mkDocMap
   ) where
 
 import           Control.Monad
@@ -16,6 +18,7 @@ import           Control.Monad.Extra (findM)
 import           Data.Foldable
 import           Data.List.Extra
 import qualified Data.Map as M
+import qualified Data.Set as S
 import           Data.Maybe
 import qualified Data.Text as T
 #if MIN_GHC_API_VERSION(8,6,0)
@@ -33,6 +36,26 @@ import           GhcMonad
 import           Packages
 import           Name
 import           Language.Haskell.LSP.Types (getUri, filePathToUri)
+import Data.Either
+
+mkDocMap
+  :: GhcMonad m
+  => [ParsedModule]
+  -> RefMap
+  -> ModIface
+  -> [ModIface]
+  -> m DocMap
+mkDocMap sources rm hmi deps =
+  do mapM_ (`loadDepModule` Nothing) (reverse deps)
+     loadDepModule hmi Nothing
+     foldrM go M.empty names
+  where
+    go n map = do
+      doc <- getDocumentationTryGhc mod sources n
+      pure $ M.insert n doc map
+    names = rights $ S.toList idents
+    idents = M.keysSet rm
+    mod = mi_module hmi
 
 getDocumentationTryGhc :: GhcMonad m => Module -> [ParsedModule] -> Name -> m SpanDoc
 getDocumentationTryGhc mod deps n = head <$> getDocumentationsTryGhc mod deps [n]
