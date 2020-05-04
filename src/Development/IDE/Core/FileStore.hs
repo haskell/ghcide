@@ -218,7 +218,7 @@ setFileModified state prop nfp = do
     let da = mkDelayedAction "FileStoreTC" L.Info $ do
           ShakeExtras{progressUpdate} <- getShakeExtras
           liftIO $ progressUpdate KickStarted
-          void $ use GetSpanInfo nfp
+          void $ use GetHieFile nfp
           liftIO $ progressUpdate KickCompleted
     shakeRestart state [da]
     when prop $

@@ -14,6 +14,7 @@ module Development.IDE.GHC.Compat(
     HieFileResult(..),
     HieFile(..),
     NameCacheUpdater(..),
+    RefMap,
     hieExportNames,
     mkHieFile,
     writeHieFile,
@@ -107,6 +108,7 @@ import FastString (FastString)
 #if MIN_GHC_API_VERSION(8,6,0)
 import Development.IDE.GHC.HieAst (mkHieFile)
 import Development.IDE.GHC.HieBin
+import Data.Map (Map)
 
 #if MIN_GHC_API_VERSION(8,8,0)
 import HieUtils
@@ -407,6 +409,8 @@ getConArgs = GHC.getConArgs
 #else
 getConArgs = GHC.getConDetails
 #endif
+
+type RefMap = Map Identifier [(Span, IdentifierDetails TypeIndex)]
 
 getPackageName :: DynFlags -> Module.InstalledUnitId -> Maybe PackageName
 getPackageName dfs i = packageName <$> lookupPackage dfs (Module.DefiniteUnitId (Module.DefUnitId i))

@@ -75,3 +75,9 @@ deriving instance Eq SourceModified
 deriving instance Show SourceModified
 instance NFData SourceModified where
     rnf = rwhnf
+
+instance NFData a => NFData (IdentifierDetails a) where
+    rnf (IdentifierDetails a b) = rnf a `seq` rnf (length b)
+
+instance NFData RealSrcSpan where
+    rnf = rwhnf
