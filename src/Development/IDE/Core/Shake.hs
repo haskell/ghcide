@@ -71,11 +71,10 @@ import Development.IDE.Types.Location
 import Development.IDE.Types.Options
 import           Control.Concurrent.Async
 import           Control.Concurrent.Extra
-import           Control.Concurrent.STM.TMQueue (writeTMQueue, isClosedTMQueue, closeTMQueue, readTMQueue, newTMQueueIO, TMQueue)
-import           Control.Concurrent.STM (putTMVar, takeTMVar, newEmptyTMVar, atomically)
+import           Control.Concurrent.STM.TQueue (writeTQueue, readTQueue, newTQueueIO, TQueue)
+import           Control.Concurrent.STM (atomically)
 import           Control.DeepSeq
 import           Control.Exception.Extra
-import           Control.Monad.Loops (whileJust_)
 import           System.Time.Extra
 import           Data.Typeable
 import qualified Language.Haskell.LSP.Messages as LSP
@@ -228,12 +227,13 @@ type IdeRule k v =
   )
 
 data ShakeSession = ShakeSession
-  { cancelShakeSession :: !(IO ())      -- Close the Shake runner
-  , runInShakeSession  :: !(forall a . Action a -> IO (Maybe (IO a)))
+  { cancelShakeSession :: !(IO ())
+    -- ^ Close the Shake session
+  , runInShakeSession  :: !(forall a . Action a -> IO (IO a))
   }
 
-nilShakeRunner :: ShakeSession
-nilShakeRunner = ShakeSession (pure ()) (const $ pure Nothing)
+nilShakeSession :: ShakeSession
+nilShakeSession = ShakeSession (pure ()) (\_ -> error "nilShakeSession")
 
 -- | A Shake database plus persistent store. Can be thought of as storing
 --   mappings from @(FilePath, k)@ to @RuleResult k@.
@@ -336,7 +336,7 @@ shakeOpen getLspId eventer logger debouncer shakeProfileDir (IdeReportProgress r
                 , shakeProgress = const $ if reportProgress then lspShakeProgress getLspId eventer inProgress else pure ()
                 }
             rules
-    shakeSession <- newMVar nilShakeRunner
+    shakeSession <- newMVar nilShakeSession
     shakeDb <- shakeDb
     return IdeState{..}
 
@@ -422,26 +422,21 @@ shakeRun it@IdeState{shakeExtras=ShakeExtras{logger}, ..} acts =
         -- See https://github.com/digital-asset/ghcide/issues/79
         (\() -> realShakeRun it acts)
 
--- | Append an action to the existing 'ShakeSession', if any. If none, starts a new 'shakeRun'.
+-- | Append an action to the existing 'ShakeSession'.
+--   Assumes an existing 'ShakeSession' is available.
 shakeRunGently :: IdeState -> Action a -> IO (IO a)
-shakeRunGently it@IdeState{shakeExtras=ShakeExtras{..}, ..} act = do
-    withMVar' shakeSession tryEnqueue $ \res ->
-        case res of
-            Just wait -> pure wait
-            Nothing   -> second (fmap head) <$> realShakeRun it [act]
-      where
-          tryEnqueue s@ShakeSession{..} =
-              fmap (s,) <$> runInShakeSession act
+shakeRunGently IdeState{shakeExtras=ShakeExtras, ..} act =
+    withMVar shakeSession $ \s -> runInShakeSession s act
 
 realShakeRun :: IdeState -> [Action a] -> IO (ShakeSession, IO [a])
 realShakeRun IdeState{shakeExtras=ShakeExtras{..}, ..} acts = do
-              actionQueue :: TMQueue (Action ()) <- newTMQueueIO
+              actionQueue :: TQueue (Action ()) <- newTQueueIO
               start <- offsetTime
 
               let
                   -- A daemon-like action used to inject additional work
                   pumpAction =
-                      whileJust_ (liftIO $ atomically $ readTMQueue actionQueue) id
+                      forever $ join $ liftIO $ atomically $ readTQueue actionQueue
 
                   workThread restore = do
                     let acts' = (Nothing <$ pumpAction) : (fmap Just <$> acts)
@@ -462,7 +457,6 @@ realShakeRun IdeState{shakeExtras=ShakeExtras{..}, ..} acts = do
                     let wrapUp = do
                             logDebug logger $ T.pack $
                                 "Finishing shakeRun (took " ++ showDuration runTime ++ ", " ++ res' ++ profile ++ ")"
-                            liftIO $ atomically $ closeTMQueue actionQueue
 
                     return (fst <$> res, wrapUp)
 
@@ -477,13 +471,11 @@ realShakeRun IdeState{shakeExtras=ShakeExtras{..}, ..} acts = do
               -- 'runInShakeSession' is used to append work in this Shake session
               --  The session stays open until 'cancelShakeSession' is called
               --  This should only be necessary iff the (virtual) filesystem has changed
-              let runInShakeSession :: forall a . Action a -> IO (Maybe (IO a))
-                  runInShakeSession act = atomically $ do
-                    isClosed <- isClosedTMQueue actionQueue
-                    if isClosed then pure Nothing else do
-                        res <- newEmptyTMVar
-                        writeTMQueue actionQueue (act >>= liftIO . atomically . putTMVar res)
-                        return (Just $ atomically $ takeTMVar res)
+              let runInShakeSession :: forall a . Action a -> IO (IO a)
+                  runInShakeSession act = do
+                        res <- newEmptyMVar
+                        atomically $ writeTQueue actionQueue (act >>= liftIO . putMVar res)
+                        return (takeMVar res)
 
                   cancelShakeSession = cancel aThread
 
@@ -551,7 +543,7 @@ uses_ key files = do
     res <- uses key files
     case sequence res of
         Nothing -> liftIO $ throwIO $ BadDependency (show key)
-        Just v  -> return v
+        Just v -> return v
 
 
 -- | When we depend on something that reported an error, and we fail as a direct result, throw BadDependency
