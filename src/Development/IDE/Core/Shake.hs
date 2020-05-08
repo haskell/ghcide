@@ -2,6 +2,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 
 {-# LANGUAGE ExistentialQuantification  #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE ConstraintKinds            #-}
 
@@ -24,6 +25,7 @@ module Development.IDE.Core.Shake(
     IdeRule, IdeResult, GetModificationTime(..),
     shakeOpen, shakeShut,
     shakeRun,
+    shakeRunGently,
     shakeProfile,
     use, useWithStale, useNoFile, uses, usesWithStale,
     use_, useNoFile_, uses_,
@@ -69,8 +71,11 @@ import Development.IDE.Types.Location
 import Development.IDE.Types.Options
 import           Control.Concurrent.Async
 import           Control.Concurrent.Extra
+import           Control.Concurrent.STM.TMQueue (writeTMQueue, isClosedTMQueue, closeTMQueue, readTMQueue, newTMQueueIO, TMQueue)
+import           Control.Concurrent.STM (putTMVar, takeTMVar, newEmptyTMVar, atomically)
 import           Control.Exception
 import           Control.DeepSeq
+import           Control.Monad.Loops (whileJust_)
 import           System.Time.Extra
 import           Data.Typeable
 import qualified Language.Haskell.LSP.Messages as LSP
@@ -218,13 +223,21 @@ type IdeRule k v =
   , NFData v
   )
 
+data ShakeSession = ShakeSession
+  { cancelShakeSession :: !(IO ())      -- Close the Shake runner
+  , runInShakeSession  :: !(forall a . Action a -> IO (Maybe (IO a)))
+  }
+
+nilShakeRunner :: ShakeSession
+nilShakeRunner = ShakeSession (pure ()) (const $ pure Nothing)
+
 -- | A Shake database plus persistent store. Can be thought of as storing
 --   mappings from @(FilePath, k)@ to @RuleResult k@.
 data IdeState = IdeState
-    {shakeDb :: ShakeDatabase
-    ,shakeAbort :: MVar (IO ()) -- close whoever was running last
-    ,shakeClose :: IO ()
-    ,shakeExtras :: ShakeExtras
+    {shakeDb         :: ShakeDatabase
+    ,shakeSession    :: MVar ShakeSession
+    ,shakeClose      :: IO ()
+    ,shakeExtras     :: ShakeExtras
     ,shakeProfileDir :: Maybe FilePath
     }
 
@@ -319,7 +332,7 @@ shakeOpen getLspId eventer logger debouncer shakeProfileDir (IdeReportProgress r
                 , shakeProgress = const $ if reportProgress then lspShakeProgress getLspId eventer inProgress else pure ()
                 }
             rules
-    shakeAbort <- newMVar $ return ()
+    shakeSession <- newMVar nilShakeRunner
     shakeDb <- shakeDb
     return IdeState{..}
 
@@ -375,57 +388,106 @@ shakeProfile :: IdeState -> FilePath -> IO ()
 shakeProfile IdeState{..} = shakeProfileDatabase shakeDb
 
 shakeShut :: IdeState -> IO ()
-shakeShut IdeState{..} = withMVar shakeAbort $ \stop -> do
+shakeShut IdeState{..} = withMVar shakeSession $ \runner -> do
     -- Shake gets unhappy if you try to close when there is a running
     -- request so we first abort that.
-    stop
+    cancelShakeSession runner
     shakeClose
 
 -- | This is a variant of withMVar where the first argument is run unmasked and if it throws
 -- an exception, the previous value is restored while the second argument is executed masked.
-withMVar' :: MVar a -> (a -> IO ()) -> IO (a, c) -> IO c
+withMVar' :: MVar a -> (a -> IO b) -> (b -> IO (a, c)) -> IO c
 withMVar' var unmasked masked = mask $ \restore -> do
     a <- takeMVar var
-    restore (unmasked a) `onException` putMVar var a
-    (a', c) <- masked
+    b <- restore (unmasked a) `onException` putMVar var a
+    (a', c) <- masked b
     putMVar var a'
     pure c
 
 -- | Spawn immediately. If you are already inside a call to shakeRun that will be aborted with an exception.
 shakeRun :: IdeState -> [Action a] -> IO (IO [a])
-shakeRun IdeState{shakeExtras=ShakeExtras{..}, ..} acts =
+shakeRun it@IdeState{shakeExtras=ShakeExtras{logger}, ..} acts =
     withMVar'
-        shakeAbort
-        (\stop -> do
-              (stopTime,_) <- duration stop
+        shakeSession
+        (\runner -> do
+              (stopTime,_) <- duration (cancelShakeSession runner)
               logDebug logger $ T.pack $ "Starting shakeRun (aborting the previous one took " ++ showDuration stopTime ++ ")"
         )
         -- It is crucial to be masked here, otherwise we can get killed
-        -- between spawning the new thread and updating shakeAbort.
+        -- between spawning the new thread and updating shakeSession.
         -- See https://github.com/digital-asset/ghcide/issues/79
-        (do
+        (\() -> realShakeRun it acts)
+
+-- | Append an action to the existing 'ShakeSession', if any. If none, starts a new 'shakeRun'.
+shakeRunGently :: IdeState -> Action a -> IO (IO a)
+shakeRunGently it@IdeState{shakeExtras=ShakeExtras{..}, ..} act = do
+    withMVar' shakeSession tryEnqueue $ \res ->
+        case res of
+            Just wait -> pure wait
+            Nothing   -> second (fmap head) <$> realShakeRun it [act]
+      where
+          tryEnqueue s@ShakeSession{..} =
+              fmap (s,) <$> runInShakeSession act
+
+realShakeRun :: IdeState -> [Action a] -> IO (ShakeSession, IO [a])
+realShakeRun IdeState{shakeExtras=ShakeExtras{..}, ..} acts = do
+              actionQueue :: TMQueue (Action ()) <- newTMQueueIO
               start <- offsetTime
-              aThread <- asyncWithUnmask $ \restore -> do
-                   res <- try (restore $ shakeRunDatabaseProfile shakeProfileDir shakeDb acts)
-                   runTime <- start
-                   let res' = case res of
-                            Left e -> "exception: " <> displayException e
-                            Right _ -> "completed"
-                       profile = case res of
-                            Right (_, Just fp) ->
-                                let link = case filePathToUri' $ toNormalizedFilePath' fp of
-                                                NormalizedUri _ x -> x
-                                in ", profile saved at " <> T.unpack link
-                            _ -> ""
-                   let logMsg = logDebug logger $ T.pack $
-                        "Finishing shakeRun (took " ++ showDuration runTime ++ ", " ++ res' ++ profile ++ ")"
-                   return (fst <$> res, logMsg)
-              let wrapUp (res, _) = do
-                    either (throwIO @SomeException) return res
+
+              let
+                  -- A daemon-like action used to inject additional work
+                  pumpAction =
+                      whileJust_ (liftIO $ atomically $ readTMQueue actionQueue) id
+
+                  workThread restore = do
+                    let acts' = (Nothing <$ pumpAction) : (fmap Just <$> acts)
+                    res <- try (restore $ shakeRunDatabaseProfile shakeProfileDir shakeDb acts')
+                    runTime <- start
+                    let res' = case res of
+                                Left e -> "exception: " <> displayException e
+                                Right _ -> "completed"
+                        profile = case res of
+                                Right (_, Just fp) ->
+                                    let link = case filePathToUri' $ toNormalizedFilePath' fp of
+                                                    NormalizedUri _ x -> x
+                                    in ", profile saved at " <> T.unpack link
+                                _ -> ""
+
+                        -- Wrap up in a thread to avoid calling interruptible
+                        -- operations inside the masked section
+                    let wrapUp = do
+                            logDebug logger $ T.pack $
+                                "Finishing shakeRun (took " ++ showDuration runTime ++ ", " ++ res' ++ profile ++ ")"
+                            liftIO $ atomically $ closeTMQueue actionQueue
+
+                    return (fst <$> res, wrapUp)
+
+              -- Do the work in a background thread
+              aThread <- asyncWithUnmask workThread
+
+              -- run the wrap up unmasked
               _ <- async $ do
-                  (_, logMsg) <- wait aThread
-                  logMsg
-              pure (cancel aThread, wrapUp =<< wait aThread))
+                  (_, wrapUp) <- wait aThread
+                  wrapUp
+
+              -- 'runInShakeSession' is used to append work in this Shake session
+              --  The session stays open until 'cancelShakeSession' is called
+              --  This should only be necessary iff the (virtual) filesystem has changed
+              let runInShakeSession :: forall a . Action a -> IO (Maybe (IO a))
+                  runInShakeSession act = atomically $ do
+                    isClosed <- isClosedTMQueue actionQueue
+                    if isClosed then pure Nothing else do
+                        res <- newEmptyTMVar
+                        writeTMQueue actionQueue (act >>= liftIO . atomically . putTMVar res)
+                        return (Just $ atomically $ takeTMVar res)
+
+                  cancelShakeSession = cancel aThread
+
+                  initialResult = do
+                    (res,_) <- wait aThread
+                    either (throwIO @SomeException) (return . catMaybes) res
+
+              pure (ShakeSession{..}, initialResult)
 
 getDiagnostics :: IdeState -> IO [FileDiagnostic]
 getDiagnostics IdeState{shakeExtras = ShakeExtras{diagnostics}} = do
@@ -485,7 +547,7 @@ uses_ key files = do
     res <- uses key files
     case sequence res of
         Nothing -> liftIO $ throwIO $ BadDependency (show key)
-        Just v -> return v
+        Just v  -> return v
 
 
 -- | When we depend on something that reported an error, and we fail as a direct result, throw BadDependency

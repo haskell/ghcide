@@ -85,13 +85,13 @@ shutdown = shakeShut
 runAction :: IdeState -> Action a -> IO a
 runAction ide action = do
     bar <- newBarrier
-    res <- shakeRun ide [do v <- action; liftIO $ signalBarrier bar v; return v]
+    res <- shakeRunGently ide (do v <- action; liftIO $ signalBarrier bar v; return v)
     -- shakeRun might throw an exception (either through action or a default rule),
     -- in which case action may not complete successfully, and signalBarrier might not be called.
     -- Therefore we wait for either res (which propagates the exception) or the barrier.
     -- Importantly, if the barrier does finish, cancelling res only kills waiting for the result,
     -- it doesn't kill the actual work
-    fmap fromEither $ race (head <$> res) $ waitBarrier bar
+    fmap fromEither $ race res $ waitBarrier bar
 
 
 -- | `runActionSync` is similar to `runAction` but it will
