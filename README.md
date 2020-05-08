@@ -40,7 +40,7 @@ Note that you need to compile `ghcide` with the same `ghc` as the project you ar
    or e.g. including `pkgs.haskellPackages.ghcide` in your projects `shell.nix`.
    Depending on your `nixpkgs` channel that might not be the newest `ghcide`, though.
 
-2. If your `ghc` does not match nixpkgs you should try the [ghcide-nix repository](https://github.com/hercules-ci/ghcide-nix)
+2. If your `ghc` does not match nixpkgs you should try the [ghcide-nix repository](https://github.com/cachix/ghcide-nix)
    which provides a `ghcide` via the `haskell.nix` infrastructure.
 
 #### With Cabal or Stack
