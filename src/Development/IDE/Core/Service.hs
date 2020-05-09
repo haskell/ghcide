@@ -85,7 +85,7 @@ shutdown = shakeShut
 runAction :: IdeState -> Action a -> IO a
 runAction ide action = do
     bar <- newBarrier
-    res <- shakeRunGently ide (do v <- action; liftIO $ signalBarrier bar v; return v)
+    res <- shakeRun ide (do v <- action; liftIO $ signalBarrier bar v; return v)
     -- shakeRun might throw an exception (either through action or a default rule),
     -- in which case action may not complete successfully, and signalBarrier might not be called.
     -- Therefore we wait for either res (which propagates the exception) or the barrier.
@@ -99,7 +99,7 @@ runAction ide action = do
 -- finish running. This is mainly useful in tests, where you want
 -- to wait for all rules to fire so you can check diagnostics.
 runActionSync :: IdeState -> Action a -> IO a
-runActionSync s act = fmap head $ join $ shakeRun s [act]
+runActionSync s act = join $ shakeRun s act
 
 getIdeOptions :: Action IdeOptions
 getIdeOptions = do

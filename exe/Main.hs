@@ -178,11 +178,6 @@ expandFiles = concatMapM $ \x -> do
         return files
 
 
-kick :: Action ()
-kick = do
-    files <- getFilesOfInterest
-    void $ uses TypeCheck $ HashSet.toList files
-
 -- | Print an LSP event.
 showEvent :: Lock -> FromServerMessage -> IO ()
 showEvent _ (EventFileDiagnostics _ []) = return ()

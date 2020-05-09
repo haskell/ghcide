@@ -46,6 +46,7 @@ import qualified System.Posix.Error as Posix
 
 import Language.Haskell.LSP.Core
 import Language.Haskell.LSP.VFS
+import Development.IDE.Core.OfInterest (kick)
 
 -- | haskell-lsp manages the VFS internally and automatically so we cannot use
 -- the builtin VFS without spawning up an LSP server. To be able to test things
@@ -174,7 +175,7 @@ setBufferModified state absFile contents = do
     VFSHandle{..} <- getIdeGlobalState state
     whenJust setVirtualFileContents $ \set ->
         set (filePathToUri' absFile) contents
-    void $ shakeRun state []
+    void $ shakeRun state kick
 
 -- | Note that some buffer somewhere has been modified, but don't say what.
 --   Only valid if the virtual file system was initialised by LSP, as that
@@ -184,4 +185,4 @@ setSomethingModified state = do
     VFSHandle{..} <- getIdeGlobalState state
     when (isJust setVirtualFileContents) $
         fail "setSomethingModified can't be called on this type of VFSHandle"
-    void $ shakeRun state []
+    void $ shakeRun state kick

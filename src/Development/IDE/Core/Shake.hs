@@ -25,7 +25,6 @@ module Development.IDE.Core.Shake(
     IdeRule, IdeResult, GetModificationTime(..),
     shakeOpen, shakeShut,
     shakeRun,
-    shakeRunGently,
     shakeProfile,
     use, useWithStale, useNoFile, uses, usesWithStale,
     use_, useNoFile_, uses_,
@@ -228,14 +227,11 @@ data ShakeSession = ShakeSession
   , runInShakeSession  :: !(forall a . Action a -> IO (IO a))
   }
 
-nilShakeSession :: ShakeSession
-nilShakeSession = ShakeSession (pure ()) (\_ -> error "nilShakeSession")
-
 -- | A Shake database plus persistent store. Can be thought of as storing
 --   mappings from @(FilePath, k)@ to @RuleResult k@.
 data IdeState = IdeState
     {shakeDb         :: ShakeDatabase
-    ,shakeSession    :: MVar ShakeSession
+    ,shakeSession    :: ShakeSession
     ,shakeClose      :: IO ()
     ,shakeExtras     :: ShakeExtras
     ,shakeProfileDir :: Maybe FilePath
@@ -332,8 +328,8 @@ shakeOpen getLspId eventer logger debouncer shakeProfileDir (IdeReportProgress r
                 , shakeProgress = const $ if reportProgress then lspShakeProgress getLspId eventer inProgress else pure ()
                 }
             rules
-    shakeSession <- newMVar nilShakeSession
     shakeDb <- shakeDb
+    (shakeSession,_) <- realShakeRun logger shakeDb shakeProfileDir []
     return IdeState{..}
 
 lspShakeProgress :: Hashable a => IO LSP.LspId -> (LSP.FromServerMessage -> IO ()) -> Var (HMap.HashMap a Int) -> IO ()
@@ -388,44 +384,19 @@ shakeProfile :: IdeState -> FilePath -> IO ()
 shakeProfile IdeState{..} = shakeProfileDatabase shakeDb
 
 shakeShut :: IdeState -> IO ()
-shakeShut IdeState{..} = withMVar shakeSession $ \runner -> do
+shakeShut IdeState{..} = do
     -- Shake gets unhappy if you try to close when there is a running
     -- request so we first abort that.
-    cancelShakeSession runner
+    cancelShakeSession shakeSession
     shakeClose
 
--- | This is a variant of withMVar where the first argument is run unmasked and if it throws
--- an exception, the previous value is restored while the second argument is executed masked.
-withMVar' :: MVar a -> (a -> IO b) -> (b -> IO (a, c)) -> IO c
-withMVar' var unmasked masked = mask $ \restore -> do
-    a <- takeMVar var
-    b <- restore (unmasked a) `onException` putMVar var a
-    (a', c) <- masked b
-    putMVar var a'
-    pure c
-
--- | Spawn immediately. If you are already inside a call to shakeRun that will be aborted with an exception.
-shakeRun :: IdeState -> [Action a] -> IO (IO [a])
-shakeRun it@IdeState{shakeExtras=ShakeExtras{logger}, ..} acts =
-    withMVar'
-        shakeSession
-        (\runner -> do
-              (stopTime,_) <- duration (cancelShakeSession runner)
-              logDebug logger $ T.pack $ "Starting shakeRun (aborting the previous one took " ++ showDuration stopTime ++ ")"
-        )
-        -- It is crucial to be masked here, otherwise we can get killed
-        -- between spawning the new thread and updating shakeSession.
-        -- See https://github.com/digital-asset/ghcide/issues/79
-        (\() -> realShakeRun it acts)
-
 -- | Append an action to the existing 'ShakeSession'.
---   Assumes an existing 'ShakeSession' is available.
-shakeRunGently :: IdeState -> Action a -> IO (IO a)
-shakeRunGently IdeState{shakeExtras=ShakeExtras{..}, ..} act =
-    withMVar shakeSession $ \s -> runInShakeSession s act
+shakeRun :: IdeState -> Action a -> IO (IO a)
+shakeRun IdeState{shakeSession} act =
+    runInShakeSession shakeSession act
 
-realShakeRun :: IdeState -> [Action a] -> IO (ShakeSession, IO [a])
-realShakeRun IdeState{shakeExtras=ShakeExtras{..}, ..} acts = do
+realShakeRun :: Logger -> ShakeDatabase -> Maybe FilePath -> [Action a] -> IO (ShakeSession, IO [a])
+realShakeRun logger shakeDb shakeProfileDir acts = do
               actionQueue :: TQueue (Action ()) <- newTQueueIO
               start <- offsetTime
 
