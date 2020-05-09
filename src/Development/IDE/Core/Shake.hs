@@ -538,6 +538,9 @@ usesWithStale key files = do
 
 withProgress :: (Eq a, Hashable a) => Var (HMap.HashMap a Int) -> a -> Action b -> Action b
 withProgress var file = actionBracket (f succ) (const $ f pred) . const
+    -- This functions are deliberately eta-expanded to avoid space leaks.
+    -- Do not remove the eta-expansion without profiling a session with at
+    -- least 1000 modifications.
     where f shift = modifyVar_ var $ \x -> return (HMap.alter (\x -> Just (shift (fromMaybe 0 x))) file x)
 
 
