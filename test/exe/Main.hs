@@ -749,11 +749,7 @@ removeImportTests = testGroup "remove import actions"
       _ <- waitForDiagnostics
       [CACodeAction action@CodeAction { _title = actionTitle }]
           <- getCodeActions docB (Range (Position 2 0) (Position 2 5))
-#if MIN_GHC_API_VERSION(8,6,0)
       liftIO $ "Remove !!, <?> from import" @=? actionTitle
-#else
-      liftIO $ "Remove A.!!, A.<?> from import" @=? actionTitle
-#endif
       executeCodeAction action
       contentAfterAction <- documentContents docB
       let expectedContentAfterAction = T.unlines
