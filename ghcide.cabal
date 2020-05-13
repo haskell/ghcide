@@ -197,7 +197,7 @@ executable ghcide
         directory,
         extra,
         filepath,
-        ghc-check >= 0.3.0.1 && < 0.4,
+        ghc-check >= 0.4 && < 0.5,
         ghc-paths,
         ghc,
         gitrev,

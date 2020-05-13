@@ -22,8 +22,9 @@ import           Development.IDE.GHC.Util
 import           Development.IDE.Types.Location (fromNormalizedFilePath)
 import           Development.IDE.Types.Options  (IdeOptions(IdeOptions, optTesting))
 import           Development.Shake
+import           Exception                      (gtry)
 import           GHC
-import           GHC.Check                      (VersionCheck(..), makeGhcVersionChecker)
+import           GHC.Check                      (GhcVersionChecker, InstallationCheck(..), PackageMismatch(..), makeGhcVersionChecker)
 import           HIE.Bios
 import           HIE.Bios.Cradle
 import           HIE.Bios.Environment           (addCmdOpts)
@@ -102,40 +103,65 @@ getComponentOptions cradle = do
         -- That will require some more changes.
         CradleNone      -> fail "'none' cradle is not yet supported"
 
-ghcVersionChecker :: IO VersionCheck
-ghcVersionChecker = $$(makeGhcVersionChecker (pure <$> getLibdir))
-
-checkGhcVersion :: IO (Maybe HscEnvEq)
-checkGhcVersion = do
-    res <- ghcVersionChecker
-    case res of
-        Failure err -> do
-          putStrLn $ "Error while checking GHC version: " ++ show err
-          return Nothing
-        Mismatch {..} ->
-          return $ Just GhcVersionMismatch {..}
-        _ ->
-          return Nothing
+ghcVersionChecker :: GhcVersionChecker
+ghcVersionChecker = $$(makeGhcVersionChecker getLibdir)
 
 createSession :: ComponentOptions -> IO HscEnvEq
 createSession (ComponentOptions theOpts _) = do
     libdir <- getLibdir
-
     cacheDir <- getCacheDir theOpts
 
     hPutStrLn stderr $ "Interface files cache dir: " <> cacheDir
 
-    runGhc (Just libdir) $ do
-        dflags <- getSessionDynFlags
-        (dflags', _targets) <- addCmdOpts theOpts dflags
-        setupDynFlags cacheDir dflags'
-        versionMismatch <- liftIO checkGhcVersion
-        case versionMismatch of
-            Just mismatch -> return mismatch
-            Nothing ->  do
+    installationCheck <- ghcVersionChecker libdir
+
+    -- Lots of error handling below as there are multiple error cases:
+    --   - incompatible libdir (e.g. in Nix)
+    --   - unsatisfiable -fpackage-id flags
+    --   - missing symbols during dynamic linking of packages
+    --   - version mismatches
+    case installationCheck of
+        InstallationNotFound{..} ->
+            error $ "GHC installation not found in libdir: " <> libdir
+        InstallationMismatch{..} ->
+            return GhcVersionMismatch{..}
+        InstallationChecked installationVersion ghcLibCheck ->
+            runGhc (Just libdir) $ do
+              -- Setting up the cradle options in the ghc session can fail
+              -- if --package-id options cannot be satisfied due to ghc
+              -- version mismatches
+              sessionSetupResult <- gtry $ do
+                dflags <- getSessionDynFlags
+                (dflags', _targets) <- addCmdOpts theOpts dflags
+                setupDynFlags cacheDir dflags'
+
+              case sessionSetupResult of
+                Left (err :: SomeException) ->
+                    return $ GhcInitializationError installationVersion $ show err
+                Right () -> do
+                    -- Even if all the cradle options were installed successfully,
+                    -- we still need to check the user package versions
+                    versionMismatch <- gtry ghcLibCheck
+
+                    case versionMismatch of
+                        Right (Just (packageName, VersionMismatch{..})) ->
+                            return PackageVersionMismatch{..}
+                        Right (Just (packageName, AbiMismatch{..})) ->
+                            return PackageAbiMismatch{..}
+                        Right Nothing ->
+                            setupSession installationVersion
+                        Left (err :: SomeException) -> do
+                            liftIO $ putStrLn $ "Warning: unable to validate GHC version: " ++ show err
+                            setupSession installationVersion
+    where
+        setupSession v =  do
                 env <- getSession
-                liftIO $ initDynLinker env
-                liftIO $ newHscEnvEq env
+                linkerInitRes <- liftIO $ try $ initDynLinker env
+                case linkerInitRes of
+                    Left (err::SomeException) ->
+                        return $ GhcInitializationError v (show err)
+                    Right () ->
+                        liftIO $ newHscEnvEq env
 
 getCacheDir :: [String] -> IO FilePath
 getCacheDir opts = IO.getXdgDirectory IO.XdgCache (cacheDir </> opts_hash)

@@ -4,7 +4,9 @@
 -- | General utility functions, mostly focused around GHC operations.
 module Development.IDE.GHC.Util(
     -- * HcsEnv and environment
-    HscEnvEq(GhcVersionMismatch, compileTime, runTime), hscEnv, newHscEnvEq,
+    HscEnvEq(GhcInitializationError, GhcVersionMismatch, PackageVersionMismatch, PackageAbiMismatch
+            ,compileTime, runTime, compileTimeAbi, runTimeAbi, packageName),
+    hscEnv, newHscEnvEq,
     modifyDynFlags,
     evalGhcEnv,
     runGhcEnv,
@@ -166,8 +168,18 @@ moduleImportPath (takeDirectory . fromNormalizedFilePath -> pathDir) mn
 --   if they are created with the same call to 'newHscEnvEq'.
 data HscEnvEq
     = HscEnvEq !Unique !HscEnv
+    | GhcInitializationError { compileTime :: !Version
+                             , message     :: !String }
     | GhcVersionMismatch { compileTime :: !Version
                          , runTime     :: !Version
+                         }
+    | PackageVersionMismatch { compileTime :: !Version
+                             , runTime     :: !Version
+                             , packageName :: !String
+                             }
+    | PackageAbiMismatch { compileTimeAbi :: !String
+                         , runTimeAbi     :: !String
+                         , packageName    :: !String
                          }
 
 -- | Unwrap an 'HsEnvEq'.
@@ -176,14 +188,38 @@ hscEnv = either error id . hscEnv'
 
 hscEnv' :: HscEnvEq -> Either String HscEnv
 hscEnv' (HscEnvEq _ x) = Right x
+hscEnv' GhcInitializationError{compileTime, message} = Left $ unwords
+    [ "ghcide compiled by GHC ", showVersion compileTime
+    , "failed to load packages:", message
+    , ". Please ensure that ghci is compiled with the same GHC installation as the project."]
 hscEnv' GhcVersionMismatch{..} = Left $
     unwords
-        ["ghcide compiled against GHC"
+        ["ghcide compiled by GHC"
         ,showVersion compileTime
         ,"but currently using"
         ,showVersion runTime
-        ,". This is unsupported, ghcide must be compiled with the same GHC version as the project."
+        ,". This is unsupported, ghcide must be compiled with the same GHC installation as the project."
         ]
+hscEnv' PackageVersionMismatch{..} = Left $
+    unwords
+        ["ghcide compiled with package "
+        , packageName <> "-" <> showVersion compileTime
+        ,"but project uses package"
+        , packageName <> "-" <> showVersion runTime
+        ,". This is unsupported, ghcide must be compiled with the same GHC installation as the project."
+        ]
+
+hscEnv' PackageAbiMismatch{..} = Left $
+    unwords
+        ["ghcide compiled with package "
+        , packageName
+        , "and abi"
+        , compileTimeAbi
+        ,"but project has abi"
+        , runTimeAbi
+        ,". This is unsupported, ghcide must be compiled with the same GHC installation as the project."
+        ]
+
 
 -- | Wrap an 'HscEnv' into an 'HscEnvEq'.
 newHscEnvEq :: HscEnv -> IO HscEnvEq
@@ -191,20 +227,36 @@ newHscEnvEq e = do u <- newUnique; return $ HscEnvEq u e
 
 instance Show HscEnvEq where
   show (HscEnvEq a _) = "HscEnvEq " ++ show (hashUnique a)
+  show GhcInitializationError{..} = "GhcInitializationError " <> show (compileTime, message)
   show GhcVersionMismatch{..} = "GhcVersionMismatch " <> show (compileTime, runTime)
+  show PackageVersionMismatch{..} = "PackageVersionMismatch " <> show (packageName, compileTime, runTime)
+  show PackageAbiMismatch{..} = "PackageAbiMismatch " <> show (packageName, compileTimeAbi, runTimeAbi)
 
 instance Eq HscEnvEq where
   HscEnvEq a _ == HscEnvEq b _ = a == b
-  GhcVersionMismatch a b == GhcVersionMismatch c d = a == c && b == d
+  GhcInitializationError a b == GhcInitializationError c d =
+      a == c && b == d
+  GhcVersionMismatch a b == GhcVersionMismatch c d =
+      a == c && b == d
+  PackageVersionMismatch p a b == PackageVersionMismatch p' c d =
+      p == p' && a == c && b == d
+  PackageAbiMismatch p a b == PackageAbiMismatch p' c d =
+      p == p' && a == c && b == d
   _ == _ = False
 
 instance NFData HscEnvEq where
   rnf (HscEnvEq a b) = rnf (hashUnique a) `seq` b `seq` ()
-  rnf GhcVersionMismatch{} = rnf runTime
+  rnf GhcInitializationError{..} = rnf compileTime `seq` rnf message
+  rnf GhcVersionMismatch{..} = rnf compileTime `seq` rnf runTime
+  rnf PackageVersionMismatch{..} = rnf compileTime `seq` rnf runTime `seq` rnf packageName
+  rnf PackageAbiMismatch{..} = rnf compileTimeAbi `seq` rnf runTimeAbi `seq` rnf packageName
 
 instance Hashable HscEnvEq where
-  hashWithSalt salt (HscEnvEq u _) = hashWithSalt salt u
-  hashWithSalt salt GhcVersionMismatch{..} = hashWithSalt salt (compileTime, runTime)
+  hashWithSalt salt (HscEnvEq u _) = hashWithSalt salt (1::Int,u)
+  hashWithSalt salt GhcInitializationError{..} = hashWithSalt salt (2::Int, compileTime, message)
+  hashWithSalt salt GhcVersionMismatch{..} = hashWithSalt salt (3::Int, compileTime, runTime)
+  hashWithSalt salt PackageVersionMismatch{..} = hashWithSalt salt (4::Int, packageName, compileTime, runTime)
+  hashWithSalt salt PackageAbiMismatch{..} = hashWithSalt salt (5::Int, packageName, compileTimeAbi, runTimeAbi)
 
 -- Fake instance needed to persuade Shake to accept this type as a key.
 -- No harm done as ghcide never persists these keys currently
