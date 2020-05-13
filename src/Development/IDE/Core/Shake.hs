@@ -25,7 +25,7 @@ module Development.IDE.Core.Shake(
     IdeRule, IdeResult, GetModificationTime(..),
     shakeOpen, shakeShut,
     shakeRun,
-    shakeRunGently,
+    shakeEnqueue,
     shakeProfile,
     use, useWithStale, useNoFile, uses, usesWithStale,
     use_, useNoFile_, uses_,
@@ -226,10 +226,13 @@ type IdeRule k v =
   , NFData v
   )
 
+-- | A live Shake session with the ability to enqueue Actions for running.
+--   Keeps the 'ShakeDatabase' open, so at most one 'ShakeSession' per database.
 data ShakeSession = ShakeSession
   { cancelShakeSession :: !(IO ())
     -- ^ Close the Shake session
   , runInShakeSession  :: !(forall a . Action a -> IO (IO a))
+    -- ^ Enqueue an action in the Shake session.
   }
 
 nilShakeSession :: ShakeSession
@@ -408,7 +411,11 @@ withMVar' var unmasked masked = mask $ \restore -> do
     putMVar var a'
     pure c
 
--- | Spawn immediately. If you are already inside a call to shakeRun that will be aborted with an exception.
+-- | Spawn immediately, restarting the current 'ShakeSession' and 'ShakeDatabase',
+--   and implicily typechecking all the modules before running the actions.
+--   Any computation running in the current session will be aborted with an exception.
+--
+--   Appropriate for file system events.
 shakeRun :: IdeState -> [Action a] -> IO (IO [a])
 shakeRun it@IdeState{shakeExtras=ShakeExtras{logger}, ..} acts =
     withMVar'
@@ -420,70 +427,68 @@ shakeRun it@IdeState{shakeExtras=ShakeExtras{logger}, ..} acts =
         -- It is crucial to be masked here, otherwise we can get killed
         -- between spawning the new thread and updating shakeSession.
         -- See https://github.com/digital-asset/ghcide/issues/79
-        (\() -> realShakeRun it acts)
+        (\() -> newSession it acts)
 
--- | Append an action to the existing 'ShakeSession'.
---   Assumes an existing 'ShakeSession' is available.
-shakeRunGently :: IdeState -> Action a -> IO (IO a)
-shakeRunGently IdeState{shakeExtras=ShakeExtras, ..} act =
+-- | Enqueue an action in the existing 'ShakeSession'.
+--   Returns a computation to block until the action is run.
+--   Assumes a 'ShakeSession' is available.
+--
+--   Appropriate for user actions other than edits.
+shakeEnqueue :: IdeState -> Action a -> IO (IO a)
+shakeEnqueue IdeState{shakeSession} act =
     withMVar shakeSession $ \s -> runInShakeSession s act
 
-realShakeRun :: IdeState -> [Action a] -> IO (ShakeSession, IO [a])
-realShakeRun IdeState{shakeExtras=ShakeExtras{..}, ..} acts = do
-              actionQueue :: TQueue (Action ()) <- newTQueueIO
-              start <- offsetTime
+-- Set up a new 'ShakeSession' with a set of initial actions.
+-- Only valid after aborting the previous one
+newSession :: IdeState -> [Action a] -> IO (ShakeSession, IO [a])
+newSession IdeState{shakeExtras=ShakeExtras{..}, ..} acts = do
+    -- A work queue for actions added via 'runInShakeSession'
+    actionQueue :: TQueue (Action ()) <- newTQueueIO
 
-              let
-                  -- A daemon-like action used to inject additional work
-                  pumpAction =
-                      forever $ join $ liftIO $ atomically $ readTQueue actionQueue
-
-                  workThread restore = do
-                    let acts' = (Nothing <$ pumpAction) : (fmap Just <$> acts)
-                    res <- try (restore $ shakeRunDatabaseProfile shakeProfileDir shakeDb acts')
-                    runTime <- start
-                    let res' = case res of
-                                Left e -> "exception: " <> displayException e
-                                Right _ -> "completed"
-                        profile = case res of
-                                Right (_, Just fp) ->
-                                    let link = case filePathToUri' $ toNormalizedFilePath' fp of
-                                                    NormalizedUri _ x -> x
-                                    in ", profile saved at " <> T.unpack link
-                                _ -> ""
-
-                        -- Wrap up in a thread to avoid calling interruptible
-                        -- operations inside the masked section
-                    let wrapUp = do
-                            logDebug logger $ T.pack $
-                                "Finishing shakeRun (took " ++ showDuration runTime ++ ", " ++ res' ++ profile ++ ")"
-
-                    return (fst <$> res, wrapUp)
-
-              -- Do the work in a background thread
-              aThread <- asyncWithUnmask workThread
-
-              -- run the wrap up unmasked
-              _ <- async $ do
-                  (_, wrapUp) <- wait aThread
-                  wrapUp
-
-              -- 'runInShakeSession' is used to append work in this Shake session
-              --  The session stays open until 'cancelShakeSession' is called
-              --  This should only be necessary iff the (virtual) filesystem has changed
-              let runInShakeSession :: forall a . Action a -> IO (IO a)
-                  runInShakeSession act = do
-                        res <- newEmptyMVar
-                        atomically $ writeTQueue actionQueue (act >>= liftIO . putMVar res)
-                        return (takeMVar res)
-
-                  cancelShakeSession = cancel aThread
-
-                  initialResult = do
-                    (res,_) <- wait aThread
-                    either (throwIO @SomeException) (return . catMaybes) res
-
-              pure (ShakeSession{..}, initialResult)
+    start <- offsetTime
+    let
+        -- A daemon-like action used to inject additional work
+        -- Runs actions from the work queue sequentially
+        pumpAction =
+            forever $ join $ liftIO $ atomically $ readTQueue actionQueue
+        workThread restore = do
+          let acts' = (Nothing <$ pumpAction) : (fmap Just <$> acts)
+          res <- try (restore $ shakeRunDatabaseProfile shakeProfileDir shakeDb acts')
+          runTime <- start
+          let res' = case res of
+                      Left e -> "exception: " <> displayException e
+                      Right _ -> "completed"
+              profile = case res of
+                      Right (_, Just fp) ->
+                          let link = case filePathToUri' $ toNormalizedFilePath' fp of
+                                          NormalizedUri _ x -> x
+                          in ", profile saved at " <> T.unpack link
+                      _ -> ""
+              -- Wrap up in a thread to avoid calling interruptible
+              -- operations inside the masked section
+          let wrapUp = do
+                  logDebug logger $ T.pack $
+                      "Finishing shakeRun (took " ++ showDuration runTime ++ ", " ++ res' ++ profile ++ ")"
+          return (fst <$> res, wrapUp)
+    -- Do the work in a background thread
+    aThread <- asyncWithUnmask workThread
+    -- run the wrap up unmasked
+    _ <- async $ do
+        (_, wrapUp) <- wait aThread
+        wrapUp
+    -- 'runInShakeSession' is used to append work in this Shake session
+    --  The session stays open until 'cancelShakeSession' is called
+    --  This should only be necessary iff the (virtual) filesystem has changed
+    let runInShakeSession :: forall a . Action a -> IO (IO a)
+        runInShakeSession act = do
+              res <- newEmptyMVar
+              atomically $ writeTQueue actionQueue (act >>= liftIO . putMVar res)
+              return (takeMVar res)
+        cancelShakeSession = cancel aThread
+        initialResult = do
+          (res,_) <- wait aThread
+          either (throwIO @SomeException) (return . catMaybes) res
+    pure (ShakeSession{..}, initialResult)
 
 getDiagnostics :: IdeState -> IO [FileDiagnostic]
 getDiagnostics IdeState{shakeExtras = ShakeExtras{diagnostics}} = do
