@@ -108,6 +108,8 @@ data ShakeExtras = ShakeExtras
     -- accumlation of all previous mappings.
     ,inProgress :: Var (HMap.HashMap NormalizedFilePath Int)
     -- ^ How many rules are running for each file
+    ,getLspId :: IO LspId
+    ,reportProgress :: Bool
     }
 
 getShakeExtras :: Action ShakeExtras
@@ -332,12 +334,7 @@ shakeOpen getLspId eventer logger debouncer shakeProfileDir (IdeReportProgress r
         pure ShakeExtras{..}
     (shakeDb, shakeClose) <-
         shakeOpenDatabase
-            opts
-                { shakeExtra = addShakeExtra shakeExtras $ shakeExtra opts
-                -- we don't actually use the progress value, but Shake conveniently spawns/kills this thread whenever
-                -- we call into Shake, so abuse it for that purpose
-                , shakeProgress = const $ if reportProgress then lspShakeProgress getLspId eventer inProgress else pure ()
-                }
+            opts { shakeExtra = addShakeExtra shakeExtras $ shakeExtra opts }
             rules
     shakeSession <- newMVar nilShakeSession
     shakeDb <- shakeDb
@@ -439,7 +436,8 @@ shakeEnqueue IdeState{shakeSession} act =
     withMVar shakeSession $ \s -> runInShakeSession s act
 
 -- Set up a new 'ShakeSession' with a set of initial actions.
--- Only valid after aborting the previous one
+-- Will crash if there is an existing 'ShakeSession' running.
+-- Reports progress on the set of initial actions only.
 newSession :: IdeState -> [Action a] -> IO (ShakeSession, IO [a])
 newSession IdeState{shakeExtras=ShakeExtras{..}, ..} acts = do
     -- A work queue for actions added via 'runInShakeSession'
@@ -451,8 +449,19 @@ newSession IdeState{shakeExtras=ShakeExtras{..}, ..} acts = do
         -- Runs actions from the work queue sequentially
         pumpAction =
             forever $ join $ liftIO $ atomically $ readTQueue actionQueue
-        workThread restore = do
-          let acts' = (Nothing <$ pumpAction) : (fmap Just <$> acts)
+
+        progressRun
+          | reportProgress = lspShakeProgress getLspId eventer inProgress
+          | otherwise = return ()
+
+        workRun restore = withAsync progressRun $ \progressThread -> do
+          let acts' =
+                [ [] <$ pumpAction
+                , parallel acts
+                    -- For the purposes of progress reporting, only 'acts' matters.
+                    -- When done, cancel the progressThread to indicate completion
+                    <* liftIO (cancel progressThread)
+                ]
           res <- try (restore $ shakeRunDatabaseProfile shakeProfileDir shakeDb acts')
           runTime <- start
           let res' = case res of
@@ -470,12 +479,14 @@ newSession IdeState{shakeExtras=ShakeExtras{..}, ..} acts = do
                   logDebug logger $ T.pack $
                       "Finishing shakeRun (took " ++ showDuration runTime ++ ", " ++ res' ++ profile ++ ")"
           return (fst <$> res, wrapUp)
+
     -- Do the work in a background thread
-    aThread <- asyncWithUnmask workThread
+    workThread <- asyncWithUnmask workRun
     -- run the wrap up unmasked
     _ <- async $ do
-        (_, wrapUp) <- wait aThread
+        (_, wrapUp) <- wait workThread
         wrapUp
+
     -- 'runInShakeSession' is used to append work in this Shake session
     --  The session stays open until 'cancelShakeSession' is called
     --  This should only be necessary iff the (virtual) filesystem has changed
@@ -484,10 +495,10 @@ newSession IdeState{shakeExtras=ShakeExtras{..}, ..} acts = do
               res <- newEmptyMVar
               atomically $ writeTQueue actionQueue (act >>= liftIO . putMVar res)
               return (takeMVar res)
-        cancelShakeSession = cancel aThread
+        cancelShakeSession = cancel workThread
         initialResult = do
-          (res,_) <- wait aThread
-          either (throwIO @SomeException) (return . catMaybes) res
+          (res,_) <- wait workThread
+          either (throwIO @SomeException) (return . concat) res
     pure (ShakeSession{..}, initialResult)
 
 getDiagnostics :: IdeState -> IO [FileDiagnostic]
