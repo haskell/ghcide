@@ -99,7 +99,7 @@ runAction ide action = do
 -- finish running. This is mainly useful in tests, where you want
 -- to wait for all rules to fire so you can check diagnostics.
 runActionSync :: IdeState -> Action a -> IO a
-runActionSync s act = fmap head $ join $ shakeRun s [act]
+runActionSync ide act = join $ shakeEnqueue ide act
 
 getIdeOptions :: Action IdeOptions
 getIdeOptions = do
