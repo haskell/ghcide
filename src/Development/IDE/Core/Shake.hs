@@ -110,6 +110,8 @@ data ShakeExtras = ShakeExtras
     -- ^ How many rules are running for each file
     ,getLspId :: IO LspId
     ,reportProgress :: Bool
+    ,ideTesting :: IdeTesting
+    -- ^ Whether to enable additional lsp messages used by the test suite for checking invariants
     }
 
 getShakeExtras :: Action ShakeExtras
@@ -319,10 +321,11 @@ shakeOpen :: IO LSP.LspId
           -> Debouncer NormalizedUri
           -> Maybe FilePath
           -> IdeReportProgress
+          -> IdeTesting
           -> ShakeOptions
           -> Rules ()
           -> IO IdeState
-shakeOpen getLspId eventer logger debouncer shakeProfileDir (IdeReportProgress reportProgress) opts rules = do
+shakeOpen getLspId eventer logger debouncer shakeProfileDir (IdeReportProgress reportProgress) ideTesting opts rules = do
     inProgress <- newVar HMap.empty
     shakeExtras <- do
         globals <- newVar HMap.empty
@@ -340,11 +343,11 @@ shakeOpen getLspId eventer logger debouncer shakeProfileDir (IdeReportProgress r
     shakeDb <- shakeDb
     return IdeState{..}
 
-lspShakeProgress :: Hashable a => IO LSP.LspId -> (LSP.FromServerMessage -> IO ()) -> Var (HMap.HashMap a Int) -> IO ()
-lspShakeProgress getLspId sendMsg inProgress = do
+lspShakeProgress :: Hashable a => IdeTesting -> IO LSP.LspId -> (LSP.FromServerMessage -> IO ()) -> Var (HMap.HashMap a Int) -> IO ()
+lspShakeProgress (IdeTesting ideTesting) getLspId sendMsg inProgress = do
     -- first sleep a bit, so we only show progress messages if it's going to take
     -- a "noticable amount of time" (we often expect a thread kill to arrive before the sleep finishes)
-    sleep 0.1
+    unless ideTesting $ sleep 0.1
     lspId <- getLspId
     u <- ProgressTextToken . T.pack . show . hashUnique <$> newUnique
     sendMsg $ LSP.ReqWorkDoneProgressCreate $ LSP.fmServerWorkDoneProgressCreateRequest
@@ -451,7 +454,7 @@ newSession IdeState{shakeExtras=ShakeExtras{..}, ..} acts = do
             forever $ join $ liftIO $ atomically $ readTQueue actionQueue
 
         progressRun
-          | reportProgress = lspShakeProgress getLspId eventer inProgress
+          | reportProgress = lspShakeProgress ideTesting getLspId eventer inProgress
           | otherwise = return ()
 
         workRun restore = withAsync progressRun $ \progressThread -> do

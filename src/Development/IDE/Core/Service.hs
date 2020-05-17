@@ -62,6 +62,7 @@ initialise caps mainRule getLspId toDiags logger debouncer options vfs =
         debouncer
         (optShakeProfiling options)
         (optReportProgress options)
+        (optTesting options)
         shakeOptions
           { shakeThreads = optThreads options
           , shakeFiles   = fromMaybe "/dev/null" (optShakeFiles options)

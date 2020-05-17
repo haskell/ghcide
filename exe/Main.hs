@@ -124,7 +124,7 @@ main = do
             let options = (defaultIdeOptions $ loadSessionShake dir)
                     { optReportProgress = clientSupportsProgress caps
                     , optShakeProfiling = argsShakeProfiling
-                    , optTesting        = argsTesting
+                    , optTesting        = IdeTesting argsTesting
                     , optThreads        = argsThreads
                     }
             debouncer <- newAsyncDebouncer
@@ -230,8 +230,8 @@ setNameCache nc hsc = hsc { hsc_NC = nc }
 loadSessionShake :: FilePath -> Action (FilePath -> Action (IdeResult HscEnvEq))
 loadSessionShake fp = do
   se <- getShakeExtras
-  IdeOptions{optTesting} <- getIdeOptions
-  res <- liftIO $ loadSession optTesting se fp
+  IdeOptions{optTesting = IdeTesting ideTesting} <- getIdeOptions
+  res <- liftIO $ loadSession ideTesting se fp
   return (fmap liftIO res)
 
 -- | This is the key function which implements multi-component support. All
