@@ -173,21 +173,21 @@ querySpanInfoAt getSpan _ideOptions pos =
 -- | Given a 'Name' attempt to find the location where it is defined.
 nameToLocation :: Monad f => (Module -> f (Maybe (HieFile, String))) -> Name -> f (Maybe SrcSpan)
 nameToLocation getHieFile name =
-              case nameSrcSpan name of
-                sp@(RealSrcSpan _) -> pure $ Just sp
-                sp@(UnhelpfulSpan _) -> runMaybeT $ do
-                  guard (sp /= wiredInSrcSpan)
-                  -- This case usually arises when the definition is in an external package (DAML only).
-                  -- In this case the interface files contain garbage source spans
-                  -- so we instead read the .hie files to get useful source spans.
-                  mod <- MaybeT $ return $ nameModule_maybe name
-                  (hieFile, srcPath) <- MaybeT $ getHieFile mod
-                  avail <- MaybeT $ pure $ find (eqName name . snd) $ hieExportNames hieFile
-                  -- The location will point to the source file used during compilation.
-                  -- This file might no longer exists and even if it does the path will be relative
-                  -- to the compilation directory which we don’t know.
-                  let span = setFileName srcPath $ fst avail
-                  pure span
+  case nameSrcSpan name of
+    sp@(RealSrcSpan _) -> pure $ Just sp
+    sp@(UnhelpfulSpan _) -> runMaybeT $ do
+      guard (sp /= wiredInSrcSpan)
+      -- This case usually arises when the definition is in an external package (DAML only).
+      -- In this case the interface files contain garbage source spans
+      -- so we instead read the .hie files to get useful source spans.
+      mod <- MaybeT $ return $ nameModule_maybe name
+      (hieFile, srcPath) <- MaybeT $ getHieFile mod
+      avail <- MaybeT $ pure $ find (eqName name . snd) $ hieExportNames hieFile
+      -- The location will point to the source file used during compilation.
+      -- This file might no longer exists and even if it does the path will be relative
+      -- to the compilation directory which we don’t know.
+      let span = setFileName srcPath $ fst avail
+      pure span
   where
     -- We ignore uniques and source spans and only compare the name and the module.
     eqName :: Name -> Name -> Bool
