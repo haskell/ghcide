@@ -142,7 +142,8 @@ typeLocationsAtPoint getHieFile = querySpanInfoAt getTypeSpan
         getTypeSpan SpanInfo { spaninfoType = Just t } =
           case splitTyConApp_maybe t of
             Nothing -> return Nothing
-            Just (getName -> name, _) -> nameToLocation getHieFile name
+            Just (getName -> name, _) ->
+              nameToLocation getHieFile name
         getTypeSpan _ = return Nothing
 
 locationsAtPoint

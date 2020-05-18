@@ -1378,8 +1378,8 @@ findDefinitionAndHoverTests = let
     , checkFileCompiles sourceFilePath
     , testGroup "type-definition" $ typeDefinitionTests ]
 
-  typeDefinitionTests = [ tst (getTypeDefinitions, checkDefs) dcL7 tcData "Saturated data con"
-                        , tst (getTypeDefinitions, checkDefs) opL16 [ExpectNoDefinitions] "Polymorphic variable"]
+  typeDefinitionTests = [ tst (getTypeDefinitions, checkDefs) aaaL14 (pure tcData) "Saturated data con"
+                        , tst (getTypeDefinitions, checkDefs) opL16 (pure [ExpectNoDefinitions]) "Polymorphic variable"]
 
   test runDef runHover look expect = testM runDef runHover look (return expect)
 
