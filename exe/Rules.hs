@@ -122,7 +122,7 @@ createSession (ComponentOptions theOpts _) = do
     --   - version mismatches
     case installationCheck of
         InstallationNotFound{..} ->
-            error $ "GHC installation not found in libdir: " <> libdir
+            fail $ "GHC installation not found in libdir: " <> libdir
         InstallationMismatch{..} ->
             return GhcVersionMismatch{..}
         InstallationChecked installationVersion ghcLibCheck ->
