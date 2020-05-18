@@ -22,6 +22,7 @@ module Development.IDE.GHC.Util(
     cgGutsToCoreModule,
     fingerprintToBS,
     fingerprintFromStringBuffer,
+    gtrySafe,
     -- * General utilities
     readFileUtf8,
     hDuplicateTo',
@@ -72,6 +73,9 @@ import RdrName (nameRdrName, rdrNameOcc)
 
 import Development.IDE.GHC.Compat as GHC
 import Development.IDE.Types.Location
+import Exception (gtry)
+import Control.Monad ((>=>))
+import Control.Exception.Safe (isAsyncException)
 
 
 ----------------------------------------------------------------------
@@ -357,3 +361,11 @@ ioe_dupHandlesNotCompatible :: Handle -> IO a
 ioe_dupHandlesNotCompatible h =
    ioException (IOError (Just h) IllegalOperation "hDuplicateTo"
                 "handles are incompatible" Nothing Nothing)
+
+gtrySafe :: forall e a . Exception e => Ghc a -> Ghc (Either e a)
+gtrySafe = gtry >=> either rethrowAsyncExceptions (return . Right)
+  where
+      rethrowAsyncExceptions :: e -> Ghc (Either e a)
+      rethrowAsyncExceptions e
+        | isAsyncException e = liftIO . throwIO $ e
+        | otherwise = return $ Left e

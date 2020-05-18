@@ -8,7 +8,7 @@ module Rules
   )
 where
 
-import           Control.Exception
+import           Control.Exception.Safe
 import           Control.Monad                  (filterM, when)
 import qualified Crypto.Hash.SHA1               as H
 import           Data.ByteString.Base16         (encode)
@@ -22,7 +22,6 @@ import           Development.IDE.GHC.Util
 import           Development.IDE.Types.Location (fromNormalizedFilePath)
 import           Development.IDE.Types.Options  (IdeOptions(IdeOptions, optTesting))
 import           Development.Shake
-import           Exception                      (gtry)
 import           GHC
 import           GHC.Check                      (GhcVersionChecker, InstallationCheck(..), PackageMismatch(..), makeGhcVersionChecker)
 import           HIE.Bios
@@ -130,7 +129,7 @@ createSession (ComponentOptions theOpts _) = do
               -- Setting up the cradle options in the ghc session can fail
               -- if --package-id options cannot be satisfied due to ghc
               -- version mismatches
-              sessionSetupResult <- gtry $ do
+              sessionSetupResult <- gtrySafe $ do
                 dflags <- getSessionDynFlags
                 (dflags', _targets) <- addCmdOpts theOpts dflags
                 setupDynFlags cacheDir dflags'
@@ -141,7 +140,7 @@ createSession (ComponentOptions theOpts _) = do
                 Right () -> do
                     -- Even if all the cradle options were installed successfully,
                     -- we still need to check the user package versions
-                    versionMismatch <- gtry ghcLibCheck
+                    versionMismatch <- gtrySafe ghcLibCheck
 
                     case versionMismatch of
                         Right (Just (packageName, VersionMismatch{..})) ->
