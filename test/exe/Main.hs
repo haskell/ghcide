@@ -2030,7 +2030,7 @@ dependentFileTest = testGroup "addDependentFile"
               , "               if f == \"B\" then [| 1 |] else lift f)"
               ]
         let bazContent = T.unlines ["module Baz where", "import Foo"]
-        _ <- openDoc' "Foo.hs" "haskell" fooContent
+        _ <-createDoc "Foo.hs" "haskell" fooContent
         doc <- openDoc' "Baz.hs" "haskell" bazContent
         expectDiagnostics
           [("Foo.hs", [(DsError, (4, 6), "Couldn't match expected type")])]
