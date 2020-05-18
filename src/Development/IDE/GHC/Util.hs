@@ -193,24 +193,24 @@ hscEnv = either error id . hscEnv'
 hscEnv' :: HscEnvEq -> Either String HscEnv
 hscEnv' (HscEnvEq _ x) = Right x
 hscEnv' GhcInitializationError{compileTime, message} = Left $ unwords
-    [ "ghcide compiled by GHC ", showVersion compileTime
-    , "failed to load packages:", message
-    , ". Please ensure that ghci is compiled with the same GHC installation as the project."]
+    [ "ghcide compiled by GHC", showVersion compileTime
+    , "failed to load packages:", message <> "."
+    , "Please ensure that ghci is compiled with the same GHC installation as the project."]
 hscEnv' GhcVersionMismatch{..} = Left $
     unwords
         ["ghcide compiled by GHC"
         ,showVersion compileTime
         ,"but currently using"
-        ,showVersion runTime
-        ,". This is unsupported, ghcide must be compiled with the same GHC installation as the project."
+        ,showVersion runTime <> "."
+        ,"This is unsupported, ghcide must be compiled with the same GHC installation as the project."
         ]
 hscEnv' PackageVersionMismatch{..} = Left $
     unwords
-        ["ghcide compiled with package "
+        ["ghcide compiled with package"
         , packageName <> "-" <> showVersion compileTime
         ,"but project uses package"
-        , packageName <> "-" <> showVersion runTime
-        ,". This is unsupported, ghcide must be compiled with the same GHC installation as the project."
+        , packageName <> "-" <> showVersion runTime <> "."
+        ,"This is unsupported, ghcide must be compiled with the same GHC installation as the project."
         ]
 
 hscEnv' PackageAbiMismatch{..} = Left $
@@ -220,8 +220,8 @@ hscEnv' PackageAbiMismatch{..} = Left $
         , "and abi"
         , compileTimeAbi
         ,"but project has abi"
-        , runTimeAbi
-        ,". This is unsupported, ghcide must be compiled with the same GHC installation as the project."
+        , runTimeAbi <> "."
+        ,"This is unsupported, ghcide must be compiled with the same GHC installation as the project."
         ]
 
 
