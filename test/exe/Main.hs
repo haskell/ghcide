@@ -2031,7 +2031,7 @@ dependentFileTest = testGroup "addDependentFile"
               ]
         let bazContent = T.unlines ["module Baz where", "import Foo"]
         _ <-createDoc "Foo.hs" "haskell" fooContent
-        doc <- openDoc' "Baz.hs" "haskell" bazContent
+        doc <- createDoc "Baz.hs" "haskell" bazContent
         expectDiagnostics
           [("Foo.hs", [(DsError, (4, 6), "Couldn't match expected type")])]
         -- Now modify the dependent file
