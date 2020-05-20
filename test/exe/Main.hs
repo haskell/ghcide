@@ -1368,7 +1368,8 @@ findDefinitionAndHoverTests = let
 
   mkFindTests tests = testGroup "get"
     [ testGroup "definition" $ mapMaybe fst tests
-    , testGroup "hover"      $ mapMaybe snd tests ]
+    , testGroup "hover"      $ mapMaybe snd tests
+    , checkFileCompiles sourceFilePath ]
 
   test runDef runHover look expect = testM runDef runHover look (return expect)
 
@@ -1462,6 +1463,12 @@ findDefinitionAndHoverTests = let
         yes    = Just -- test should run and pass
         broken = Just . (`xfail` "known broken")
         no = const Nothing -- don't run this test at all
+
+checkFileCompiles :: FilePath -> TestTree
+checkFileCompiles fp =
+  testSessionWait ("Does " ++ fp ++ " compile") $
+    void (openTestDataDoc fp)
+
 
 pluginTests :: TestTree
 pluginTests = (`xfail8101` "known broken (#556)")
