@@ -179,7 +179,12 @@ compileModule (RunSimplifier simplify) packageState deps tmr =
                 let pm = tm_parsed_module tm
                 let pm' = pm{pm_mod_summary = tweak $ pm_mod_summary pm}
                 let tm' = tm{tm_parsed_module  = pm'}
-                GHC.dm_core_module <$> GHC.desugarModule tm'
+                -- N.B. If we don't set hscTarget to HscInterpreted then GHC
+                -- will fail to produce its breakpoint state, resulting in a
+                -- bottom in the desugared Core which the interpreter may later
+                -- hit. See #537.
+                let setTarget hsc_env = hsc_env { hsc_dflags = (hsc_dflags hsc_env) { hscTarget = HscInterpreted } }
+                GHC.dm_core_module <$> withTempSession setTarget (GHC.desugarModule tm')
             let tc_result = fst (tm_internals_ (tmrModule tmr))
             desugared_guts <-
                 if simplify
