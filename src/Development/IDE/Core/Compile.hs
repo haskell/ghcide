@@ -292,7 +292,10 @@ generateAndWriteHieFile hscEnv tcm =
     dflags       = hsc_dflags hscEnv
     mod_summary  = pm_mod_summary $ tm_parsed_module tcm
     mod_location = ms_location mod_summary
-    targetPath   = Compat.ml_hie_file mod_location
+    targetPath   = withBootSuffix $ Compat.ml_hie_file mod_location
+    withBootSuffix = case ms_hsc_src mod_summary of
+      HsBootFile -> addBootSuffix
+      _ -> id
 
 generateAndWriteHiFile :: HscEnv -> TcModuleResult -> IO [FileDiagnostic]
 generateAndWriteHiFile hscEnv tc =
