@@ -493,7 +493,7 @@ watchedFilesTests = testGroup "watched files"
       _doc <- createDoc "A.hs" "haskell" "{-# LANGUAGE NoImplicitPrelude#-}\nmodule A where\nimport WatchedFilesMissingModule"
       watchedFileRegs <- getWatchedFilesSubscriptionsUntil @PublishDiagnosticsNotification
 
-      -- Expect 3 subscriptions (/tmp does not get any as it is out of the workspace):
+      -- Expect 2 subscriptions (/tmp does not get any as it is out of the workspace):
       --  - /path-to-workspace/WatchedFilesMissingModule.hs
       --  - /path-to-workspace/WatchedFilesMissingModule.lhs
       liftIO $ length watchedFileRegs @?= 2
