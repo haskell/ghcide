@@ -254,9 +254,11 @@ getLocatedImportsRule =
 type RawDepM a = StateT (RawDependencyInformation, IntMap ArtifactsLocation) Action a
 
 execRawDepM :: Monad m => StateT (RawDependencyInformation, IntMap a1) m a2 -> m (RawDependencyInformation, IntMap a1)
-execRawDepM act = execStateT act
-                    (RawDependencyInformation IntMap.empty emptyPathIdMap IntMap.empty
-                    , IntMap.empty)
+execRawDepM act =
+    execStateT act
+        ( RawDependencyInformation IntMap.empty emptyPathIdMap IntMap.empty
+        , IntMap.empty
+        )
 
 -- | Given a target file path, construct the raw dependency results by following
 -- imports recursively.
