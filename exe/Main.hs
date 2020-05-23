@@ -45,7 +45,8 @@ import Development.IDE.Plugin.Completions as Completions
 import Development.IDE.Plugin.CodeAction as CodeAction
 import qualified Language.Haskell.LSP.Core as LSP
 import Language.Haskell.LSP.Messages
-import Language.Haskell.LSP.Types (LspId(IdInt))
+import Language.Haskell.LSP.Types
+import Data.Aeson (ToJSON(toJSON))
 import Development.IDE.LSP.LanguageServer
 import qualified System.Directory.Extra as IO
 import System.Environment
@@ -228,15 +229,16 @@ setNameCache nc hsc = hsc { hsc_NC = nc }
 
 loadSessionShake :: FilePath -> Action (FilePath -> Action (IdeResult HscEnvEq))
 loadSessionShake fp = do
-  ShakeExtras{logger} <- getShakeExtras
-  res <- liftIO $ loadSession logger fp
+  se <- getShakeExtras
+  IdeOptions{optTesting} <- getIdeOptions
+  res <- liftIO $ loadSession optTesting se fp
   return (fmap liftIO res)
 
 -- | This is the key function which implements multi-component support. All
 -- components mapping to the same hie.yaml file are mapped to the same
 -- HscEnv which is updated as new components are discovered.
-loadSession :: Logger -> FilePath -> IO (FilePath -> IO (IdeResult HscEnvEq))
-loadSession logger dir = do
+loadSession :: Bool -> ShakeExtras -> FilePath -> IO (FilePath -> IO (IdeResult HscEnvEq))
+loadSession optTesting ShakeExtras{logger, eventer} dir = do
   -- Mapping from hie.yaml file to HscEnv, one per hie.yaml file
   hscEnvs <- newVar Map.empty :: IO (Var HieMap)
   -- Mapping from a Filepath to HscEnv
@@ -262,7 +264,7 @@ loadSession logger dir = do
         hscEnv <- emptyHscEnv
         (df, targets) <- evalGhcEnv hscEnv $
                           setOptions opts (hsc_dflags hscEnv)
-        dep_info <- getDependencyInfo (componentDependencies opts)
+        dep_info <- getDependencyInfo (componentDependencies opts ++ maybeToList hieYaml)
         -- Now lookup to see whether we are combining with an existing HscEnv
         -- or making a new one. The lookup returns the HscEnv and a list of
         -- information about other components loaded into the HscEnv
@@ -344,6 +346,7 @@ loadSession logger dir = do
 
   let consultCradle :: Maybe FilePath -> FilePath -> IO (IdeResult HscEnvEq)
       consultCradle hieYaml cfp = do
+         when optTesting $ eventer $ notifyCradleLoaded cfp
          logInfo logger $ T.pack ("Consulting the cradle for " <> show cfp)
          cradle <- maybe (loadImplicitCradle $ addTrailingPathSeparator dir) loadCradle hieYaml
          eopts <- cradleToSessionOpts cradle cfp
@@ -615,7 +618,7 @@ setOptions (ComponentOptions theOpts compRoot _) dflags = do
           setIgnoreInterfacePragmas $
           setLinkerOptions $
           disableOptimisation $
-          makeDynFlagsAbsolute comptRoot dflags'
+          makeDynFlagsAbsolute compRoot dflags'
     -- initPackages parses the -package flags and
     -- sets up the visibility for each component.
     (final_df, _) <- liftIO $ initPackages dflags''
@@ -654,6 +657,15 @@ getCacheDir prefix opts = IO.getXdgDirectory IO.XdgCache (cacheDir </> prefix ++
 -- | Sub directory for the cache path
 cacheDir :: String
 cacheDir = "ghcide"
+
+notifyCradleLoaded :: FilePath -> FromServerMessage
+notifyCradleLoaded fp =
+    NotCustomServer $
+    NotificationMessage "2.0" (CustomServerMethod cradleLoadedMethod) $
+    toJSON fp
+
+cradleLoadedMethod :: T.Text
+cradleLoadedMethod = "ghcide/cradle/loaded"
 
 ghcVersionChecker :: IO VersionCheck
 ghcVersionChecker = $$(makeGhcVersionChecker (pure <$> getLibdir))
