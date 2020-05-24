@@ -83,6 +83,8 @@ modifyFilesOfInterest state f = do
     logDebug (ideLogger state) $ "Set files of interest to: " <> T.pack (show $ HashSet.toList files)
     void $ shakeRun state [kick]
 
+-- | Typecheck all the files of interest.
+--   Could be improved
 kick :: Action ()
 kick = do
     files <- getFilesOfInterest

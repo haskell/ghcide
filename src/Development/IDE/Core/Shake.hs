@@ -109,7 +109,9 @@ data ShakeExtras = ShakeExtras
     ,inProgress :: Var (HMap.HashMap NormalizedFilePath Int)
     -- ^ How many rules are running for each file
     ,getLspId :: IO LspId
+    -- ^ The generator for unique Lsp identifiers
     ,reportProgress :: Bool
+    -- ^ Whether to send Progress messages to the client
     ,ideTesting :: IdeTesting
     -- ^ Whether to enable additional lsp messages used by the test suite for checking invariants
     }
@@ -239,8 +241,8 @@ data ShakeSession = ShakeSession
     -- ^ Enqueue an action in the Shake session.
   }
 
-nilShakeSession :: ShakeSession
-nilShakeSession = ShakeSession (pure ()) (\_ -> error "nilShakeSession")
+emptyShakeSession :: ShakeSession
+emptyShakeSession = ShakeSession (pure ()) (\_ -> error "emptyShakeSession")
 
 -- | A Shake database plus persistent store. Can be thought of as storing
 --   mappings from @(FilePath, k)@ to @RuleResult k@.
@@ -339,7 +341,7 @@ shakeOpen getLspId eventer logger debouncer shakeProfileDir (IdeReportProgress r
         shakeOpenDatabase
             opts { shakeExtra = addShakeExtra shakeExtras $ shakeExtra opts }
             rules
-    shakeSession <- newMVar nilShakeSession
+    shakeSession <- newMVar emptyShakeSession
     shakeDb <- shakeDb
     return IdeState{..}
 
