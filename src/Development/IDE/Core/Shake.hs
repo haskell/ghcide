@@ -258,7 +258,22 @@ setValues :: IdeRule k v
           -> IO ()
 setValues state key file val = modifyVar_ state $ \vals -> do
     -- Force to make sure the old HashMap is not retained
-    evaluate $ HMap.insert (file, Key key) (fmap toDyn val) vals
+    let v = fmap toDyn val
+    evaluate v
+    let k = (file, Key key)
+    res <- evaluate $ HMap.insert k v vals
+
+    -- This odd construction is required to prevent a space leak.
+    -- We insert a fully evaluated value, but, somehow, the HashMap
+    -- seems to keep track of the old value. I don't know how.
+    -- Is there a space-leak in unordered-containers?
+    -- The evaluate below fixes it, at the cost of walking the
+    -- HashMap a second time.
+    -- Without this evaluate, leaks of 30Mb/min have been observed.
+    case HMap.lookup k res of
+        Nothing -> pure ()
+        Just v -> void $ evaluate v
+    return res
 
 -- | Delete the value stored for a given ide build key
 deleteValue
