@@ -259,7 +259,7 @@ setValues :: IdeRule k v
 setValues state key file val = modifyVar_ state $ \vals -> do
     -- Force to make sure the old HashMap is not retained
     let v = fmap toDyn val
-    evaluate v
+    _ <- evaluate v
     let k = (file, Key key)
     res <- evaluate $ HMap.insert k v vals
 
