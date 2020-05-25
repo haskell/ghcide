@@ -498,8 +498,9 @@ newSession IdeState{shakeExtras=ShakeExtras{..}, ..} acts = do
     let runInShakeSession :: forall a . Action a -> IO (IO a)
         runInShakeSession act = do
               res <- newEmptyMVar
-              atomically $ writeTQueue actionQueue (act >>= liftIO . putMVar res)
-              return (takeMVar res)
+              let act' = actionCatch @SomeException (Right <$> act) (pure . Left)
+              atomically $ writeTQueue actionQueue (act' >>= liftIO . putMVar res)
+              return (takeMVar res >>= either throwIO return )
         cancelShakeSession = cancel workThread
         initialResult = do
           (res,_) <- wait workThread
