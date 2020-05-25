@@ -432,7 +432,7 @@ shakeRun it@IdeState{shakeExtras=ShakeExtras{logger}, ..} acts =
         (\() -> newSession it acts)
 
 -- | Enqueue an action in the existing 'ShakeSession'.
---   Returns a computation to block until the action is run.
+--   Returns a computation to block until the action is run, propagating exceptions.
 --   Assumes a 'ShakeSession' is available.
 --
 --   Appropriate for user actions other than edits.
@@ -497,7 +497,7 @@ newSession IdeState{shakeExtras=ShakeExtras{..}, ..} acts = do
     --  This should only be necessary iff the (virtual) filesystem has changed
     let runInShakeSession :: forall a . Action a -> IO (IO a)
         runInShakeSession act = do
-              res <- newEmptyMVar
+              res <- newEmptyMVar -- a Barrier-like MVar for holding the result
               let act' = actionCatch @SomeException (Right <$> act) (pure . Left)
               atomically $ writeTQueue actionQueue (act' >>= liftIO . putMVar res)
               return (takeMVar res >>= either throwIO return )
