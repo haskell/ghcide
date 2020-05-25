@@ -497,10 +497,10 @@ newSession IdeState{shakeExtras=ShakeExtras{..}, ..} acts = do
     --  This should only be necessary iff the (virtual) filesystem has changed
     let runInShakeSession :: forall a . Action a -> IO (IO a)
         runInShakeSession act = do
-              res <- newEmptyMVar -- a Barrier-like MVar for holding the result
+              res <- newBarrier
               let act' = actionCatch @SomeException (Right <$> act) (pure . Left)
-              atomically $ writeTQueue actionQueue (act' >>= liftIO . putMVar res)
-              return (takeMVar res >>= either throwIO return )
+              atomically $ writeTQueue actionQueue (act' >>= liftIO . signalBarrier res)
+              return (waitBarrier res >>= either throwIO return )
         cancelShakeSession = cancel workThread
         initialResult = do
           (res,_) <- wait workThread
