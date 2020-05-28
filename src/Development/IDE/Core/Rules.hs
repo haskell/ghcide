@@ -575,26 +575,22 @@ getHiFileRule = defineEarlyCutoff $ \GetHiFile f -> do
   case sequence depHis of
     Nothing -> pure (Nothing, ([], Nothing))
     Just deps -> do
-      gotHiFile <- getFileExists hiFile
-      if not gotHiFile
-        then pure (Nothing, ([], Nothing))
-        else do
-          hiVersion  <- use_ GetModificationTime hiFile
-          modVersion <- use_ GetModificationTime f
-          let sourceModified = modificationTime hiVersion < modificationTime modVersion
-          if sourceModified
-            then do
+        mbHiVersion <- use  GetModificationTime hiFile
+        modVersion  <- use_ GetModificationTime f
+        case mbHiVersion of
+            Just hiVersion
+              | modificationTime hiVersion >= modificationTime modVersion -> do
+                session <- hscEnv <$> use_ GhcSession f
+                r <- liftIO $ loadInterface session ms deps
+                case r of
+                  Right iface -> do
+                    let result = HiFileResult ms iface
+                    return (Just (fingerprintToBS (getModuleHash iface)), ([], Just result))
+                  Left err -> do
+                    let diag = ideErrorWithSource (Just "interface file loading") (Just DsError) f . T.pack $ err
+                    return (Nothing, (pure diag, Nothing))
+            _ ->
               pure (Nothing, ([], Nothing))
-            else do
-              session <- hscEnv <$> use_ GhcSession f
-              r <- liftIO $ loadInterface session ms deps
-              case r of
-                Right iface -> do
-                  let result = HiFileResult ms iface
-                  return (Just (fingerprintToBS (getModuleHash iface)), ([], Just result))
-                Left err -> do
-                  let diag = ideErrorWithSource (Just "interface file loading") (Just DsError) f . T.pack $ err
-                  return (Nothing, (pure diag, Nothing))
 
 getModSummaryRule :: Rules ()
 getModSummaryRule = define $ \GetModSummary f -> do
