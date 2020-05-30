@@ -1369,7 +1369,7 @@ findDefinitionAndHoverTests = let
   mkFindTests tests = testGroup "get"
     [ testGroup "definition" $ mapMaybe fst tests
     , testGroup "hover"      $ mapMaybe snd tests
-    , checkFileCompiles (sourceFilePath) ]
+    , checkFileCompiles sourceFilePath ]
 
   test runDef runHover look expect = testM runDef runHover look (return expect)
 
@@ -2104,10 +2104,10 @@ simpleMultiTest :: TestTree
 simpleMultiTest = testSessionWithExtraFiles "multi" "simple-multi-test" $ \dir -> do
     let aPath = dir </> "a/A.hs"
         bPath = dir </> "b/B.hs"
-    aSource <- liftIO $ readFileUtf8 $ aPath
+    aSource <- liftIO $ readFileUtf8 aPath
     (TextDocumentIdentifier adoc) <- createDoc aPath "haskell" aSource
     expectNoMoreDiagnostics 0.5
-    bSource <- liftIO $ readFileUtf8 $ bPath
+    bSource <- liftIO $ readFileUtf8 bPath
     bdoc <- createDoc bPath "haskell" bSource
     expectNoMoreDiagnostics 0.5
     locs <- getDefinitions bdoc (Position 2 7)
