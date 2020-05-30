@@ -108,10 +108,10 @@ main = do
                       _text = "a"
                     }
             changeDoc doc [change]
+            void (skipManyTill anyMessage message :: Session WorkDoneProgressEndNotification)
             return p
         )
         ( \p doc -> do
-            void (skipManyTill anyMessage message :: Session WorkDoneProgressEndNotification)
             not . null <$> getCodeActions doc (Range p p)
         ),
       ---------------------------------------------------------------------------------------
