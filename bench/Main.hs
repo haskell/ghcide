@@ -1,3 +1,5 @@
+{-# LANGUAGE ExistentialQuantification #-}
+
 {- An automated benchmark built around the simple experiment described in:
 
   > https://neilmitchell.blogspot.com/2020/05/fixing-space-leaks-in-ghcide.html
@@ -64,71 +66,109 @@ main = do
   setup
 
   runBenchmarks
-    [ Bench "hover" 10 $ \doc ->
+    [ bench "hover" 10 $ \doc ->
         isJust <$> getHover doc (Position 853 12),
-
-      Bench "getDefinition" 10 $ \doc ->
+      bench "getDefinition" 10 $ \doc ->
         not . null <$> getDefinitions doc (Position 853 12),
-
-      Bench "documentSymbols" 100 $
+      bench "documentSymbols" 100 $
         fmap (either (not . null) (not . null)) . getDocumentSymbols,
-
-      Bench "documentSymbols after edit" 100 $ \doc -> do
-        let change = TextDocumentContentChangeEvent
-                { _range = Just (Range (Position 854 23) (Position 854 23))
-                , _rangeLength = Nothing
-                , _text = " "
+      bench "documentSymbols after edit" 100 $ \doc -> do
+        let change =
+              TextDocumentContentChangeEvent
+                { _range = Just (Range (Position 854 23) (Position 854 23)),
+                  _rangeLength = Nothing,
+                  _text = " "
                 }
         changeDoc doc [change]
         either (not . null) (not . null) <$> getDocumentSymbols doc,
-
-      Bench "completions after edit" 10 $ \doc -> do
-        let change = TextDocumentContentChangeEvent
-                { _range = Just (Range (Position 854 23) (Position 854 23))
-                , _rangeLength = Nothing
-                , _text = " "
+      bench "completions after edit" 10 $ \doc -> do
+        let change =
+              TextDocumentContentChangeEvent
+                { _range = Just (Range (Position 854 23) (Position 854 23)),
+                  _rangeLength = Nothing,
+                  _text = " "
                 }
         changeDoc doc [change]
         not . null <$> getCompletions doc (Position 853 12),
-
-      Bench "code actions" 10 $ \doc -> do
+      benchWithSetup
+        "code actions"
+        10
+        ( \doc -> do
+            let p = Position 853 24
+            let change =
+                  TextDocumentContentChangeEvent
+                    { _range = Just (Range p p),
+                      _rangeLength = Nothing,
+                      _text = "a"
+                    }
+            changeDoc doc [change]
+            return p
+        )
+        ( \p doc -> do
+            void (skipManyTill anyMessage message :: Session WorkDoneProgressEndNotification)
+            not . null <$> getCodeActions doc (Range p p)
+        ),
+      bench "code actions after edit" 10 $ \doc -> do
         let p = Position 853 24
-        let change = TextDocumentContentChangeEvent
-                { _range = Just (Range p p)
-                , _rangeLength = Nothing
-                , _text = "a"
+        let change =
+              TextDocumentContentChangeEvent
+                { _range = Just (Range p p),
+                  _rangeLength = Nothing,
+                  _text = "a"
                 }
         changeDoc doc [change]
         void (skipManyTill anyMessage message :: Session WorkDoneProgressEndNotification)
         not . null <$> getCodeActions doc (Range p p)
-
     ]
 
 type Experiment = TextDocumentIdentifier -> Session Bool
 
-data Bench = Bench
+data Bench = forall setup.
+  Bench
   { name :: !String,
     samples :: !Natural,
-    experiment :: !Experiment
+    benchSetup :: TextDocumentIdentifier -> Session setup,
+    experiment :: setup -> Experiment
   }
+
+bench :: String -> Natural -> Experiment -> Bench
+bench name samples userExperiment = Bench {..}
+  where
+    experiment () = userExperiment
+    benchSetup _ = return ()
+
+benchWithSetup ::
+  String ->
+  Natural ->
+  (TextDocumentIdentifier -> Session p) ->
+  (p -> Experiment) ->
+  Bench
+benchWithSetup = Bench
 
 runBenchmarks :: [Bench] -> IO ()
 runBenchmarks benchmarks = do
-  results <- forM benchmarks $ \Bench {..} ->
-    (name,) <$> runBench name samples experiment
+  results <- forM benchmarks $ \b -> (b,) <$> runBench b
 
-  forM_ results $ \(name, duration) ->
-    putStrLn $ "TOTAL " <> name <> " = " <> showDuration duration
+  forM_ results $ \(Bench {name, samples}, duration) ->
+    putStrLn $
+      "TOTAL "
+        <> name
+        <> " = "
+        <> showDuration duration
+        <> " ("
+        <> show samples
+        <> " repetitions)"
 
-runBench :: String -> Natural -> Experiment -> IO Seconds
-runBench name iters experiment =
+runBench :: Bench -> IO Seconds
+runBench Bench {..} =
   runSessionWithConfig conf cmd lspTestCaps dir $ do
     doc <- openDoc exampleModulePath "haskell"
     void (skipManyTill anyMessage message :: Session WorkDoneProgressEndNotification)
 
     liftIO $ putStrLn $ "Running " <> name <> " benchmark"
-    (t, _) <- duration2 $ replicateM_ (fromIntegral iters) $ do
-      (t, res) <- duration2 $ experiment doc
+    userState <- benchSetup doc
+    (t, _) <- duration2 $ replicateM_ (fromIntegral samples) $ do
+      (t, res) <- duration2 $ experiment userState doc
       unless res $ fail "DIDN'T WORK"
       liftIO $ putStrLn $ showDuration t
 
