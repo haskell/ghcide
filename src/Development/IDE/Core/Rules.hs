@@ -577,8 +577,8 @@ getHiFileRule = defineEarlyCutoff $ \GetHiFile f -> do
     Just deps -> do
         mbHiVersion <- use  GetModificationTime hiFile
         modVersion  <- use_ GetModificationTime f
-        case mbHiVersion of
-            Just hiVersion
+        case (mbHiVersion, modVersion) of
+            (Just hiVersion, ModificationTime{})
               | modificationTime hiVersion >= modificationTime modVersion -> do
                 session <- hscEnv <$> use_ GhcSession f
                 r <- liftIO $ loadInterface session ms deps
@@ -589,6 +589,8 @@ getHiFileRule = defineEarlyCutoff $ \GetHiFile f -> do
                   Left err -> do
                     let diag = ideErrorWithSource (Just "interface file loading") (Just DsError) f . T.pack $ err
                     return (Nothing, (pure diag, Nothing))
+            (_, VFSVersion{}) ->
+                error "internal error - GetHiFile of file of interest"
             _ ->
               pure (Nothing, ([], Nothing))
 
