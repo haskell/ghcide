@@ -1293,33 +1293,36 @@ addSigLensesTests = let
         ]
     ]
 
-findDefinitionAndHoverTests :: TestTree
-findDefinitionAndHoverTests = let
+checkDefs :: [Location] -> Session [Expect] -> Session ()
+checkDefs defs mkExpectations = traverse_ check =<< mkExpectations where
 
-  tst (get, check) pos targetRange title = testSession title $ do
-    doc <- openTestDataDoc sourceFilePath
-    found <- get doc pos
-    check found targetRange
-
-  checkDefs :: [Location] -> Session [Expect] -> Session ()
-  checkDefs defs mkExpectations = traverse_ check =<< mkExpectations where
-
-    check (ExpectRange expectedRange) = do
-      assertNDefinitionsFound 1 defs
-      assertRangeCorrect (head defs) expectedRange
-    check (ExpectLocation expectedLocation) = do
-      assertNDefinitionsFound 1 defs
-      liftIO $ head defs @?= expectedLocation
-    check ExpectNoDefinitions = do
-      assertNDefinitionsFound 0 defs
-    check ExpectExternFail = liftIO $ assertFailure "Expecting to fail to find in external file"
-    check _ = pure () -- all other expectations not relevant to getDefinition
+  check (ExpectRange expectedRange) = do
+    assertNDefinitionsFound 1 defs
+    assertRangeCorrect (head defs) expectedRange
+  check (ExpectLocation expectedLocation) = do
+    assertNDefinitionsFound 1 defs
+    liftIO $ head defs @?= expectedLocation
+  check ExpectNoDefinitions = do
+    assertNDefinitionsFound 0 defs
+  check ExpectExternFail = liftIO $ assertFailure "Expecting to fail to find in external file"
+  check _ = pure () -- all other expectations not relevant to getDefinition
 
   assertNDefinitionsFound :: Int -> [a] -> Session ()
   assertNDefinitionsFound n defs = liftIO $ assertEqual "number of definitions" n (length defs)
 
   assertRangeCorrect Location{_range = foundRange} expectedRange =
     liftIO $ expectedRange @=? foundRange
+
+
+findDefinitionAndHoverTests :: TestTree
+findDefinitionAndHoverTests = let
+
+  tst (get, check) pos targetRange title = testSessionWithExtraFiles "hover" title $ \dir -> do
+    doc <- openTestDataDoc (dir </> sourceFilePath)
+    found <- get doc pos
+    check found targetRange
+
+
 
   checkHover :: Maybe Hover -> Session [Expect] -> Session ()
   checkHover hover expectations = traverse_ check =<< expectations where
@@ -1366,7 +1369,7 @@ findDefinitionAndHoverTests = let
   mkFindTests tests = testGroup "get"
     [ testGroup "definition" $ mapMaybe fst tests
     , testGroup "hover"      $ mapMaybe snd tests
-    , checkFileCompiles sourceFilePath ]
+    , checkFileCompiles (sourceFilePath) ]
 
   test runDef runHover look expect = testM runDef runHover look (return expect)
 
@@ -1463,8 +1466,10 @@ findDefinitionAndHoverTests = let
 
 checkFileCompiles :: FilePath -> TestTree
 checkFileCompiles fp =
-  testSessionWait ("Does " ++ fp ++ " compile") $
-    void (openTestDataDoc fp)
+  testSessionWithExtraFiles "hover" ("Does " ++ fp ++ " compile") $ \dir -> do
+    void (openTestDataDoc (dir </> fp))
+    expectNoMoreDiagnostics 0.5
+
 
 
 pluginTests :: TestTree
@@ -2025,6 +2030,7 @@ cradleTests :: TestTree
 cradleTests = testGroup "cradle"
     [testGroup "dependencies" [sessionDepsArePickedUp]
     ,testGroup "loading" [loadCradleOnlyonce]
+    ,testGroup "multi"   [simpleMultiTest]
     ]
 
 loadCradleOnlyonce :: TestTree
@@ -2094,6 +2100,21 @@ cradleLoadedMessage = satisfy $ \case
 cradleLoadedMethod :: T.Text
 cradleLoadedMethod = "ghcide/cradle/loaded"
 
+simpleMultiTest :: TestTree
+simpleMultiTest = testSessionWithExtraFiles "multi" "simple-multi-test" $ \dir -> do
+    let aPath = dir </> "a/A.hs"
+        bPath = dir </> "b/B.hs"
+    aSource <- liftIO $ readFileUtf8 $ aPath
+    (TextDocumentIdentifier adoc) <- createDoc aPath "haskell" aSource
+    expectNoMoreDiagnostics 0.5
+    bSource <- liftIO $ readFileUtf8 $ bPath
+    bdoc <- createDoc bPath "haskell" bSource
+    expectNoMoreDiagnostics 0.5
+    locs <- getDefinitions bdoc (Position 2 7)
+    let fooL = mkL adoc 2 0 2 3
+    checkDefs locs (pure [fooL])
+    expectNoMoreDiagnostics 0.5
+
 sessionDepsArePickedUp :: TestTree
 sessionDepsArePickedUp = testSession'
   "session-deps-are-picked-up"
@@ -2138,6 +2159,9 @@ sessionDepsArePickedUp = testSession'
 testSession :: String -> Session () -> TestTree
 testSession name = testCase name . run
 
+testSessionWithExtraFiles :: FilePath -> String -> (FilePath -> Session ()) -> TestTree
+testSessionWithExtraFiles prefix name = testCase name . runWithExtraFiles prefix
+
 testSession' :: String -> (FilePath -> Session ()) -> TestTree
 testSession' name = testCase name . run'
 
@@ -2172,6 +2196,19 @@ mkRange a b c d = Range (Position a b) (Position c d)
 run :: Session a -> IO a
 run s = withTempDir $ \dir -> runInDir dir s
 
+runWithExtraFiles :: FilePath -> (FilePath -> Session a) -> IO a
+runWithExtraFiles prefix s = withTempDir $ \dir -> do
+  copyTestDataFiles dir prefix
+  runInDir dir (s dir)
+
+copyTestDataFiles :: FilePath -> FilePath -> IO ()
+copyTestDataFiles dir prefix = do
+  -- Copy all the test data files to the temporary workspace
+  testDataFiles <- getDirectoryFilesIO ("test/data" </> prefix) ["//*"]
+  for_ testDataFiles $ \f -> do
+    createDirectoryIfMissing True $ dir </> takeDirectory f
+    copyFile ("test/data" </> prefix </> f) (dir </> f)
+
 run' :: (FilePath -> Session a) -> IO a
 run' s = withTempDir $ \dir -> runInDir dir (s dir)
 
@@ -2183,11 +2220,6 @@ runInDir dir s = do
   -- since the package import test creates "Data/List.hs", which otherwise has no physical home
   createDirectoryIfMissing True $ dir ++ "/Data"
 
-  -- Copy all the test data files to the temporary workspace
-  testDataFiles <- getDirectoryFilesIO "test/data" ["//*"]
-  for_ testDataFiles $ \f -> do
-    createDirectoryIfMissing True $ dir </> takeDirectory f
-    copyFile ("test/data" </> f) (dir </> f)
 
   let cmd = unwords [ghcideExe, "--lsp", "--test", "--cwd", dir]
   -- HIE calls getXgdDirectory which assumes that HOME is set.
