@@ -560,7 +560,9 @@ removePackageImports pkgs (L l h@HsModule {hsmodImports} ) = L l (h { hsmodImpor
       case PackageName . sl_fs <$> ideclPkgQual of
         Just pn | pn `elem` pkgs -> L l (i { ideclPkgQual = Nothing })
         _ -> L l i
+#if MIN_GHC_API_VERSION(8,6,0)
     do_one_import l = l
+#endif
 
 loadHieFile :: FilePath -> IO GHC.HieFile
 loadHieFile f = do
