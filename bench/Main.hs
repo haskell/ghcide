@@ -66,12 +66,16 @@ main = do
   setup
 
   runBenchmarks
-    [ bench "hover" 10 $ \doc ->
+    [ ---------------------------------------------------------------------------------------
+      bench "hover" 10 $ \doc ->
         isJust <$> getHover doc (Position 853 12),
+      ---------------------------------------------------------------------------------------
       bench "getDefinition" 10 $ \doc ->
         not . null <$> getDefinitions doc (Position 853 12),
+      ---------------------------------------------------------------------------------------
       bench "documentSymbols" 100 $
         fmap (either (not . null) (not . null)) . getDocumentSymbols,
+      ---------------------------------------------------------------------------------------
       bench "documentSymbols after edit" 100 $ \doc -> do
         let change =
               TextDocumentContentChangeEvent
@@ -81,6 +85,7 @@ main = do
                 }
         changeDoc doc [change]
         either (not . null) (not . null) <$> getDocumentSymbols doc,
+      ---------------------------------------------------------------------------------------
       bench "completions after edit" 10 $ \doc -> do
         let change =
               TextDocumentContentChangeEvent
@@ -90,6 +95,7 @@ main = do
                 }
         changeDoc doc [change]
         not . null <$> getCompletions doc (Position 853 12),
+      ---------------------------------------------------------------------------------------
       benchWithSetup
         "code actions"
         10
@@ -108,6 +114,7 @@ main = do
             void (skipManyTill anyMessage message :: Session WorkDoneProgressEndNotification)
             not . null <$> getCodeActions doc (Range p p)
         ),
+      ---------------------------------------------------------------------------------------
       bench "code actions after edit" 10 $ \doc -> do
         let p = Position 853 24
         let change =
