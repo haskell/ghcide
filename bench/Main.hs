@@ -1,4 +1,6 @@
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE ImplicitParams #-}
 
 {- An automated benchmark built around the simple experiment described in:
 
@@ -24,44 +26,42 @@
      - GC stats analysis (currently -S is printed as part of the experiment)
      - Analyisis of performance over the commit history of the project
 
+  How to run:
+     1. `cabal bench`
+     2. `cabal exec <absolute-path-to-ghcide-bench> -- ghcide-bench-options`
+
+  Note that the package database influences the response times of certain actions,
+  e.g. code actions, and therefore the two methods above do not necessarily
+  produce the same results.
 
  -}
 
 import Control.Applicative.Combinators
 import Control.Concurrent
+import Control.Exception.Safe
 import Control.Monad
+import Control.Monad.Extra (whenJust)
 import Control.Monad.IO.Class
 import Data.Aeson
+import Data.List (intercalate)
 import Data.Maybe
 import Data.Version
 import Language.Haskell.LSP.Test
 import Language.Haskell.LSP.Types
 import Language.Haskell.LSP.Types.Capabilities
 import Numeric.Natural
+import Options.Applicative
 import System.Directory
 import System.FilePath ((</>))
 import System.Process
 import System.Time.Extra
 
-examplePackageName :: String
-examplePackageName = "Cabal"
-
-examplePackageVersion :: Version
-examplePackageVersion = makeVersion [3, 2, 0, 0]
-
-examplePackage :: String
-examplePackage = examplePackageName <> "-" <> showVersion examplePackageVersion
-
-exampleModulePath :: FilePath
-exampleModulePath = "Distribution" </> "Simple.hs"
-
--- For some reason, the Shake profile files are truncated and won't load
-shakeProfiling :: Bool
-shakeProfiling = False
-
 main :: IO ()
 main = do
-  putStrLn "starting test"
+  config <- execParser $ info configP fullDesc
+  let ?config = config
+
+  output "starting test"
 
   setup
 
@@ -128,6 +128,40 @@ main = do
         not . null <$> getCodeActions doc (Range p p)
     ]
 
+---------------------------------------------------------------------------------------------
+
+examplePackageName :: String
+examplePackageName = "Cabal"
+
+examplePackageVersion :: Version
+examplePackageVersion = makeVersion [3, 2, 0, 0]
+
+examplePackage :: String
+examplePackage = examplePackageName <> "-" <> showVersion examplePackageVersion
+
+exampleModulePath :: FilePath
+exampleModulePath = "Distribution" </> "Simple.hs"
+
+data Config = Config
+  { verbose :: !Bool,
+    -- For some reason, the Shake profile files are truncated and won't load
+    shakeProfiling :: !(Maybe FilePath),
+    outputCSV :: !Bool
+  }
+
+type HasConfig = (?config :: Config)
+
+configP :: Parser Config
+configP = Config
+    <$> (not <$> switch (long "quiet"))
+    <*> optional (strOption (long "shake-profiling" <> metavar "PATH"))
+    <*> switch (long "csv")
+
+output :: (MonadIO m, HasConfig) => String -> m ()
+output = if verbose ?config then liftIO . putStrLn else (\_ -> pure ())
+
+---------------------------------------------------------------------------------------
+
 type Experiment = TextDocumentIdentifier -> Session Bool
 
 data Bench = forall setup.
@@ -152,12 +186,12 @@ benchWithSetup ::
   Bench
 benchWithSetup = Bench
 
-runBenchmarks :: [Bench] -> IO ()
+runBenchmarks :: HasConfig => [Bench] -> IO ()
 runBenchmarks benchmarks = do
   results <- forM benchmarks $ \b -> (b,) <$> runBench b
 
   forM_ results $ \(Bench {name, samples}, duration) ->
-    putStrLn $
+    output $
       "TOTAL "
         <> name
         <> " = "
@@ -166,30 +200,40 @@ runBenchmarks benchmarks = do
         <> show samples
         <> " repetitions)"
 
-runBench :: Bench -> IO Seconds
-runBench Bench {..} =
-  runSessionWithConfig conf cmd lspTestCaps dir $ do
+  when (outputCSV ?config) $ do
+    putStrLn $ intercalate ", " $ map name benchmarks
+    putStrLn $ intercalate ", " $ map (showDuration . snd) results
+
+runBench :: HasConfig => Bench -> IO Seconds
+runBench Bench {..} = handleAny (\e -> print e >> return (-1))
+  $ runSessionWithConfig conf cmd lspTestCaps dir
+  $ do
     doc <- openDoc exampleModulePath "haskell"
     void (skipManyTill anyMessage message :: Session WorkDoneProgressEndNotification)
 
-    liftIO $ putStrLn $ "Running " <> name <> " benchmark"
+    liftIO $ output $ "Running " <> name <> " benchmark"
     userState <- benchSetup doc
-    (t, _) <- duration2 $ replicateM_ (fromIntegral samples) $ do
-      (t, res) <- duration2 $ experiment userState doc
-      unless res $ fail "DIDN'T WORK"
-      liftIO $ putStrLn $ showDuration t
+    let loop 0 = return True
+        loop n = do
+          (t, res) <- duration2 $ experiment userState doc
+          if not res
+            then return False
+            else do
+              output (showDuration t)
+              loop (n -1)
+
+    (t, res) <- duration2 $ loop samples
 
     exitServer
     -- sleeep to give ghcide a chance to print the RTS stats
     liftIO $ threadDelay 50000
 
-    return t
+    return $ if res then t else -1
   where
     cmd =
       unwords $
         [ "ghcide",
           "--lsp",
-          "--test",
           "--cwd",
           dir,
           "+RTS",
@@ -198,34 +242,32 @@ runBench Bench {..} =
           "-RTS"
         ]
           ++ concat
-            [ ["--shake-profiling", "shake-profiling"]
-              | shakeProfiling
+            [ ["--shake-profiling", path]
+              | Just path <- [shakeProfiling ?config]
             ]
     dir = "bench/example/" <> examplePackage
     lspTestCaps =
       fullCaps {_window = Just $ WindowClientCapabilities $ Just True}
     conf =
       defaultConfig
-        { logStdErr = True,
+        { logStdErr = verbose ?config,
           logMessages = False,
           logColor = False
         }
 
-setup :: IO ()
+setup :: HasConfig => IO ()
 setup = do
   alreadyExists <- doesDirectoryExist "bench/example"
   when alreadyExists $ removeDirectoryRecursive "bench/example"
-  callCommand $ "cabal unpack " <> examplePackage <> " -d bench/example"
+  callCommand $ "cabal unpack -v0 " <> examplePackage <> " -d bench/example"
   writeFile
     ("bench/example/" <> examplePackage <> "/hie.yaml")
     ("cradle: {cabal: {component: " <> show examplePackageName <> "}}")
 
-  when shakeProfiling
-    $ createDirectoryIfMissing True
-    $ "bench/example" </> examplePackage </> "shake-profiling"
+  whenJust (shakeProfiling ?config) $ createDirectoryIfMissing True
 
   -- print the path to ghcide (TODO platform independent)
-  callCommand "which ghcide"
+  when (verbose ?config) $ callCommand "which ghcide"
 
 duration2 :: MonadIO m => m a -> m (Seconds, a)
 duration2 x = do
@@ -237,3 +279,5 @@ duration2 x = do
 -- | Asks the server to shutdown and exit politely
 exitServer :: Session ()
 exitServer = request_ Shutdown (Nothing :: Maybe Value) >> sendNotification Exit ExitParams
+
+--------------------------------------------------------------------------------------------
