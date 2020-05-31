@@ -224,14 +224,14 @@ runBench Bench {..} = handleAny (\e -> print e >> return (-1))
     userState <- benchSetup doc
     let loop 0 = return True
         loop n = do
-          (t, res) <- duration2 $ experiment userState doc
+          (t, res) <- duration $ experiment userState doc
           if not res
             then return False
             else do
               output (showDuration t)
               loop (n -1)
 
-    (t, res) <- duration2 $ loop samples
+    (t, res) <- duration $ loop samples
 
     exitServer
     -- sleeep to give ghcide a chance to print the RTS stats
@@ -277,13 +277,6 @@ setup = do
 
   -- print the path to ghcide (TODO platform independent)
   when (verbose ?config) $ callCommand "which ghcide"
-
-duration2 :: MonadIO m => m a -> m (Seconds, a)
-duration2 x = do
-  start <- liftIO offsetTime
-  res <- x
-  end <- liftIO start
-  return (end, res)
 
 -- | Asks the server to shutdown and exit politely
 exitServer :: Session ()
