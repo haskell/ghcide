@@ -39,11 +39,10 @@
 import Control.Applicative.Combinators
 import Control.Concurrent
 import Control.Exception.Safe
-import Control.Monad
-import Control.Monad.Extra (whenJust)
+import Control.Monad.Extra
 import Control.Monad.IO.Class
 import Data.Aeson
-import Data.List (intercalate)
+import Data.List
 import Data.Maybe
 import Data.Version
 import Language.Haskell.LSP.Test
@@ -55,6 +54,16 @@ import System.Directory
 import System.FilePath ((</>))
 import System.Process
 import System.Time.Extra
+
+-- Points to a string in the target file,
+-- convenient for hygienic edits
+hygienicP :: Position
+hygienicP = Position 854 23
+
+-- Points to the middle of an identifier,
+-- convenient for requesting goto-def, hover and completions
+identifierP :: Position
+identifierP = Position 853 12
 
 main :: IO ()
 main = do
@@ -68,10 +77,10 @@ main = do
   runBenchmarks
     [ ---------------------------------------------------------------------------------------
       bench "hover" 10 $ \doc ->
-        isJust <$> getHover doc (Position 853 12),
+        isJust <$> getHover doc identifierP,
       ---------------------------------------------------------------------------------------
       bench "getDefinition" 10 $ \doc ->
-        not . null <$> getDefinitions doc (Position 853 12),
+        not . null <$> getDefinitions doc identifierP,
       ---------------------------------------------------------------------------------------
       bench "documentSymbols" 100 $
         fmap (either (not . null) (not . null)) . getDocumentSymbols,
@@ -79,7 +88,7 @@ main = do
       bench "documentSymbols after edit" 100 $ \doc -> do
         let change =
               TextDocumentContentChangeEvent
-                { _range = Just (Range (Position 854 23) (Position 854 23)),
+                { _range = Just (Range hygienicP hygienicP),
                   _rangeLength = Nothing,
                   _text = " "
                 }
@@ -89,18 +98,18 @@ main = do
       bench "completions after edit" 10 $ \doc -> do
         let change =
               TextDocumentContentChangeEvent
-                { _range = Just (Range (Position 854 23) (Position 854 23)),
+                { _range = Just (Range hygienicP hygienicP),
                   _rangeLength = Nothing,
                   _text = " "
                 }
         changeDoc doc [change]
-        not . null <$> getCompletions doc (Position 853 12),
+        not . null <$> getCompletions doc identifierP,
       ---------------------------------------------------------------------------------------
       benchWithSetup
         "code actions"
         10
         ( \doc -> do
-            let p = Position 853 24
+            let p = identifierP
             let change =
                   TextDocumentContentChangeEvent
                     { _range = Just (Range p p),
@@ -116,7 +125,7 @@ main = do
         ),
       ---------------------------------------------------------------------------------------
       bench "code actions after edit" 10 $ \doc -> do
-        let p = Position 853 24
+        let p = identifierP
         let change =
               TextDocumentContentChangeEvent
                 { _range = Just (Range p p),
