@@ -275,7 +275,7 @@ Change `kak-lsp.toml` to include this:
 ```toml
 [language.haskell]
 filetypes = ["haskell"]
-roots = ["Setup.hs", "stack.yaml", "*.cabal"]
+roots = ["Setup.hs", "stack.yaml", "*.cabal", "cabal.project", "hie.yaml"]
 command = "ghcide"
 args = ["--lsp"]
 ```
