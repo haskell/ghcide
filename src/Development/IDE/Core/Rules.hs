@@ -438,7 +438,7 @@ typeCheckRule = define $ \TypeCheck file -> do
     pm <- use_ GetParsedModule file
     -- do not generate interface files as this rule is called
     -- for files of interest on every keystroke
-    typeCheckRuleDefinition file pm SkipGenerationOfInterfaceFiles
+    typeCheckRuleDefinition file pm DoGenerateInterfaceFiles
 
 data GenerateInterfaceFiles
     = DoGenerateInterfaceFiles
