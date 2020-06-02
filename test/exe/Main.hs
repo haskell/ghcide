@@ -35,7 +35,7 @@ import Language.Haskell.LSP.Types.Capabilities
 import qualified Language.Haskell.LSP.Types.Lens as Lsp (diagnostics, params, message)
 import Language.Haskell.LSP.VFS (applyChange)
 import Network.URI
-import System.Environment.Blank (setEnv)
+import System.Environment.Blank (setEnv, unsetEnv)
 import System.FilePath
 import System.IO.Extra
 import System.Directory
@@ -49,32 +49,41 @@ import Test.Tasty.QuickCheck
 import Data.Maybe
 
 main :: IO ()
-main = defaultMainWithRerun $ testGroup "HIE"
-  [ testSession "open close" $ do
-      doc <- createDoc "Testing.hs" "haskell" ""
-      void (skipManyTill anyMessage message :: Session WorkDoneProgressCreateRequest)
-      void (skipManyTill anyMessage message :: Session WorkDoneProgressBeginNotification)
-      closeDoc doc
-      void (skipManyTill anyMessage message :: Session WorkDoneProgressEndNotification)
-  , initializeResponseTests
-  , completionTests
-  , cppTests
-  , diagnosticTests
-  , codeActionTests
-  , codeLensesTests
-  , outlineTests
-  , findDefinitionAndHoverTests
-  , pluginTests
-  , preprocessorTests
-  , thTests
-  , safeTests
-  , unitTests
-  , haddockTests
-  , positionMappingTests
-  , watchedFilesTests
-  , cradleTests
-  , dependentFileTest
-  ]
+main = do
+  -- Stack sets this which trips up cabal in the multi-component tests.
+  mapM_ unsetEnv
+    [ "GHC_PACKAGE_PATH"
+    , "GHC_ENVIRONMENT"
+    , "HASKELL_DIST_DIR"
+    , "HASKELL_PACKAGE_SANDBOX"
+    , "HASKELL_PACKAGE_SANDBOXES"
+    ]
+  defaultMainWithRerun $ testGroup "HIE"
+    [ testSession "open close" $ do
+        doc <- createDoc "Testing.hs" "haskell" ""
+        void (skipManyTill anyMessage message :: Session WorkDoneProgressCreateRequest)
+        void (skipManyTill anyMessage message :: Session WorkDoneProgressBeginNotification)
+        closeDoc doc
+        void (skipManyTill anyMessage message :: Session WorkDoneProgressEndNotification)
+    , initializeResponseTests
+    , completionTests
+    , cppTests
+    , diagnosticTests
+    , codeActionTests
+    , codeLensesTests
+    , outlineTests
+    , findDefinitionAndHoverTests
+    , pluginTests
+    , preprocessorTests
+    , thTests
+    , safeTests
+    , unitTests
+    , haddockTests
+    , positionMappingTests
+    , watchedFilesTests
+    , cradleTests
+    , dependentFileTest
+    ]
 
 initializeResponseTests :: TestTree
 initializeResponseTests = withResource acquire release tests where
