@@ -10,7 +10,7 @@
 module Main (main) where
 
 import Control.Applicative.Combinators
-import Control.Exception (catch)
+import Control.Exception (bracket, catch)
 import qualified Control.Lens as Lens
 import Control.Monad
 import Control.Monad.IO.Class (liftIO)
@@ -35,7 +35,7 @@ import Language.Haskell.LSP.Types.Capabilities
 import qualified Language.Haskell.LSP.Types.Lens as Lsp (diagnostics, params, message)
 import Language.Haskell.LSP.VFS (applyChange)
 import Network.URI
-import System.Environment.Blank (setEnv, unsetEnv)
+import System.Environment.Blank (getEnv, setEnv, unsetEnv)
 import System.FilePath
 import System.IO.Extra
 import System.Directory
@@ -50,14 +50,8 @@ import Data.Maybe
 
 main :: IO ()
 main = do
-  -- Stack sets this which trips up cabal in the multi-component tests.
-  mapM_ unsetEnv
-    [ "GHC_PACKAGE_PATH"
-    , "GHC_ENVIRONMENT"
-    , "HASKELL_DIST_DIR"
-    , "HASKELL_PACKAGE_SANDBOX"
-    , "HASKELL_PACKAGE_SANDBOXES"
-    ]
+  -- We mess with env vars so run single-threaded.
+  setEnv "TASTY_NUM_THREADS" "1" True
   defaultMainWithRerun $ testGroup "HIE"
     [ testSession "open close" $ do
         doc <- createDoc "Testing.hs" "haskell" ""
@@ -2109,8 +2103,26 @@ cradleLoadedMessage = satisfy $ \case
 cradleLoadedMethod :: T.Text
 cradleLoadedMethod = "ghcide/cradle/loaded"
 
+-- Stack sets this which trips up cabal in the multi-component tests.
+-- However, our plugin tests rely on those env vars so we unset it locally.
+withoutStackEnv :: IO a -> IO a
+withoutStackEnv s =
+  bracket
+    (mapM getEnv vars >>= \prevState -> mapM_ unsetEnv vars >> pure prevState)
+    (\prevState -> mapM_ (\(var, value) -> restore var value) (zip vars prevState))
+    (const s)
+  where vars =
+          [ "GHC_PACKAGE_PATH"
+          , "GHC_ENVIRONMENT"
+          , "HASKELL_DIST_DIR"
+          , "HASKELL_PACKAGE_SANDBOX"
+          , "HASKELL_PACKAGE_SANDBOXES"
+          ]
+        restore var Nothing = unsetEnv var
+        restore var (Just val) = setEnv var val True
+
 simpleMultiTest :: TestTree
-simpleMultiTest = testSessionWithExtraFiles "multi" "simple-multi-test" $ \dir -> do
+simpleMultiTest = testCase "simple-multi-test" $ withoutStackEnv $ runWithExtraFiles "multi" $ \dir -> do
     let aPath = dir </> "a/A.hs"
         bPath = dir </> "b/B.hs"
     aSource <- liftIO $ readFileUtf8 aPath
@@ -2126,7 +2138,7 @@ simpleMultiTest = testSessionWithExtraFiles "multi" "simple-multi-test" $ \dir -
 
 -- Like simpleMultiTest but open the files in the other order
 simpleMultiTest2 :: TestTree
-simpleMultiTest2 = testSessionWithExtraFiles "multi" "simple-multi-test2" $ \dir -> do
+simpleMultiTest2 = testCase "simple-multi-test2" $ withoutStackEnv $ runWithExtraFiles "multi" $ \dir -> do
     let aPath = dir </> "a/A.hs"
         bPath = dir </> "b/B.hs"
     bSource <- liftIO $ readFileUtf8 bPath
