@@ -196,7 +196,7 @@ getParsedModuleRule = defineEarlyCutoff $ \GetParsedModule file -> do
     let hsc = hscEnv sess
         -- These packages are used when removing PackageImports from a
         -- parsed module
-        comp_pkgs = mapMaybe (fmap fst . (mkImportDirs (hsc_dflags hsc))) (deps sess)
+        comp_pkgs = mapMaybe (fmap fst . mkImportDirs (hsc_dflags hsc)) (deps sess)
     opt <- getIdeOptions
     (_, contents) <- getFileContents file
 
@@ -627,7 +627,7 @@ getModIfaceRule = define $ \GetModIface f -> do
             let hsc = hscEnv sess
                 -- After parsing the module remove all package imports referring to
                 -- these packages as we have already dealt with what they map to.
-                comp_pkgs = mapMaybe (fmap fst . (mkImportDirs (hsc_dflags hsc))) (deps sess)
+                comp_pkgs = mapMaybe (fmap fst . mkImportDirs (hsc_dflags hsc)) (deps sess)
             opt <- getIdeOptions
             (_, contents) <- getFileContents f
             -- Embed --haddocks in the interface file
