@@ -84,8 +84,8 @@ locateModuleFile import_dirss exts doesExist isSource modName = do
 -- It only returns Just for unit-ids which are possible to import into the
 -- current module. In particular, it will return Nothing for 'main' components
 -- as they can never be imported into another package.
-mkImportDirs :: (M.InstalledUnitId, DynFlags) -> Maybe (PackageName, [FilePath])
-mkImportDirs (i, df@DynFlags{importPaths}) = (, importPaths) <$> getPackageName df i
+mkImportDirs :: DynFlags -> (M.InstalledUnitId, DynFlags) -> Maybe (PackageName, [FilePath])
+mkImportDirs df (i, DynFlags{importPaths}) = (, importPaths) <$> getPackageName df (traceShow (i, importPaths, isJust $ getPackageName df i) i)
 
 -- | locate a module in either the file system or the package database. Where we go from *daml to
 -- Haskell
@@ -120,7 +120,7 @@ locateModule dflags comp_info exts doesExist modName mbPkgName isSource = do
         Nothing -> lookupInPackageDB dflags
         Just file -> toModLocation file
   where
-    import_paths = mapMaybe mkImportDirs comp_info
+    import_paths = mapMaybe (mkImportDirs dflags) (traceShow (length comp_info) comp_info)
     toModLocation file = liftIO $ do
         loc <- mkHomeModLocation dflags (unLoc modName) (fromNormalizedFilePath file)
         return $ Right $ FileImport $ ArtifactsLocation file loc (not isSource)
