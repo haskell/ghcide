@@ -2030,7 +2030,7 @@ cradleTests :: TestTree
 cradleTests = testGroup "cradle"
     [testGroup "dependencies" [sessionDepsArePickedUp]
     ,testGroup "loading" [loadCradleOnlyonce]
-    ,testGroup "multi"   [simpleMultiTest]
+    ,testGroup "multi"   [simpleMultiTest, simpleMultiTest2]
     ]
 
 loadCradleOnlyonce :: TestTree
@@ -2110,6 +2110,23 @@ simpleMultiTest = testSessionWithExtraFiles "multi" "simple-multi-test" $ \dir -
     bSource <- liftIO $ readFileUtf8 bPath
     bdoc <- createDoc bPath "haskell" bSource
     expectNoMoreDiagnostics 0.5
+    locs <- getDefinitions bdoc (Position 2 7)
+    let fooL = mkL adoc 2 0 2 3
+    checkDefs locs (pure [fooL])
+    expectNoMoreDiagnostics 0.5
+
+-- Like simpleMultiTest but open the files in the other order
+simpleMultiTest2 :: TestTree
+simpleMultiTest2 = testSessionWithExtraFiles "multi" "simple-multi-test2" $ \dir -> do
+    let aPath = dir </> "a/A.hs"
+        bPath = dir </> "b/B.hs"
+    bSource <- liftIO $ readFileUtf8 bPath
+    bdoc <- createDoc bPath "haskell" bSource
+    expectNoMoreDiagnostics 5
+    aSource <- liftIO $ readFileUtf8 aPath
+    (TextDocumentIdentifier adoc) <- createDoc aPath "haskell" aSource
+    -- Need to have some delay here or the test fails
+    expectNoMoreDiagnostics 5
     locs <- getDefinitions bdoc (Position 2 7)
     let fooL = mkL adoc 2 0 2 3
     checkDefs locs (pure [fooL])
