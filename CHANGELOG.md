@@ -3,7 +3,7 @@
 ### 0.2.0 (2020-06-02)
 
 * Multi-component support (thanks @mpickering)
-* Support for GHC 8.10 (thanks @sheaf)
+* Support for GHC 8.10 (thanks @sheaf and @chshersh)
 * Fix some TH issues (thanks @mpickering)
 * Automatically pick up changes to cradle dependencies (e.g. cabal
   files) (thanks @jinwoo)
