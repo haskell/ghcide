@@ -72,7 +72,7 @@ main = do
 
   output "starting test"
 
-  setup
+  cleanUp <- setup
 
   runBenchmarks
     [ ---------------------------------------------------------------------------------------
@@ -136,6 +136,7 @@ main = do
         void (skipManyTill anyMessage message :: Session WorkDoneProgressEndNotification)
         not . null <$> getCodeActions doc (Range p p)
     ]
+    `finally` cleanUp
 
 ---------------------------------------------------------------------------------------------
 
@@ -150,6 +151,9 @@ examplePackage = examplePackageName <> "-" <> showVersion examplePackageVersion
 
 exampleModulePath :: FilePath
 exampleModulePath = "Distribution" </> "Simple.hs"
+
+examplesPath :: FilePath
+examplesPath = "bench/example"
 
 data Config = Config
   { verbose :: !Bool,
@@ -263,19 +267,21 @@ runBench Bench {..} = handleAny (\e -> print e >> return (-1))
           logColor = False
         }
 
-setup :: HasConfig => IO ()
+setup :: HasConfig => IO (IO ())
 setup = do
-  alreadyExists <- doesDirectoryExist "bench/example"
-  when alreadyExists $ removeDirectoryRecursive "bench/example"
-  callCommand $ "cabal get -v0 " <> examplePackage <> " -d bench/example"
+  alreadyExists <- doesDirectoryExist examplesPath
+  when alreadyExists $ removeDirectoryRecursive examplesPath
+  callCommand $ "cabal get -v0 " <> examplePackage <> " -d " <> examplesPath
   writeFile
-    ("bench/example/" <> examplePackage <> "/hie.yaml")
+    (examplesPath </> examplePackage </> "hie.yaml")
     ("cradle: {cabal: {component: " <> show examplePackageName <> "}}")
 
   whenJust (shakeProfiling ?config) $ createDirectoryIfMissing True
 
   -- print the path to ghcide (TODO platform independent)
   when (verbose ?config) $ callCommand "which ghcide"
+
+  return $ removeDirectoryRecursive examplesPath
 
 -- | Asks the server to shutdown and exit politely
 exitServer :: Session ()
