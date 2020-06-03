@@ -278,9 +278,6 @@ setup = do
 
   whenJust (shakeProfiling ?config) $ createDirectoryIfMissing True
 
-  -- print the path to ghcide (TODO platform independent)
-  when (verbose ?config) $ callCommand "which ghcide"
-
   return $ removeDirectoryRecursive examplesPath
 
 -- | Asks the server to shutdown and exit politely
