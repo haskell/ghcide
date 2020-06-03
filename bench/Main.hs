@@ -246,7 +246,6 @@ runBench Bench {..} = handleAny (\e -> print e >> return (-1))
           "--cwd",
           dir,
           "+RTS",
-          "-N4",
           "-S",
           "-RTS"
         ]
@@ -268,7 +267,7 @@ setup :: HasConfig => IO ()
 setup = do
   alreadyExists <- doesDirectoryExist "bench/example"
   when alreadyExists $ removeDirectoryRecursive "bench/example"
-  callCommand $ "cabal unpack -v0 " <> examplePackage <> " -d bench/example"
+  callCommand $ "cabal get -v0 " <> examplePackage <> " -d bench/example"
   writeFile
     ("bench/example/" <> examplePackage <> "/hie.yaml")
     ("cradle: {cabal: {component: " <> show examplePackageName <> "}}")
