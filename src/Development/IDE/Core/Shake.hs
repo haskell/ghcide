@@ -72,8 +72,8 @@ import Development.IDE.Types.Location
 import Development.IDE.Types.Options
 import           Control.Concurrent.Async
 import           Control.Concurrent.Extra
-import           Control.Concurrent.STM.TQueue (writeTQueue, readTQueue, newTQueueIO, TQueue)
-import           Control.Concurrent.STM (atomically)
+import           Control.Concurrent.STM.TQueue (flushTQueue, writeTQueue, readTQueue, newTQueue, TQueue)
+import           Control.Concurrent.STM (readTVar, writeTVar, newTVarIO, TVar, atomically)
 import           Control.DeepSeq
 import           Control.Exception.Extra
 import           System.Time.Extra
@@ -88,6 +88,7 @@ import           GHC.Generics
 import           System.IO.Unsafe
 import           Numeric.Extra
 import Language.Haskell.LSP.Types
+import Data.Foldable (traverse_)
 
 
 -- information we stash inside the shakeExtra field
@@ -116,6 +117,7 @@ data ShakeExtras = ShakeExtras
     ,ideTesting :: IdeTesting
     -- ^ Whether to enable additional lsp messages used by the test suite for checking invariants
     ,restartShakeSession :: [Action ()] -> IO ()
+    -- ^ Used in the GhcSession rule to forcefully restart the session after adding a new component
     }
 
 getShakeExtras :: Action ShakeExtras
@@ -237,14 +239,14 @@ type IdeRule k v =
 -- | A live Shake session with the ability to enqueue Actions for running.
 --   Keeps the 'ShakeDatabase' open, so at most one 'ShakeSession' per database.
 data ShakeSession = ShakeSession
-  { cancelShakeSession :: !(IO ())
-    -- ^ Close the Shake session
+  { cancelShakeSession :: !(IO [Action ()])
+    -- ^ Closes the Shake session and returns the pending user actions
   , runInShakeSession  :: !(forall a . Action a -> IO (IO a))
-    -- ^ Enqueue an action in the Shake session.
+    -- ^ Enqueue a user action in the Shake session.
   }
 
 emptyShakeSession :: ShakeSession
-emptyShakeSession = ShakeSession (pure ()) (\_ -> error "emptyShakeSession")
+emptyShakeSession = ShakeSession (pure []) (\_ -> error "emptyShakeSession")
 
 -- | A Shake database plus persistent store. Can be thought of as storing
 --   mappings from @(FilePath, k)@ to @RuleResult k@.
@@ -404,7 +406,7 @@ shakeShut :: IdeState -> IO ()
 shakeShut IdeState{..} = withMVar shakeSession $ \runner -> do
     -- Shake gets unhappy if you try to close when there is a running
     -- request so we first abort that.
-    cancelShakeSession runner
+    void $ cancelShakeSession runner
     shakeClose
 
 -- | This is a variant of withMVar where the first argument is run unmasked and if it throws
@@ -417,21 +419,23 @@ withMVar' var unmasked masked = mask $ \restore -> do
     putMVar var a'
     pure c
 
--- | Restart the current 'ShakeSession' with the given initial actions.
---   Any computation running in the current session will be aborted with an exception.
---   Progress is reported only on the initial actions.
+-- | Restart the current 'ShakeSession' with the given system actions.
+--   Any computation running in the current session will be aborted,
+--   but user actions (added via 'shakeEnqueue') will be requeued.
+--   Progress is reported only on the system actions.
 shakeRestart :: IdeState -> [Action ()] -> IO ()
-shakeRestart it@IdeState{shakeExtras=ShakeExtras{logger}, ..} acts =
+shakeRestart it@IdeState{shakeExtras=ShakeExtras{logger}, ..} systemActs =
     withMVar'
         shakeSession
         (\runner -> do
-              (stopTime,_) <- duration (cancelShakeSession runner)
+              (stopTime,queue) <- duration (cancelShakeSession runner)
               logDebug logger $ T.pack $ "Restarting build session (aborting the previous one took " ++ showDuration stopTime ++ ")"
+              return queue
         )
         -- It is crucial to be masked here, otherwise we can get killed
         -- between spawning the new thread and updating shakeSession.
         -- See https://github.com/digital-asset/ghcide/issues/79
-        (\() -> (,()) <$> newSession it acts)
+        (\queue -> (,()) <$> newSession it systemActs queue)
 
 -- | Enqueue an action in the existing 'ShakeSession'.
 --   Returns a computation to block until the action is run, propagating exceptions.
@@ -442,33 +446,45 @@ shakeEnqueue :: IdeState -> Action a -> IO (IO a)
 shakeEnqueue IdeState{shakeSession} act =
     withMVar shakeSession $ \s -> runInShakeSession s act
 
--- Set up a new 'ShakeSession' with a set of initial actions.
+-- Set up a new 'ShakeSession' with a set of initial system and user actions
 -- Will crash if there is an existing 'ShakeSession' running.
--- Reports progress on the set of initial actions only.
-newSession :: IdeState -> [Action a] -> IO ShakeSession
-newSession IdeState{shakeExtras=ShakeExtras{..}, ..} acts = do
+-- Progress is reported only on the system actions.
+-- Only user actions will get re-enqueued
+newSession :: IdeState -> [Action ()] -> [Action ()] -> IO ShakeSession
+newSession IdeState{shakeExtras=ShakeExtras{..}, ..} systemActs userActs = do
     -- A work queue for actions added via 'runInShakeSession'
-    actionQueue :: TQueue (Action ()) <- newTQueueIO
+    actionQueue :: TQueue (Action ()) <- atomically $ do
+        q <- newTQueue
+        traverse_ (writeTQueue q) userActs
+        return q
+    actionInProgress :: TVar (Maybe (Action())) <- newTVarIO Nothing
 
     let
         -- A daemon-like action used to inject additional work
         -- Runs actions from the work queue sequentially
         pumpAction =
-            forever $ join $ liftIO $ atomically $ readTQueue actionQueue
+            forever $ do
+                act <- liftIO $ atomically $ do
+                    act <- readTQueue actionQueue
+                    writeTVar actionInProgress $ Just act
+                    return act
+                act
+                liftIO $ atomically $ writeTVar actionInProgress Nothing
 
         progressRun
           | reportProgress = lspShakeProgress ideTesting getLspId eventer inProgress
           | otherwise = return ()
 
         workRun restore = withAsync progressRun $ \progressThread -> do
-          let acts' =
+          let systemActs' =
                 [ [] <$ pumpAction
-                , parallel acts
-                    -- For the purposes of progress reporting, only 'acts' matters.
+                , parallel systemActs
+                    -- Only system actions are considered for progress reporting
                     -- When done, cancel the progressThread to indicate completion
                     <* liftIO (cancel progressThread)
                 ]
-          res <- try @SomeException (restore $ shakeRunDatabaseProfile shakeProfileDir shakeDb acts')
+          res <- try @SomeException
+                 (restore $ shakeRunDatabaseProfile shakeProfileDir shakeDb systemActs')
           let res' = case res of
                       Left e -> "exception: " <> displayException e
                       Right _ -> "completed"
@@ -481,25 +497,32 @@ newSession IdeState{shakeExtras=ShakeExtras{..}, ..} acts = do
               -- Wrap up in a thread to avoid calling interruptible
               -- operations inside the masked section
           let wrapUp = logDebug logger $ T.pack $ "Finishing build session(" ++ res' ++ profile ++ ")"
-          return (fst <$> res, wrapUp)
+          return wrapUp
 
     -- Do the work in a background thread
     workThread <- asyncWithUnmask workRun
+
     -- run the wrap up unmasked
-    _ <- async $ do
-        (_, wrapUp) <- wait workThread
-        wrapUp
+    _ <- async $ join $ wait workThread
 
     -- 'runInShakeSession' is used to append work in this Shake session
     --  The session stays open until 'cancelShakeSession' is called
-    --  This should only be necessary iff the (virtual) filesystem has changed
     let runInShakeSession :: forall a . Action a -> IO (IO a)
         runInShakeSession act = do
               res <- newBarrier
               let act' = actionCatch @SomeException (Right <$> act) (pure . Left)
               atomically $ writeTQueue actionQueue (act' >>= liftIO . signalBarrier res)
-              return (waitBarrier res >>= either throwIO return )
-        cancelShakeSession = cancel workThread
+              return (waitBarrier res >>= either throwIO return)
+
+    --  Cancelling is required to flush the Shake database when either
+    --  the filesystem or the Ghc configuration have changed
+        cancelShakeSession = do
+            cancel workThread
+            atomically $ do
+                q <- flushTQueue actionQueue
+                c <- readTVar actionInProgress
+                return (maybe [] pure c ++ q)
+
     pure (ShakeSession{..})
 
 getDiagnostics :: IdeState -> IO [FileDiagnostic]
