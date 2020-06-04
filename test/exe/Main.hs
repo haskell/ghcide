@@ -2147,7 +2147,7 @@ simpleMultiTest2 = testCase "simple-multi-test2" $ withoutStackEnv $ runWithExtr
     aSource <- liftIO $ readFileUtf8 aPath
     (TextDocumentIdentifier adoc) <- createDoc aPath "haskell" aSource
     -- Need to have some delay here or the test fails
-    expectNoMoreDiagnostics 5
+    expectNoMoreDiagnostics 6
     locs <- getDefinitions bdoc (Position 2 7)
     let fooL = mkL adoc 2 0 2 3
     checkDefs locs (pure [fooL])
