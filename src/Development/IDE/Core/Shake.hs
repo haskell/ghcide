@@ -435,7 +435,7 @@ shakeRestart it@IdeState{shakeExtras=ShakeExtras{logger}, ..} systemActs =
         -- It is crucial to be masked here, otherwise we can get killed
         -- between spawning the new thread and updating shakeSession.
         -- See https://github.com/digital-asset/ghcide/issues/79
-        (\queue -> (,()) <$> newSession it systemActs queue)
+        (fmap (,()) . newSession it systemActs)
 
 -- | Enqueue an action in the existing 'ShakeSession'.
 --   Returns a computation to block until the action is run, propagating exceptions.
@@ -464,11 +464,10 @@ newSession IdeState{shakeExtras=ShakeExtras{..}, ..} systemActs userActs = do
         -- Runs actions from the work queue sequentially
         pumpAction =
             forever $ do
-                act <- liftIO $ atomically $ do
+                join $ liftIO $ atomically $ do
                     act <- readTQueue actionQueue
                     writeTVar actionInProgress $ Just act
                     return act
-                act
                 liftIO $ atomically $ writeTVar actionInProgress Nothing
 
         progressRun
