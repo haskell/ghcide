@@ -1,3 +1,4 @@
+{-# LANGUAGE RecursiveDo #-}
 -- Copyright (c) 2019 The DAML Authors. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -114,6 +115,7 @@ data ShakeExtras = ShakeExtras
     -- ^ Whether to send Progress messages to the client
     ,ideTesting :: IdeTesting
     -- ^ Whether to enable additional lsp messages used by the test suite for checking invariants
+    ,restartShakeSession :: [Action ()] -> IO ()
     }
 
 getShakeExtras :: Action ShakeExtras
@@ -327,7 +329,7 @@ shakeOpen :: IO LSP.LspId
           -> ShakeOptions
           -> Rules ()
           -> IO IdeState
-shakeOpen getLspId eventer logger debouncer shakeProfileDir (IdeReportProgress reportProgress) ideTesting opts rules = do
+shakeOpen getLspId eventer logger debouncer shakeProfileDir (IdeReportProgress reportProgress) ideTesting opts rules = mdo
     inProgress <- newVar HMap.empty
     shakeExtras <- do
         globals <- newVar HMap.empty
@@ -336,14 +338,16 @@ shakeOpen getLspId eventer logger debouncer shakeProfileDir (IdeReportProgress r
         hiddenDiagnostics <- newVar mempty
         publishedDiagnostics <- newVar mempty
         positionMapping <- newVar HMap.empty
+        let restartShakeSession = shakeRestart ideState
         pure ShakeExtras{..}
-    (shakeDb, shakeClose) <-
+    (shakeDbM, shakeClose) <-
         shakeOpenDatabase
             opts { shakeExtra = addShakeExtra shakeExtras $ shakeExtra opts }
             rules
     shakeSession <- newMVar emptyShakeSession
-    shakeDb <- shakeDb
-    return IdeState{..}
+    shakeDb <- shakeDbM
+    let ideState = IdeState{..}
+    return ideState
 
 lspShakeProgress :: Hashable a => IdeTesting -> IO LSP.LspId -> (LSP.FromServerMessage -> IO ()) -> Var (HMap.HashMap a Int) -> IO ()
 lspShakeProgress (IdeTesting ideTesting) getLspId sendMsg inProgress = do

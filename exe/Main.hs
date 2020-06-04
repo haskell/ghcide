@@ -232,7 +232,7 @@ loadSessionShake fp = do
 -- components mapping to the same hie.yaml file are mapped to the same
 -- HscEnv which is updated as new components are discovered.
 loadSession :: Bool -> ShakeExtras -> FilePath -> IO (FilePath -> IO (IdeResult HscEnvEq))
-loadSession optTesting ShakeExtras{logger, eventer} dir = do
+loadSession optTesting ShakeExtras{logger, eventer, restartShakeSession} dir = do
   -- Mapping from hie.yaml file to HscEnv, one per hie.yaml file
   hscEnvs <- newVar Map.empty :: IO (Var HieMap)
   -- Mapping from a Filepath to HscEnv
@@ -335,6 +335,9 @@ loadSession optTesting ShakeExtras{logger, eventer} dir = do
         cached_targets <- concatMapM (fmap fst . new_cache) old_deps
         modifyVar_ fileToFlags $ \var -> do
             pure $ Map.insert hieYaml (HM.fromList (cs ++ cached_targets)) var
+
+        -- Invalidate all the existing GhcSession build nodes by restarting the Shake session
+        restartShakeSession [kick]
 
         return (fst res)
 
