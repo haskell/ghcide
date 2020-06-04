@@ -156,7 +156,7 @@ main = do
 
         putStrLn "\nStep 4/4: Type checking the files"
         setFilesOfInterest ide $ HashSet.fromList $ map toNormalizedFilePath' files
-        results <- runActionSync ide $ uses TypeCheck (map toNormalizedFilePath' files)
+        results <- runAction ide $ uses TypeCheck (map toNormalizedFilePath' files)
         let (worked, failed) = partition fst $ zip (map isJust results) files
         when (failed /= []) $
             putStr $ unlines $ "Files that failed:" : map ((++) " * " . snd) failed

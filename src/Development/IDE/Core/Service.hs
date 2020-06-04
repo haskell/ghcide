@@ -11,7 +11,6 @@ module Development.IDE.Core.Service(
     getIdeOptions,
     IdeState, initialise, shutdown,
     runAction,
-    runActionSync,
     writeProfile,
     getDiagnostics, unsafeClearDiagnostics,
     ideLogger,
@@ -82,13 +81,6 @@ shutdown = shakeShut
 -- e.g., the ofInterestRule.
 runAction :: IdeState -> Action a -> IO a
 runAction ide action = join $ shakeEnqueue ide action
-
--- | `runActionSync` is similar to `runAction` but it will
--- wait for all rules (so in particular the `ofInterestRule`) to
--- finish running. This is mainly useful in tests, where you want
--- to wait for all rules to fire so you can check diagnostics.
-runActionSync :: IdeState -> Action a -> IO a
-runActionSync ide act = join $ shakeEnqueue ide act
 
 getIdeOptions :: Action IdeOptions
 getIdeOptions = do
