@@ -24,7 +24,7 @@ module Development.IDE.Core.Shake(
     ShakeExtras(..), getShakeExtras, getShakeExtrasRules,
     IdeRule, IdeResult, GetModificationTime(..),
     shakeOpen, shakeShut,
-    shakeRun,
+    shakeRestart,
     shakeEnqueue,
     shakeProfile,
     use, useWithStale, useNoFile, uses, usesWithStale,
@@ -413,23 +413,21 @@ withMVar' var unmasked masked = mask $ \restore -> do
     putMVar var a'
     pure c
 
--- | Spawn immediately, restarting the current 'ShakeSession' and 'ShakeDatabase',
---   and implicily typechecking all the modules before running the actions.
+-- | Restart the current 'ShakeSession' with the given initial actions.
 --   Any computation running in the current session will be aborted with an exception.
---
---   Appropriate for file system events.
-shakeRun :: IdeState -> [Action a] -> IO (IO [a])
-shakeRun it@IdeState{shakeExtras=ShakeExtras{logger}, ..} acts =
+--   Progress is reported only on the initial actions.
+shakeRestart :: IdeState -> [Action ()] -> IO ()
+shakeRestart it@IdeState{shakeExtras=ShakeExtras{logger}, ..} acts =
     withMVar'
         shakeSession
         (\runner -> do
               (stopTime,_) <- duration (cancelShakeSession runner)
-              logDebug logger $ T.pack $ "Starting shakeRun (aborting the previous one took " ++ showDuration stopTime ++ ")"
+              logDebug logger $ T.pack $ "Restarting build session (aborting the previous one took " ++ showDuration stopTime ++ ")"
         )
         -- It is crucial to be masked here, otherwise we can get killed
         -- between spawning the new thread and updating shakeSession.
         -- See https://github.com/digital-asset/ghcide/issues/79
-        (\() -> newSession it acts)
+        (\() -> (,()) <$> newSession it acts)
 
 -- | Enqueue an action in the existing 'ShakeSession'.
 --   Returns a computation to block until the action is run, propagating exceptions.
@@ -443,12 +441,11 @@ shakeEnqueue IdeState{shakeSession} act =
 -- Set up a new 'ShakeSession' with a set of initial actions.
 -- Will crash if there is an existing 'ShakeSession' running.
 -- Reports progress on the set of initial actions only.
-newSession :: IdeState -> [Action a] -> IO (ShakeSession, IO [a])
+newSession :: IdeState -> [Action a] -> IO ShakeSession
 newSession IdeState{shakeExtras=ShakeExtras{..}, ..} acts = do
     -- A work queue for actions added via 'runInShakeSession'
     actionQueue :: TQueue (Action ()) <- newTQueueIO
 
-    start <- offsetTime
     let
         -- A daemon-like action used to inject additional work
         -- Runs actions from the work queue sequentially
@@ -467,8 +464,7 @@ newSession IdeState{shakeExtras=ShakeExtras{..}, ..} acts = do
                     -- When done, cancel the progressThread to indicate completion
                     <* liftIO (cancel progressThread)
                 ]
-          res <- try (restore $ shakeRunDatabaseProfile shakeProfileDir shakeDb acts')
-          runTime <- start
+          res <- try @SomeException (restore $ shakeRunDatabaseProfile shakeProfileDir shakeDb acts')
           let res' = case res of
                       Left e -> "exception: " <> displayException e
                       Right _ -> "completed"
@@ -480,9 +476,7 @@ newSession IdeState{shakeExtras=ShakeExtras{..}, ..} acts = do
                       _ -> ""
               -- Wrap up in a thread to avoid calling interruptible
               -- operations inside the masked section
-          let wrapUp = do
-                  logDebug logger $ T.pack $
-                      "Finishing shakeRun (took " ++ showDuration runTime ++ ", " ++ res' ++ profile ++ ")"
+          let wrapUp = logDebug logger $ T.pack $ "Finishing build session(" ++ res' ++ profile ++ ")"
           return (fst <$> res, wrapUp)
 
     -- Do the work in a background thread
@@ -502,10 +496,7 @@ newSession IdeState{shakeExtras=ShakeExtras{..}, ..} acts = do
               atomically $ writeTQueue actionQueue (act' >>= liftIO . signalBarrier res)
               return (waitBarrier res >>= either throwIO return )
         cancelShakeSession = cancel workThread
-        initialResult = do
-          (res,_) <- wait workThread
-          either (throwIO @SomeException) (return . concat) res
-    pure (ShakeSession{..}, initialResult)
+    pure (ShakeSession{..})
 
 getDiagnostics :: IdeState -> IO [FileDiagnostic]
 getDiagnostics IdeState{shakeExtras = ShakeExtras{diagnostics}} = do
