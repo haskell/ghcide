@@ -39,6 +39,8 @@ import System.Environment.Blank (getEnv, setEnv, unsetEnv)
 import System.FilePath
 import System.IO.Extra
 import System.Directory
+import System.Exit (ExitCode(ExitSuccess))
+import System.Process.Extra (readCreateProcessWithExitCode, CreateProcess(cwd), proc)
 import Test.QuickCheck
 import Test.QuickCheck.Instances ()
 import Test.Tasty
@@ -77,6 +79,7 @@ main = do
     , watchedFilesTests
     , cradleTests
     , dependentFileTest
+    , nonLspCommandLine
     ]
 
 initializeResponseTests :: TestTree
@@ -2189,6 +2192,20 @@ sessionDepsArePickedUp = testSession'
           "foo = \"hello\""
         ]
 
+-- A test to ensure that the command line ghcide workflow stays working
+nonLspCommandLine :: TestTree
+nonLspCommandLine = testGroup "ghcide command line"
+  [ testCase "works" $ withTempDir $ \dir -> do
+        ghcide <- locateGhcideExecutable
+        copyTestDataFiles dir "multi"
+        let cmd = (proc ghcide ["a/A.hs"]){cwd = Just dir}
+
+        setEnv "HOME" "/homeless-shelter" False
+
+        (ec, _, _) <- withoutStackEnv $ readCreateProcessWithExitCode cmd ""
+
+        ec @=? ExitSuccess
+  ]
 
 ----------------------------------------------------------------------
 -- Utils
