@@ -208,32 +208,35 @@ getParsedModuleRule = defineEarlyCutoff $ \GetParsedModule file -> do
         then
             liftIO mainParse
         else do
-            let hscHaddock = hsc{hsc_dflags = gopt_set dflags Opt_Haddock}
-                haddockParse = do
+            let haddockParse = do
                     (_, (!diagsHaddock, _)) <-
-                        getParsedModuleDefinition hscHaddock opt comp_pkgs file contents
-                    -- Haddock diagnostics are confusing because they don't say Haddock, and are errors.
-                    -- Fix both those properties.
-                    return $ map (\(a,b,c) -> (a,b,fixHaddockWarning c)) diagsHaddock
+                        getParsedModuleDefinition (withOptHaddock hsc) opt comp_pkgs file contents
+                    return diagsHaddock
 
             ((fingerPrint, (diags, res)), diagsHaddock) <-
                 -- parse twice, with and without Haddocks, concurrently
-                -- we cannot ignore Haddock parse errors because files of
-                -- non-interest are always parsed with Haddocks
+                -- we want warnings if parsing with Haddock fails
+                -- but if we parse with Haddock we lose annotations
                 liftIO $ concurrently mainParse haddockParse
 
-            -- if you have an error with Haddock and without Haddock at the same exact location, throw away the Haddock one
-            let realLocations = Set.fromList $ map (Diag._range . thd3) diags
-            let diagsHaddockUnique = filter (\x -> Diag._range (thd3 x) `Set.notMember` realLocations) diagsHaddock
-
-            return (fingerPrint, (diags ++ diagsHaddockUnique, res))
+            return (fingerPrint, (mergeParseErrorsHaddock diags diagsHaddock, res))
 
 
--- Haddock diagnostics should be warnings and say Haddock somewhere
-fixHaddockWarning :: Diagnostic -> Diagnostic
-fixHaddockWarning x = x{_severity = Just DsWarning, _message = fixMessage $ _message x}
-  where fixMessage x | "parse error " `T.isPrefixOf` x = "Haddock " <> x
-                     | otherwise = "Haddock: " <> x
+withOptHaddock :: HscEnv -> HscEnv
+withOptHaddock hsc = hsc{hsc_dflags = gopt_set (hsc_dflags hsc) Opt_Haddock}
+
+
+-- | Given some normal parse errors (first) and some from Haddock (second), merge them.
+--   Ignore Haddock errors that are in both. Demote Haddock-only errors to warnings.
+mergeParseErrorsHaddock :: [FileDiagnostic] -> [FileDiagnostic] -> [FileDiagnostic]
+mergeParseErrorsHaddock normal haddock = normal ++
+    [ (a,b,c{_severity = Just DsWarning, _message = fixMessage $ _message c})
+    | (a,b,c) <- haddock, Diag._range c `Set.notMember` locations]
+  where
+    locations = Set.fromList $ map (Diag._range . thd3) normal
+
+    fixMessage x | "parse error " `T.isPrefixOf` x = "Haddock " <> x
+                 | otherwise = "Haddock: " <> x
 
 
 getParsedModuleDefinition :: HscEnv -> IdeOptions -> [PackageName] -> NormalizedFilePath -> Maybe T.Text -> IO (Maybe ByteString, ([FileDiagnostic], Maybe ParsedModule))
@@ -645,8 +648,13 @@ getModIfaceRule = define $ \GetModIface f -> do
             opt <- getIdeOptions
             (_, contents) <- getFileContents f
             -- Embed --haddocks in the interface file
-            hsc <- pure hsc{hsc_dflags = gopt_set (hsc_dflags hsc) Opt_Haddock}
-            (_, (diags, mb_pm)) <- liftIO $ getParsedModuleDefinition hsc opt comp_pkgs f contents
+            (_, (diags, mb_pm)) <- liftIO $ getParsedModuleDefinition (withOptHaddock hsc) opt comp_pkgs f contents
+            (diags, mb_pm) <- case mb_pm of
+                Just _ -> return (diags, mb_pm)
+                Nothing -> do
+                    -- if parsing fails, try parsing again with Haddock turned off
+                    (_, (diagsNoHaddock, mb_pm)) <- liftIO $ getParsedModuleDefinition hsc opt comp_pkgs f contents
+                    return (mergeParseErrorsHaddock diagsNoHaddock diags, mb_pm)
             case mb_pm of
                 Nothing -> return (diags, Nothing)
                 Just pm -> do
