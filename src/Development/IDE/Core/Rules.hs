@@ -222,7 +222,7 @@ getParsedModuleRule = defineEarlyCutoff $ \GetParsedModule file -> do
                 -- non-interest are always parsed with Haddocks
                 liftIO $ concurrently mainParse haddockParse
 
-            -- if you have a Haddock warning and a real warning at the same exact location, throw away the Haddock one
+            -- if you have an error with Haddock and without Haddock at the same exact location, throw away the Haddock one
             let realLocations = Set.fromList $ map (Diag._range . thd3) diags
             let diagsHaddockUnique = filter (\x -> Diag._range (thd3 x) `Set.notMember` realLocations) diagsHaddock
 
