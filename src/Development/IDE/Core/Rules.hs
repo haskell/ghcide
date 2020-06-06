@@ -29,7 +29,7 @@ module Development.IDE.Core.Rules(
 import Fingerprint
 
 import Data.Binary hiding (get, put)
-import Data.Bifunctor (first, second)
+import Data.Tuple.Extra
 import Control.Monad.Extra
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
@@ -41,7 +41,7 @@ import Development.IDE.Import.DependencyInformation
 import Development.IDE.Import.FindImports
 import           Development.IDE.Core.FileExists
 import           Development.IDE.Core.FileStore        (getFileContents)
-import           Development.IDE.Types.Diagnostics
+import           Development.IDE.Types.Diagnostics as Diag
 import Development.IDE.Types.Location
 import Development.IDE.GHC.Compat hiding (parseModule, typecheckModule)
 import Development.IDE.GHC.Util
@@ -212,7 +212,9 @@ getParsedModuleRule = defineEarlyCutoff $ \GetParsedModule file -> do
                 haddockParse = do
                     (_, (!diagsHaddock, _)) <-
                         getParsedModuleDefinition hscHaddock opt comp_pkgs file contents
-                    return diagsHaddock
+                    -- Haddock diagnostics are confusing because they don't say Haddock, and are errors.
+                    -- Fix both those properties.
+                    return $ map (\(a,b,c) -> (a,b,fixHaddockWarning c)) diagsHaddock
 
             ((fingerPrint, (diags, res)), diagsHaddock) <-
                 -- parse twice, with and without Haddocks, concurrently
@@ -220,7 +222,19 @@ getParsedModuleRule = defineEarlyCutoff $ \GetParsedModule file -> do
                 -- non-interest are always parsed with Haddocks
                 liftIO $ concurrently mainParse haddockParse
 
-            return (fingerPrint, (mergeDiagnostics diags diagsHaddock, res))
+            -- if you have a Haddock warning and a real warning at the same exact location, throw away the Haddock one
+            let realLocations = Set.fromList $ map (Diag._range . thd3) diags
+            let diagsHaddockUnique = filter (\x -> Diag._range (thd3 x) `Set.notMember` realLocations) diagsHaddock
+
+            return (fingerPrint, (diags ++ diagsHaddockUnique, res))
+
+
+-- Haddock diagnostics should be warnings and say Haddock somewhere
+fixHaddockWarning :: Diagnostic -> Diagnostic
+fixHaddockWarning x = x{_severity = Just DsWarning, _message = fixMessage $ _message x}
+  where fixMessage x | "parse error " `T.isPrefixOf` x = "Haddock " <> x
+                     | otherwise = "Haddock: " <> x
+
 
 getParsedModuleDefinition :: HscEnv -> IdeOptions -> [PackageName] -> NormalizedFilePath -> Maybe T.Text -> IO (Maybe ByteString, ([FileDiagnostic], Maybe ParsedModule))
 getParsedModuleDefinition packageState opt comp_pkgs file contents = do
