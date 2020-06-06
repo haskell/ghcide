@@ -13,6 +13,7 @@ extra-deps:
 # for ghc-8.10
 - Cabal-3.2.0.0
 - lens-4.19.1
+- extra-1.7.2
 
 nix:
   packages: [zlib]

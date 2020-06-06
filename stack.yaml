@@ -15,5 +15,6 @@ extra-deps:
 - haddock-library-1.8.0
 - tasty-rerun-1.1.17
 - ghc-check-0.5.0.1
+- extra-1.7.2
 nix:
   packages: [zlib]
