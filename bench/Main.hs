@@ -165,7 +165,8 @@ data Config = Config
 type HasConfig = (?config :: Config)
 
 configP :: Parser Config
-configP = Config
+configP =
+  Config
     <$> (not <$> switch (long "quiet"))
     <*> optional (strOption (long "shake-profiling" <> metavar "PATH"))
     <*> switch (long "csv")
@@ -203,29 +204,50 @@ runBenchmarks :: HasConfig => [Bench] -> IO ()
 runBenchmarks benchmarks = do
   results <- forM benchmarks $ \b -> (b,) <$> runBench b
 
-  forM_ results $ \(Bench {name, samples}, duration) ->
+  let startupBench = Bench "startup" (genericLength results) undefined undefined
+      startupResult = BenchRun
+        { startup = 0
+        , runExperiment = sum(map (runExperiment . snd) results)
+        , runSetup = 0
+        , success = True
+        }
+
+      allResults = (startupBench, startupResult) : results
+
+  forM_ allResults $ \(Bench {name, samples}, BenchRun{..}) ->
     output $
       "TOTAL "
         <> name
         <> " = "
-        <> showDuration duration
+        <> showDuration runExperiment
         <> " ("
         <> show samples
         <> " repetitions)"
 
   when (outputCSV ?config) $ do
     putStrLn $ intercalate ", " $ map name benchmarks
-    putStrLn $ intercalate ", " $ map (showDuration . snd) results
+    putStrLn $ intercalate ", " $ map (showDuration . runExperiment . snd) results
 
-runBench :: HasConfig => Bench -> IO Seconds
-runBench Bench {..} = handleAny (\e -> print e >> return (-1))
+data BenchRun = BenchRun
+  { startup :: !Seconds,
+    runSetup :: !Seconds,
+    runExperiment :: !Seconds,
+    success :: !Bool
+  }
+
+badRun :: BenchRun
+badRun = BenchRun 0 0 0 False
+
+runBench :: HasConfig => Bench -> IO BenchRun
+runBench Bench {..} = handleAny (\e -> print e >> return badRun)
   $ runSessionWithConfig conf cmd lspTestCaps dir
   $ do
     doc <- openDoc exampleModulePath "haskell"
-    void (skipManyTill anyMessage message :: Session WorkDoneProgressEndNotification)
+    (startup, _) <-
+      duration (skipManyTill anyMessage message :: Session WorkDoneProgressEndNotification)
 
     liftIO $ output $ "Running " <> name <> " benchmark"
-    userState <- benchSetup doc
+    (runSetup, userState) <- duration $ benchSetup doc
     let loop 0 = return True
         loop n = do
           (t, res) <- duration $ experiment userState doc
@@ -235,13 +257,13 @@ runBench Bench {..} = handleAny (\e -> print e >> return (-1))
               output (showDuration t)
               loop (n -1)
 
-    (t, res) <- duration $ loop samples
+    (runExperiment, success) <- duration $ loop samples
 
     exitServer
     -- sleeep to give ghcide a chance to print the RTS stats
     liftIO $ threadDelay 50000
 
-    return $ if res then t else -1
+    return BenchRun {..}
   where
     cmd =
       unwords $
