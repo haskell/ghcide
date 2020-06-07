@@ -207,7 +207,7 @@ runBenchmarks benchmarks = do
   let startupBench = Bench "startup" (genericLength results) undefined undefined
       startupResult = BenchRun
         { startup = 0
-        , runExperiment = sum(map (runExperiment . snd) results)
+        , runExperiment = sum(map (startup . snd) results)
         , runSetup = 0
         , success = True
         }
