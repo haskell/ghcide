@@ -173,6 +173,25 @@ executable ghcide-test-preprocessor
     build-depends:
         base == 4.*
 
+executable benchHist
+    default-language: Haskell2010
+    buildable: True
+    ghc-options: -Wall -Wno-name-shadowing -threaded
+    main-is: bench/Hist/Main.hs
+    build-depends:
+        aeson,
+        base == 4.*,
+        Chart,
+        Chart-diagrams,
+        diagrams,
+        diagrams-svg,
+        directory,
+        extra,
+        filepath,
+        shake,
+        text,
+        yaml
+
 executable ghcide
     if flag(ghc-lib)
       buildable: False
