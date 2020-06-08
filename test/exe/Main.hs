@@ -98,7 +98,7 @@ initializeResponseTests = withResource acquire release tests where
     , chk "   completion"               _completionProvider (Just $ CompletionOptions (Just False) (Just ["."]) Nothing)
     , chk "NO signature help"        _signatureHelpProvider  Nothing
     , chk "   goto definition"          _definitionProvider (Just True)
-    , chk "NO goto type definition" _typeDefinitionProvider (Just $ GotoOptionsStatic False)
+    , chk "   goto type definition" _typeDefinitionProvider (Just $ GotoOptionsStatic True)
     , chk "NO goto implementation"  _implementationProvider (Just $ GotoOptionsStatic False)
     , chk "NO find references"          _referencesProvider  Nothing
     , chk "NO doc highlight"     _documentHighlightProvider  Nothing
