@@ -163,7 +163,7 @@ main = do
 
         let files xs = let n = length xs in if n == 1 then "1 file" else show n ++ " files"
         putStrLn $ "\nCompleted (" ++ files worked ++ " worked, " ++ files failed ++ " failed)"
-        if null failed then return () else exitWith $ ExitFailure (length failed)
+        unless (null failed) (exitWith $ ExitFailure (length failed))
 
 expandFiles :: [FilePath] -> IO [FilePath]
 expandFiles = concatMapM $ \x -> do
