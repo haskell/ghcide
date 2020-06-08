@@ -1378,7 +1378,7 @@ findDefinitionAndHoverTests = let
     [ testGroup "definition" $ mapMaybe fst tests
     , testGroup "hover"      $ mapMaybe snd tests
     , checkFileCompiles sourceFilePath
-    , testGroup "type-definition" $ typeDefinitionTests ]
+    , testGroup "type-definition" typeDefinitionTests ]
 
   typeDefinitionTests = [ tst (getTypeDefinitions, checkDefs) aaaL14 (pure tcData) "Saturated data con"
                         , tst (getTypeDefinitions, checkDefs) opL16 (pure [ExpectNoDefinitions]) "Polymorphic variable"]
