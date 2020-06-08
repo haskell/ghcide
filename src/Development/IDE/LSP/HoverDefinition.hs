@@ -30,7 +30,7 @@ gotoDefinition :: IdeState -> TextDocumentPositionParams -> IO (Either ResponseE
 hover          :: IdeState -> TextDocumentPositionParams -> IO (Either ResponseError (Maybe Hover))
 gotoTypeDefinition :: IdeState -> TextDocumentPositionParams -> IO (Either ResponseError LocationResponseParams)
 gotoDefinition = request "Definition" getDefinition (MultiLoc []) SingleLoc
-gotoTypeDefinition = request "TypeDefinition" getTypeDefinition (MultiLoc []) SingleLoc
+gotoTypeDefinition = request "TypeDefinition" getTypeDefinition (MultiLoc []) MultiLoc
 hover          = request "Hover"      getAtPoint     Nothing      foundHover
 
 foundHover :: (Maybe Range, [T.Text]) -> Maybe Hover

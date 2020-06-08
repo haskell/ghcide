@@ -41,9 +41,9 @@ gotoTypeDefinition
   -> IdeOptions
   -> [SpanInfo]
   -> Position
-  -> m (Maybe Location)
+  -> m [Location]
 gotoTypeDefinition getHieFile ideOpts srcSpans pos
-  = listToMaybe <$> typeLocationsAtPoint getHieFile ideOpts pos srcSpans
+  = typeLocationsAtPoint getHieFile ideOpts pos srcSpans
 
 -- | Locate the definition of the name at a given position.
 gotoDefinition
