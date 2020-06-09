@@ -62,6 +62,22 @@ import Data.Char (isDigit)
 hygienicP :: Position
 hygienicP = Position 854 23
 
+hygienicEdit :: TextDocumentContentChangeEvent
+hygienicEdit =
+    TextDocumentContentChangeEvent
+    { _range = Just (Range hygienicP hygienicP),
+        _rangeLength = Nothing,
+        _text = " "
+    }
+
+breakingEdit :: TextDocumentContentChangeEvent
+breakingEdit =
+    TextDocumentContentChangeEvent
+    { _range = Just (Range identifierP identifierP),
+        _rangeLength = Nothing,
+        _text = "a"
+    }
+
 -- Points to the middle of an identifier,
 -- convenient for requesting goto-def, hover and completions
 identifierP :: Position
@@ -82,24 +98,12 @@ main = do
         isJust <$> getHover doc identifierP,
       ---------------------------------------------------------------------------------------
       bench "edit" 10 $ \doc -> do
-        let change =
-              TextDocumentContentChangeEvent
-                { _range = Just (Range hygienicP hygienicP),
-                  _rangeLength = Nothing,
-                  _text = " "
-                }
-        changeDoc doc [change]
+        changeDoc doc [hygienicEdit]
         void (skipManyTill anyMessage message :: Session WorkDoneProgressEndNotification)
         return True,
       ---------------------------------------------------------------------------------------
       bench "hover after edit" 10 $ \doc -> do
-        let change =
-              TextDocumentContentChangeEvent
-                { _range = Just (Range hygienicP hygienicP),
-                  _rangeLength = Nothing,
-                  _text = " "
-                }
-        changeDoc doc [change]
+        changeDoc doc [hygienicEdit]
         isJust <$> getHover doc identifierP,
       ---------------------------------------------------------------------------------------
       bench "getDefinition" 10 $ \doc ->
@@ -109,55 +113,29 @@ main = do
         fmap (either (not . null) (not . null)) . getDocumentSymbols,
       ---------------------------------------------------------------------------------------
       bench "documentSymbols after edit" 100 $ \doc -> do
-        let change =
-              TextDocumentContentChangeEvent
-                { _range = Just (Range hygienicP hygienicP),
-                  _rangeLength = Nothing,
-                  _text = " "
-                }
-        changeDoc doc [change]
+        changeDoc doc [hygienicEdit]
         either (not . null) (not . null) <$> getDocumentSymbols doc,
       ---------------------------------------------------------------------------------------
       bench "completions after edit" 10 $ \doc -> do
-        let change =
-              TextDocumentContentChangeEvent
-                { _range = Just (Range hygienicP hygienicP),
-                  _rangeLength = Nothing,
-                  _text = " "
-                }
-        changeDoc doc [change]
+        changeDoc doc [hygienicEdit]
         not . null <$> getCompletions doc identifierP,
       ---------------------------------------------------------------------------------------
       benchWithSetup
         "code actions"
         10
         ( \doc -> do
-            let p = identifierP
-            let change =
-                  TextDocumentContentChangeEvent
-                    { _range = Just (Range p p),
-                      _rangeLength = Nothing,
-                      _text = "a"
-                    }
-            changeDoc doc [change]
+            changeDoc doc [breakingEdit]
             void (skipManyTill anyMessage message :: Session WorkDoneProgressEndNotification)
-            return p
+            return identifierP
         )
         ( \p doc -> do
             not . null <$> getCodeActions doc (Range p p)
         ),
       ---------------------------------------------------------------------------------------
       bench "code actions after edit" 10 $ \doc -> do
-        let p = identifierP
-        let change =
-              TextDocumentContentChangeEvent
-                { _range = Just (Range p p),
-                  _rangeLength = Nothing,
-                  _text = "a"
-                }
-        changeDoc doc [change]
+        changeDoc doc [breakingEdit]
         void (skipManyTill anyMessage message :: Session WorkDoneProgressEndNotification)
-        not . null <$> getCodeActions doc (Range p p)
+        not . null <$> getCodeActions doc (Range identifierP identifierP)
     ]
     `finally` cleanUp
 
@@ -321,13 +299,22 @@ data BenchRun = BenchRun
 badRun :: BenchRun
 badRun = BenchRun 0 0 0 False 0
 
+waitForProgressDone :: Session ()
+waitForProgressDone =
+      void(skipManyTill anyMessage message :: Session WorkDoneProgressEndNotification)
+
 runBench :: HasConfig => Bench -> IO BenchRun
 runBench Bench {..} = handleAny (\e -> print e >> return badRun)
   $ runSessionWithConfig conf cmd lspTestCaps dir
   $ do
     doc <- openDoc exampleModulePath "haskell"
-    (startup, _) <-
-      duration (skipManyTill anyMessage message :: Session WorkDoneProgressEndNotification)
+    (startup, _) <- duration $ do
+      waitForProgressDone
+      -- wait again, as the progress is restarted once while loading the cradle
+      -- make an edit, to ensure this doesn't block
+      changeDoc doc [hygienicEdit]
+      waitForProgressDone
+
 
     liftIO $ output $ "Running " <> name <> " benchmark"
     (runSetup, userState) <- duration $ benchSetup doc
