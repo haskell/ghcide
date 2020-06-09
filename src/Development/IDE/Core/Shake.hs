@@ -419,12 +419,11 @@ shakeRestart it@IdeState{shakeExtras=ShakeExtras{logger}, ..} systemActs =
               (stopTime,queue) <- duration (cancelShakeSession runner)
               res <- shakeDatabaseProfile shakeProfileDir shakeDb
               let profile = case res of
-                      Just fp ->
-                          let link = case filePathToUri' $ toNormalizedFilePath' fp of
-                                          NormalizedUri _ x -> x
-                          in ", profile saved at " <> T.unpack link
+                      Just fp -> ", profile saved at " <> fp
                       _ -> ""
-              logDebug logger $ T.pack $ "Restarting build session (aborting the previous one took " ++ showDuration stopTime ++ profile ++ ")"
+              logDebug logger $ T.pack $
+                  "Restarting build session (aborting the previous one took " ++
+                  showDuration stopTime ++ profile ++ ")"
               return queue
         )
         -- It is crucial to be masked here, otherwise we can get killed
