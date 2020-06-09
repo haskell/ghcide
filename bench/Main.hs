@@ -342,12 +342,14 @@ runBench Bench {..} = handleAny (\e -> print e >> return badRun)
 
     (runExperiment, success) <- duration $ loop samples
 
-    -- sleeep to give ghcide a chance to GC
+    -- sleep to give ghcide a chance to GC
     liftIO $ threadDelay 1100000
 
+    -- exit and sleep to give ghcide a chance to print the RTS stats
+    -- This causes problems and needs to be fixed in lsp-test
+    -- (which doesn't like ghcide exiting early)
     exitServer
-    -- sleeep to give ghcide a chance to print the RTS stats
-    liftIO $ threadDelay 50000
+    liftIO $ threadDelay 30000
 
     maxResidency <- liftIO $ parseMaxResidency <$> readFile gcStats
 
