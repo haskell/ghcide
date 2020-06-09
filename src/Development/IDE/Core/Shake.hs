@@ -177,15 +177,6 @@ instance Eq Key where
 instance Hashable Key where
     hashWithSalt salt (Key key) = hashWithSalt salt (typeOf key, key)
 
--- | The result of an IDE operation. Warnings and errors are in the Diagnostic,
---   and a value is in the Maybe. For operations that throw an error you
---   expect a non-empty list of diagnostics, at least one of which is an error,
---   and a Nothing. For operations that succeed you expect perhaps some warnings
---   and a Just. For operations that depend on other failing operations you may
---   get empty diagnostics and a Nothing, to indicate this phase throws no fresh
---   errors but still failed.
---
-
 data Value v
     = Succeeded TextDocumentVersion v
     | Stale TextDocumentVersion v
