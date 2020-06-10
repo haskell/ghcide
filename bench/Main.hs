@@ -41,7 +41,6 @@ import Control.Concurrent
 import Control.Exception.Safe
 import Control.Monad.Extra
 import Control.Monad.IO.Class
-import Data.Aeson
 import Data.List
 import Data.Maybe
 import Data.Version
@@ -332,12 +331,6 @@ runBench Bench {..} = handleAny (\e -> print e >> return badRun)
     -- sleep to give ghcide a chance to GC
     liftIO $ threadDelay 1100000
 
-    -- exit and sleep to give ghcide a chance to print the RTS stats
-    -- This causes problems and needs to be fixed in lsp-test
-    -- (which doesn't like ghcide exiting early)
-    exitServer
-    liftIO $ threadDelay 30000
-
     maxResidency <- liftIO $ parseMaxResidency <$> readFile gcStats
 
     return BenchRun {..}
@@ -382,10 +375,6 @@ setup = do
   whenJust (shakeProfiling ?config) $ createDirectoryIfMissing True
 
   return $ removeDirectoryRecursive examplesPath
-
--- | Asks the server to shutdown and exit politely
-exitServer :: Session ()
-exitServer = request_ Shutdown (Nothing :: Maybe Value) >> sendNotification Exit ExitParams
 
 --------------------------------------------------------------------------------------------
 
