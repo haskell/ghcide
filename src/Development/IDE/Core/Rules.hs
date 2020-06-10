@@ -592,7 +592,7 @@ getHiFileRule :: Rules ()
 getHiFileRule = defineEarlyCutoff $ \GetHiFile f -> do
   -- get all dependencies interface files, to check for freshness
   (deps,_) <- use_ GetLocatedImports f
-  depHis  <- traverse (use GetHiFile) (mapMaybe (fmap artifactFilePath . snd) deps)
+  depHis  <- traverse (use GetModIface) (mapMaybe (fmap artifactFilePath . snd) deps)
 
   ms <- use_ GetModSummary f
   let hiFile = toNormalizedFilePath'

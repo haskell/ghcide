@@ -97,10 +97,11 @@ type instance RuleResult GetLocatedImports = ([(Located ModuleName, Maybe Artifa
 -- we can only report diagnostics for the current file.
 type instance RuleResult ReportImportCycles = ()
 
--- | Read the module interface file
+-- | Read the module interface file directly. Throws an error for VFS files.
+--   This is an internal rule, use 'GetModIface' instead.
 type instance RuleResult GetHiFile = HiFileResult
 
--- | Get a module interface, either from an interface file or a typechecked module
+-- | Get a module interface details, either from an interface file or a typechecked module
 type instance RuleResult GetModIface = HiFileResult
 
 type instance RuleResult IsFileOfInterest = Bool
