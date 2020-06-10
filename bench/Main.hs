@@ -81,6 +81,17 @@ main = do
       bench "hover" 10 $ \doc ->
         isJust <$> getHover doc identifierP,
       ---------------------------------------------------------------------------------------
+      bench "edit" 10 $ \doc -> do
+        let change =
+              TextDocumentContentChangeEvent
+                { _range = Just (Range hygienicP hygienicP),
+                  _rangeLength = Nothing,
+                  _text = " "
+                }
+        changeDoc doc [change]
+        void (skipManyTill anyMessage message :: Session WorkDoneProgressEndNotification)
+        return True,
+      ---------------------------------------------------------------------------------------
       bench "hover after edit" 10 $ \doc -> do
         let change =
               TextDocumentContentChangeEvent
