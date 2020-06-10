@@ -193,7 +193,7 @@ configP =
          <|> pure Normal
         )
     <*> optional (strOption (long "shake-profiling" <> metavar "PATH"))
-    <*> strOption ((long "csv") <> metavar "PATH" <> value "results.csv" <> showDefault)
+    <*> strOption (long "csv" <> metavar "PATH" <> value "results.csv" <> showDefault)
     <*> flag Cabal Stack (long "stack" <> help "Use a stack cradle")
     <*> many (strOption (long "rts" <> help "additional RTS options for ghcide"))
     <*> many (strOption (short 's' <> long "select" <> help "select which benchmarks to run"))
@@ -270,7 +270,7 @@ runBenchmarks (filter select -> benchmarks) = do
   writeFile (outputCSV ?config) csv
 
   -- print a nice table
-  let pads = map maximum ((map . map) length (transpose (headers : rowsHuman)))
+  let pads = map (maximum . map length) (transpose (headers : rowsHuman))
       paddedHeaders = zipWith pad pads headers
       outputRow = putStrLn . intercalate " | "
       rowsHuman =
@@ -345,7 +345,7 @@ runBench Bench {..} = handleAny (\e -> print e >> return badRun)
     gcStats = escapeSpaces (name <> ".benchmark-gcStats")
     cmd =
       unwords $
-        [ (ghcide ?config),
+        [ ghcide ?config,
           "--lsp",
           "--cwd",
           dir,
@@ -403,13 +403,12 @@ escapeSpaces = map f
     f ' ' = '_'
     f x = x
 
-
 exampleCradle :: HasConfig => String
 exampleCradle = case cradle ?config of
   Cabal -> "cradle: {cabal: {component: " <> show examplePackageName <> "}}"
   Stack -> "cradle: {stack: {component: " <> show (examplePackageName <> ":lib") <> "}}"
 
-pad :: Int -> [Char] -> [Char]
+pad :: Int -> String -> String
 pad n [] = replicate n ' '
 pad 0 _ = error "pad"
 pad n (x:xx) = x : pad (n-1) xx
