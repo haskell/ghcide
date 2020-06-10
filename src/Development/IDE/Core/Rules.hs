@@ -443,8 +443,6 @@ getSpanInfoRule =
     define $ \GetSpanInfo file -> do
         tc <- use_ TypeCheck file
         packageState <- hscEnv <$> use_ GhcSession file
-        deps <- maybe (TransitiveDependencies [] [] []) fst <$> useWithStale GetDependencies file
-        let tdeps = transitiveModuleDeps deps
 
 -- When possible, rely on the haddocks embedded in our interface files
 -- This creates problems on ghc-lib, see comment on 'getDocumentationTryGhc'
@@ -454,10 +452,9 @@ getSpanInfoRule =
         parsedDeps <- mapMaybe (fmap fst) <$> usesWithStale GetParsedModule tdeps
 #endif
 
-        ifaces <- mapMaybe (fmap fst) <$> usesWithStale GetModIface tdeps
         (fileImports, _) <- use_ GetLocatedImports file
         let imports = second (fmap artifactFilePath) <$> fileImports
-        x <- liftIO $ getSrcSpanInfos packageState imports tc parsedDeps (map hirModIface ifaces)
+        x <- liftIO $ getSrcSpanInfos packageState imports tc parsedDeps
         return ([], Just x)
 
 -- Typechecks a module.
@@ -483,24 +480,12 @@ typeCheckRuleDefinition
     -> GenerateInterfaceFiles -- ^ Should generate .hi and .hie files ?
     -> Action (IdeResult TcModuleResult)
 typeCheckRuleDefinition file pm generateArtifacts = do
-  deps <- use_ GetDependencies file
-  hsc  <- hscEnv <$> use_ GhcSession file
-  -- Figure out whether we need TemplateHaskell or QuasiQuotes support
-  let graph_needs_th_qq = needsTemplateHaskellOrQQ $ hsc_mod_graph hsc
-      file_uses_th_qq   = uses_th_qq $ ms_hspp_opts (pm_mod_summary pm)
-      any_uses_th_qq    = graph_needs_th_qq || file_uses_th_qq
-  mirs      <- uses_ GetModIface (transitiveModuleDeps deps)
-  bytecodes <- if any_uses_th_qq
-    then -- If we use TH or QQ, we must obtain the bytecode
-      fmap Just <$> uses_ GenerateByteCode (transitiveModuleDeps deps)
-    else
-      pure $ repeat Nothing
-
+  hsc  <- hscEnv <$> use_ GhcSessionDeps file
   setPriority priorityTypeCheck
   IdeOptions { optDefer = defer } <- getIdeOptions
 
   addUsageDependencies $ liftIO $ do
-    res <- typecheckModule defer hsc (zipWith unpack mirs bytecodes) pm
+    res <- typecheckModule defer hsc pm
     case res of
       (diags, Just (hsc,tcm)) | DoGenerateInterfaceFiles <- generateArtifacts -> do
         diagsHie <- generateAndWriteHieFile hsc (tmrModule tcm)
@@ -509,10 +494,6 @@ typeCheckRuleDefinition file pm generateArtifacts = do
       (diags, res) ->
         return (diags, snd <$> res)
  where
-  unpack HiFileResult{..} bc = (hirModSummary, (hirModIface, bc))
-  uses_th_qq dflags =
-    xopt LangExt.TemplateHaskell dflags || xopt LangExt.QuasiQuotes dflags
-
   addUsageDependencies :: Action (a, Maybe TcModuleResult) -> Action (a, Maybe TcModuleResult)
   addUsageDependencies a = do
     r@(_, mtc) <- a
@@ -587,6 +568,40 @@ loadGhcSession = do
                 -- from last time
                 Nothing -> BS.pack (show (hash (snd val)))
         return (Just cutoffHash, val)
+
+    define $ \GhcSessionDeps file -> do
+        hsc <- hscEnv <$> use_ GhcSession file
+        (ms,_) <- useWithStale_ GetModSummary file
+        (deps,_) <- useWithStale_ GetDependencies file
+        let tdeps = transitiveModuleDeps deps
+        ifaces <- uses_ GetModIface tdeps
+
+        -- Figure out whether we need TemplateHaskell or QuasiQuotes support
+        let graph_needs_th_qq = needsTemplateHaskellOrQQ $ hsc_mod_graph hsc
+            file_uses_th_qq   = uses_th_qq $ ms_hspp_opts ms
+            any_uses_th_qq    = graph_needs_th_qq || file_uses_th_qq
+
+        bytecodes <- if any_uses_th_qq
+            then -- If we use TH or QQ, we must obtain the bytecode
+            fmap Just <$> uses_ GenerateByteCode (transitiveModuleDeps deps)
+            else
+            pure $ repeat Nothing
+
+        -- Currently GetDependencies returns things in topological order so A comes before B if A imports B.
+        -- We need to reverse this as GHC gets very unhappy otherwise and complains about broken interfaces.
+        -- Long-term we might just want to change the order returned by GetDependencies
+        let inLoadOrder = reverse (zipWith unpack ifaces bytecodes)
+
+        (session',_) <- liftIO $ runGhcEnv hsc $ do
+            setupFinderCache (map hirModSummary ifaces)
+            mapM_ (uncurry loadDepModule) inLoadOrder
+
+        res <- liftIO $ newHscEnvEq session' []
+        return $ ([], Just res)
+ where
+  unpack HiFileResult{..} bc = (hirModIface, bc)
+  uses_th_qq dflags =
+    xopt LangExt.TemplateHaskell dflags || xopt LangExt.QuasiQuotes dflags
 
 getModIfaceFromDiskRule :: Rules ()
 getModIfaceFromDiskRule = defineEarlyCutoff $ \GetModIfaceFromDisk f -> do
