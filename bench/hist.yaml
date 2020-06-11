@@ -9,12 +9,12 @@ ghcideBench: ghcide-bench
 experiments:
     - hover
     - edit
-    # - getDefinition
-    # - "hover after edit"
-    # - "completions after edit"
-    # - "code actions"
-    # - "code actions after edit"
-    # - "documentSymbols after edit"
+    - getDefinition
+    - "hover after edit"
+    - "completions after edit"
+    - "code actions"
+    - "code actions after edit"
+    - "documentSymbols after edit"
 
 # An ordered list of versions to analyze
 versions:
