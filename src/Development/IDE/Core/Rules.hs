@@ -600,7 +600,7 @@ ghcSessionDepsDefinition file = do
             mapM_ (uncurry loadDepModule) inLoadOrder
 
         res <- liftIO $ newHscEnvEq session' []
-        return $ ([], Just res)
+        return ([], Just res)
  where
   unpack HiFileResult{..} bc = (hirModIface, bc)
   uses_th_qq dflags =
