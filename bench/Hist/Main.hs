@@ -125,39 +125,51 @@ main = shakeArgs shakeOptions {shakeChange = ChangeModtimeAndDigest} $ do
 
     need $
       [build </> "results.csv"]
-        ++ [ build </> escaped(escapeExperiment e) <.> "svg"
+        ++ [ build </> escaped (escapeExperiment e) <.> "svg"
              | e <- experiments
            ]
-        ++ [ build </> T.unpack (humanName ver) </> escaped(escapeExperiment e) <.> mode <.> "svg"
+        ++ [ build </> T.unpack (humanName ver) </> escaped (escapeExperiment e) <.> mode <.> "svg"
              | e <- experiments,
                ver <- versions,
                mode <- ["", "diff"]
            ]
 
-  [  build -/- "*/ghcide"
-   , build -/- "*/ghc.path"
-   ] &%> \[out, ghcpath] -> do
-    let [_, ver, _] = splitDirectories out
-    liftIO $ createDirectoryIfMissing True $ dropFileName out
-    commitid <- getCommitId ver
-    cmd_ $ "git worktree add bench-temp " ++ commitid
-    Stdout ghcLoc <-
-      cmd
-        [Cwd "bench-temp"]
-        (s "stack --stack-yaml=stack88.yaml exec which ghc")
-    cmd_
-      [Cwd "bench-temp"]
-      ( "stack --local-bin-path=../" <> takeDirectory out
-          <> " --stack-yaml=stack88.yaml build ghcide:ghcide --copy-bins --ghc-options -rtsopts"
-      )
-      `actionFinally` cmd_ (s "git worktree remove bench-temp --force")
-    writeFile' ghcpath ghcLoc
+  priority 10 $ [build -/- "HEAD/ghcide"
+                , build -/- "HEAD/ghc.path"
+                ]
+    &%> \[out, ghcpath] -> do
+      liftIO $ createDirectoryIfMissing True $ dropFileName out
+      need =<< getDirectoryFiles "." ["src//*.hs", "exe//*.hs", "ghcide.cabal"]
+      cmd_
+          ( "stack --local-bin-path=" <> takeDirectory out
+              <> " --stack-yaml=stack88.yaml build ghcide:ghcide --copy-bins --ghc-options -rtsopts"
+          )
+      Stdout ghcLoc <- cmd (s "stack --stack-yaml=stack88.yaml exec which ghc")
+      writeFile' ghcpath ghcLoc
+
+  [ build -/- "*/ghcide",
+    build -/- "*/ghc.path"
+    ]
+    &%> \[out, ghcpath] -> do
+      let [_, ver, _] = splitDirectories out
+      liftIO $ createDirectoryIfMissing True $ dropFileName out
+      commitid <- getCommitId ver
+      cmd_ $ "git worktree add bench-temp " ++ commitid
+      flip actionFinally (cmd_ (s "git worktree remove bench-temp --force")) $ do
+        Stdout ghcLoc <- cmd [Cwd "bench-temp"] (s "stack --stack-yaml=stack88.yaml exec which ghc")
+        cmd_
+          [Cwd "bench-temp"]
+          ( "stack --local-bin-path=../"
+              <> takeDirectory out
+              <> " --stack-yaml=stack88.yaml build ghcide:ghcide --copy-bins --ghc-options -rtsopts"
+          )
+        writeFile' ghcpath ghcLoc
 
   priority 8000 $
     build -/- "*/results.csv" %> \out -> do
       experiments <- readExperiments
 
-      let allResultFiles = [takeDirectory out </> escaped(escapeExperiment e) <.> "csv" | e <- experiments]
+      let allResultFiles = [takeDirectory out </> escaped (escapeExperiment e) <.> "csv" | e <- experiments]
       allResults <- traverse readFileLines allResultFiles
 
       let header = head $ head allResults
@@ -167,39 +179,40 @@ main = shakeArgs shakeOptions {shakeChange = ChangeModtimeAndDigest} $ do
   ghcideBenchResource <- newResource "ghcide-bench" 1
 
   priority 0 $
-    [ build -/- "*/*.csv"
-    , build -/- "*/*.benchmark-gcStats"
-    ] &%> \[outcsv, _outGc] -> do
-      let [_, _, exp] = splitDirectories outcsv
-      samples <- readSamples
-      liftIO $ createDirectoryIfMissing True $ dropFileName outcsv
-      let ghcide = dropFileName outcsv </> "ghcide"
-          ghcpath = dropFileName outcsv </> "ghc.path"
-      need [ghcide, ghcpath]
-      ghcPath <- readFile' ghcpath
-      ghcideBenchPath <- ghcideBench <$> liftIO readConfigIO
-      verb <- getVerbosity
-      withResource ghcideBenchResource 1 $ do
-        Stdout res <-
+    [ build -/- "*/*.csv",
+      build -/- "*/*.benchmark-gcStats"
+    ]
+      &%> \[outcsv, _outGc] -> do
+        let [_, _, exp] = splitDirectories outcsv
+        samples <- readSamples
+        liftIO $ createDirectoryIfMissing True $ dropFileName outcsv
+        let ghcide = dropFileName outcsv </> "ghcide"
+            ghcpath = dropFileName outcsv </> "ghc.path"
+        need [ghcide, ghcpath]
+        ghcPath <- readFile' ghcpath
+        ghcideBenchPath <- ghcideBench <$> liftIO readConfigIO
+        verb <- getVerbosity
+        withResource ghcideBenchResource 1 $ do
+          Stdout res <-
             command
-            [ EchoStdout True,
+              [ EchoStdout True,
                 RemEnv "NIX_GHC_LIBDIR",
                 RemEnv "GHC_PACKAGE_PATH",
                 AddPath [takeDirectory ghcPath, "."] []
-            ]
-            ghcideBenchPath
-                ["--timeout=3000",
+              ]
+              ghcideBenchPath
+              [ "--timeout=3000",
                 "--samples=" <> show samples,
                 "--csv=" <> outcsv,
                 "--example-package-version=3.0.0.0",
                 "--rts=-I0.5",
                 "--ghcide=" <> ghcide,
                 "--select",
-                unescaped(unescapeExperiment(Escaped $ dropExtension exp)),
+                unescaped (unescapeExperiment (Escaped $ dropExtension exp)),
                 if verb > Normal then "-v" else "-q"
-                ]
-        writeFile' (replaceExtension outcsv "log") res
-        cmd_ Shell $ "mv *.benchmark-gcStats " <> dropFileName outcsv
+              ]
+          writeFile' (replaceExtension outcsv "log") res
+          cmd_ Shell $ "mv *.benchmark-gcStats " <> dropFileName outcsv
 
   build -/- "results.csv" %> \out -> do
     versions <- readVersions
@@ -227,7 +240,7 @@ main = shakeArgs shakeOptions {shakeChange = ChangeModtimeAndDigest} $ do
       runLogPrev <- loadRunLog b exp $ T.unpack prev
 
       let diagram = Diagram Live [runLog, runLogPrev] title
-          title = show(unescapeExperiment exp) <> " - live bytes over time compared"
+          title = show (unescapeExperiment exp) <> " - live bytes over time compared"
       plotDiagram diagram out
 
   priority 1 $
@@ -246,7 +259,7 @@ main = shakeArgs shakeOptions {shakeChange = ChangeModtimeAndDigest} $ do
       loadRunLog build exp $ T.unpack $ humanName v
 
     let diagram = Diagram Live runLogs title
-        title = show(unescapeExperiment exp) <> " - live bytes over time"
+        title = show (unescapeExperiment exp) <> " - live bytes over time"
     plotDiagram diagram out
 
 ----------------------------------------------------------------------------------------------------
@@ -399,8 +412,9 @@ s = id
 (-/-) :: FilePattern -> FilePattern -> FilePattern
 a -/- b = a <> "/" <> b
 
-newtype Escaped a = Escaped { escaped :: a}
-newtype Unescaped a = Unescaped { unescaped :: a}
+newtype Escaped a = Escaped {escaped :: a}
+
+newtype Unescaped a = Unescaped {unescaped :: a}
   deriving newtype (Show, FromJSON, ToJSON, Eq, NFData, Binary, Hashable)
 
 escapeExperiment :: Unescaped String -> Escaped String
