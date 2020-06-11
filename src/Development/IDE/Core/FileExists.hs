@@ -1,3 +1,4 @@
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE OverloadedLists      #-}
 {-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE UndecidableInstances #-}
@@ -26,6 +27,7 @@ import           Development.IDE.Types.Logger
 import           Development.Shake
 import           Development.Shake.Classes
 import           GHC.Generics
+import           Language.Haskell.LSP.Core
 import           Language.Haskell.LSP.Messages
 import           Language.Haskell.LSP.Types
 import           Language.Haskell.LSP.Types.Capabilities
@@ -90,8 +92,10 @@ getFileExists fp = use_ GetFileExists fp
 -- | Installs the 'getFileExists' rules.
 --   Provides a fast implementation if client supports dynamic watched files.
 --   Creates a global state as a side effect in that case.
-fileExistsRules :: IO LspId -> ClientCapabilities -> VFSHandle -> Rules ()
-fileExistsRules getLspId ClientCapabilities{_workspace} vfs = do
+fileExistsRules :: LspFuncs config -> VFSHandle -> Rules ()
+fileExistsRules lf vfs = do
+  let LspFuncs { clientCapabilities } = lf
+      ClientCapabilities { _workspace } = clientCapabilities
   -- Create the global always, although it should only be used if we have fast rules.
   -- But there's a chance someone will send unexpected notifications anyway,
   -- e.g. https://github.com/digital-asset/ghcide/issues/599
@@ -100,30 +104,30 @@ fileExistsRules getLspId ClientCapabilities{_workspace} vfs = do
     _ | Just WorkspaceClientCapabilities{_didChangeWatchedFiles} <- _workspace
       , Just DidChangeWatchedFilesClientCapabilities{_dynamicRegistration} <- _didChangeWatchedFiles
       , Just True <- _dynamicRegistration
-        -> fileExistsRulesFast getLspId vfs
+        -> fileExistsRulesFast vfs
       | otherwise -> do
         logger <- logger <$> getShakeExtrasRules
         liftIO $ logDebug logger "Warning: Client does not support watched files. Falling back to OS polling"
         fileExistsRulesSlow vfs
 
 --   Requires an lsp client that provides WatchedFiles notifications.
-fileExistsRulesFast :: IO LspId -> VFSHandle -> Rules ()
-fileExistsRulesFast getLspId vfs =
+fileExistsRulesFast :: VFSHandle -> Rules ()
+fileExistsRulesFast vfs =
   defineEarlyCutoff $ \GetFileExists file -> do
     isWf <- isWorkspaceFile file
     if isWf
-        then fileExistsFast getLspId vfs file
+        then fileExistsFast vfs file
         else fileExistsSlow vfs file
 
-fileExistsFast :: IO LspId -> VFSHandle -> NormalizedFilePath -> Action (Maybe BS.ByteString, ([a], Maybe Bool))
-fileExistsFast getLspId vfs file = do
+fileExistsFast :: VFSHandle -> NormalizedFilePath -> Action (Maybe BS.ByteString, ([a], Maybe Bool))
+fileExistsFast vfs file = do
     fileExistsMap <- getFileExistsMapUntracked
     let mbFilesWatched = HashMap.lookup file fileExistsMap
     case mbFilesWatched of
       Just fv -> pure (summarizeExists fv, ([], Just fv))
       Nothing -> do
         exist                   <- liftIO $ getFileExistsVFS vfs file
-        ShakeExtras { eventer } <- getShakeExtras
+        ShakeExtras{lspFuncs=lf} <- getShakeExtras
 
         -- add a listener for VFS Create/Delete file events,
         -- taking the FileExistsMap lock to prevent race conditions
@@ -132,7 +136,7 @@ fileExistsFast getLspId vfs file = do
           case HashMap.alterF (,Just exist) file x of
             (Nothing, x') -> do
             -- if the listener addition fails, we never recover. This is a bug.
-              addListener eventer file
+              addListener lf file
               return x'
             (Just _, _) ->
               -- if the key was already there, do nothing
@@ -140,8 +144,8 @@ fileExistsFast getLspId vfs file = do
 
         pure (summarizeExists exist, ([], Just exist))
  where
-  addListener eventer fp = do
-    reqId <- getLspId
+  addListener lf fp = do
+    reqId <- getNextReqId lf
     let
       req = RequestMessage "2.0" reqId ClientRegisterCapability regParams
       fpAsId       = T.pack $ fromNormalizedFilePath fp
@@ -156,7 +160,7 @@ fileExistsFast getLspId vfs file = do
                                   , _kind        = Just watchKind
                                   }
 
-    eventer $ ReqRegisterCapability req
+    sendFunc lf $ ReqRegisterCapability req
 
 summarizeExists :: Bool -> Maybe BS.ByteString
 summarizeExists x = Just $ if x then BS.singleton 1 else BS.empty

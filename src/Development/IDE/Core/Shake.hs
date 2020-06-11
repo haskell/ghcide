@@ -65,6 +65,7 @@ import Data.Unique
 import Development.IDE.Core.Debouncer
 import Development.IDE.Core.PositionMapping
 import Development.IDE.Types.Logger hiding (Priority)
+import Language.Haskell.LSP.Core (LspFuncs(..))
 import Language.Haskell.LSP.Diagnostics
 import qualified Data.SortedList as SL
 import           Development.IDE.Types.Diagnostics
@@ -91,8 +92,8 @@ import Data.Foldable (traverse_)
 
 
 -- information we stash inside the shakeExtra field
-data ShakeExtras = ShakeExtras
-    {eventer :: LSP.FromServerMessage -> IO ()
+data ShakeExtras = forall config. ShakeExtras
+    {lspFuncs :: LspFuncs config
     ,debouncer :: Debouncer NormalizedUri
     ,logger :: Logger
     ,globals :: Var (HMap.HashMap TypeRep Dynamic)
@@ -109,8 +110,6 @@ data ShakeExtras = ShakeExtras
     -- accumlation of all previous mappings.
     ,inProgress :: Var (HMap.HashMap NormalizedFilePath Int)
     -- ^ How many rules are running for each file
-    ,getLspId :: IO LspId
-    -- ^ The generator for unique Lsp identifiers
     ,reportProgress :: Bool
     -- ^ Whether to send Progress messages to the client
     ,ideTesting :: IdeTesting
@@ -309,8 +308,7 @@ seqValue v b = case v of
     Failed -> b
 
 -- | Open a 'IdeState', should be shut using 'shakeShut'.
-shakeOpen :: IO LSP.LspId
-          -> (LSP.FromServerMessage -> IO ()) -- ^ diagnostic handler
+shakeOpen :: LspFuncs config
           -> Logger
           -> Debouncer NormalizedUri
           -> Maybe FilePath
@@ -319,7 +317,7 @@ shakeOpen :: IO LSP.LspId
           -> ShakeOptions
           -> Rules ()
           -> IO IdeState
-shakeOpen getLspId eventer logger debouncer shakeProfileDir (IdeReportProgress reportProgress) ideTesting opts rules = mdo
+shakeOpen lspFuncs logger debouncer shakeProfileDir (IdeReportProgress reportProgress) ideTesting opts rules = mdo
     inProgress <- newVar HMap.empty
     shakeExtras <- do
         globals <- newVar HMap.empty
@@ -339,19 +337,19 @@ shakeOpen getLspId eventer logger debouncer shakeProfileDir (IdeReportProgress r
     let ideState = IdeState{..}
     return ideState
 
-lspShakeProgress :: Hashable a => IdeTesting -> IO LSP.LspId -> (LSP.FromServerMessage -> IO ()) -> Var (HMap.HashMap a Int) -> IO ()
-lspShakeProgress (IdeTesting ideTesting) getLspId sendMsg inProgress = do
+lspShakeProgress :: Hashable a => IdeTesting -> LspFuncs config -> Var (HMap.HashMap a Int) -> IO ()
+lspShakeProgress (IdeTesting ideTesting) lf inProgress = do
     -- first sleep a bit, so we only show progress messages if it's going to take
     -- a "noticable amount of time" (we often expect a thread kill to arrive before the sleep finishes)
     unless ideTesting $ sleep 0.1
-    lspId <- getLspId
+    lspId <- getNextReqId lf
     u <- ProgressTextToken . T.pack . show . hashUnique <$> newUnique
-    sendMsg $ LSP.ReqWorkDoneProgressCreate $ LSP.fmServerWorkDoneProgressCreateRequest
+    sendFunc lf $ LSP.ReqWorkDoneProgressCreate $ LSP.fmServerWorkDoneProgressCreateRequest
       lspId $ LSP.WorkDoneProgressCreateParams
       { _token = u }
     bracket_ (start u) (stop u) (loop u Nothing)
     where
-        start id = sendMsg $ LSP.NotWorkDoneProgressBegin $ LSP.fmServerWorkDoneProgressBeginNotification
+        start id = sendFunc lf $ LSP.NotWorkDoneProgressBegin $ LSP.fmServerWorkDoneProgressBeginNotification
             LSP.ProgressParams
                 { _token = id
                 , _value = WorkDoneProgressBeginParams
@@ -361,7 +359,7 @@ lspShakeProgress (IdeTesting ideTesting) getLspId sendMsg inProgress = do
                   , _percentage = Nothing
                   }
                 }
-        stop id = sendMsg $ LSP.NotWorkDoneProgressEnd $ LSP.fmServerWorkDoneProgressEndNotification
+        stop id = sendFunc lf $ LSP.NotWorkDoneProgressEnd $ LSP.fmServerWorkDoneProgressEndNotification
             LSP.ProgressParams
                 { _token = id
                 , _value = WorkDoneProgressEndParams
@@ -376,7 +374,7 @@ lspShakeProgress (IdeTesting ideTesting) getLspId sendMsg inProgress = do
             let todo = HMap.size current
             let next = Just $ T.pack $ show done <> "/" <> show todo
             when (next /= prev) $
-                sendMsg $ LSP.NotWorkDoneProgressReport $ LSP.fmServerWorkDoneProgressReportNotification
+                sendFunc lf $ LSP.NotWorkDoneProgressReport $ LSP.fmServerWorkDoneProgressReportNotification
                     LSP.ProgressParams
                         { _token = id
                         , _value = LSP.WorkDoneProgressReportParams
@@ -465,7 +463,7 @@ newSession IdeState{shakeExtras=ShakeExtras{..}, ..} systemActs userActs = do
                 liftIO $ atomically $ writeTVar actionInProgress Nothing
 
         progressRun
-          | reportProgress = lspShakeProgress ideTesting getLspId eventer inProgress
+          | reportProgress = lspShakeProgress ideTesting lspFuncs inProgress
           | otherwise = return ()
 
         workRun restore = withAsync progressRun $ \progressThread -> do
@@ -617,8 +615,10 @@ usesWithStale key files = do
     zipWithM lastValue files values
 
 
-withProgress :: (Eq a, Hashable a) => Var (HMap.HashMap a Int) -> a -> Action b -> Action b
-withProgress var file = actionBracket (f succ) (const $ f pred) . const
+-- | Updates the progress stored in a variable, not to be confused with
+-- 'Language.Haskell.LSP.Core.withProgress'
+withProgressVar :: (Eq a, Hashable a) => Var (HMap.HashMap a Int) -> a -> Action b -> Action b
+withProgressVar var file = actionBracket (f succ) (const $ f pred) . const
     -- This functions are deliberately eta-expanded to avoid space leaks.
     -- Do not remove the eta-expansion without profiling a session with at
     -- least 1000 modifications.
@@ -632,7 +632,7 @@ defineEarlyCutoff
 defineEarlyCutoff op = addBuiltinRule noLint noIdentity $ \(Q (key, file)) (old :: Maybe BS.ByteString) mode -> do
     extras@ShakeExtras{state, inProgress} <- getShakeExtras
     -- don't do progress for GetFileExists, as there are lots of non-nodes for just that one key
-    (if show key == "GetFileExists" then id else withProgress inProgress file) $ do
+    (if show key == "GetFileExists" then id else withProgressVar inProgress file) $ do
         val <- case old of
             Just old | mode == RunDependenciesSame -> do
                 v <- liftIO $ getValues state key file
@@ -784,7 +784,7 @@ updateFileDiagnostics ::
   -> ShakeExtras
   -> [(ShowDiagnostic,Diagnostic)] -- ^ current results
   -> Action ()
-updateFileDiagnostics fp k ShakeExtras{diagnostics, hiddenDiagnostics, publishedDiagnostics, state, debouncer, eventer} current = liftIO $ do
+updateFileDiagnostics fp k ShakeExtras{diagnostics, hiddenDiagnostics, publishedDiagnostics, state, debouncer, lspFuncs} current = liftIO $ do
     modTime <- (currentValue =<<) <$> getValues state GetModificationTime fp
     let (currentShown, currentHidden) = partition ((== ShowDiag) . fst) current
     mask_ $ do
@@ -812,7 +812,7 @@ updateFileDiagnostics fp k ShakeExtras{diagnostics, hiddenDiagnostics, published
              mask_ $ modifyVar_ publishedDiagnostics $ \published -> do
                  let lastPublish = HMap.lookupDefault [] uri published
                  when (lastPublish /= newDiags) $
-                     eventer $ publishDiagnosticsNotification (fromNormalizedUri uri) newDiags
+                     sendFunc lspFuncs $ publishDiagnosticsNotification (fromNormalizedUri uri) newDiags
                  pure $! HMap.insert uri newDiags published
 
 publishDiagnosticsNotification :: Uri -> [Diagnostic] -> LSP.FromServerMessage
@@ -828,8 +828,8 @@ setPriority (Priority p) = reschedule p
 
 sendEvent :: LSP.FromServerMessage -> Action ()
 sendEvent e = do
-    ShakeExtras{eventer} <- getShakeExtras
-    liftIO $ eventer e
+    ShakeExtras{lspFuncs} <- getShakeExtras
+    liftIO $ sendFunc lspFuncs e
 
 ideLogger :: IdeState -> Logger
 ideLogger IdeState{shakeExtras=ShakeExtras{logger}} = logger
