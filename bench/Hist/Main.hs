@@ -109,13 +109,11 @@ main = shakeArgs shakeOptions {shakeChange = ChangeModtimeAndDigest} $ do
   _ <- addOracle $ \GetExperiments {} -> experiments <$> readConfig
   _ <- addOracle $ \GetVersions {} -> versions <$> readConfig
   _ <- addOracle $ \(GetParent name) -> findPrev name . versions <$> readConfig
-  _ <- addOracle $ \(GetCommitId human) -> (`nameToGit` human) . versions <$> readConfig
 
   let readVersions = askOracle $ GetVersions ()
       readExperiments = askOracle $ GetExperiments ()
       readSamples = askOracle $ GetSamples ()
       getParent = askOracle . GetParent
-      getCommitId = askOracle . GetCommitId
 
   phony "all" $ do
     Config {..} <- readConfig
@@ -134,6 +132,15 @@ main = shakeArgs shakeOptions {shakeChange = ChangeModtimeAndDigest} $ do
                mode <- ["", "diff"]
            ]
 
+  build -/- "*/commitid" %> \out -> do
+
+      let [_,ver,_] = splitDirectories out
+      mbEntry <- find ((== T.pack ver) . humanName) <$> readVersions
+      let gitThing :: String
+          gitThing = fromMaybe ver $ T.unpack . gitName <$> mbEntry
+      Stdout commitid <- command [] "git" ["rev-list", "-n", "1", gitThing]
+      writeFileChanged out $ init commitid
+
   priority 10 $ [build -/- "HEAD/ghcide"
                 , build -/- "HEAD/ghc.path"
                 ]
@@ -151,9 +158,9 @@ main = shakeArgs shakeOptions {shakeChange = ChangeModtimeAndDigest} $ do
     build -/- "*/ghc.path"
     ]
     &%> \[out, ghcpath] -> do
-      let [_, ver, _] = splitDirectories out
+      let [b, ver, _] = splitDirectories out
       liftIO $ createDirectoryIfMissing True $ dropFileName out
-      commitid <- getCommitId ver
+      commitid <- readFile' $ b </> ver </> "commitid"
       cmd_ $ "git worktree add bench-temp " ++ commitid
       flip actionFinally (cmd_ (s "git worktree remove bench-temp --force")) $ do
         Stdout ghcLoc <- cmd [Cwd "bench-temp"] (s "stack --stack-yaml=stack88.yaml exec which ghc")
@@ -306,10 +313,6 @@ instance ToJSON GitCommit where
 
 humanName :: GitCommit -> Text
 humanName GitCommit {..} = fromMaybe gitName name
-
-nameToGit :: [GitCommit] -> String -> String
-nameToGit versions n =
-  maybe n (T.unpack . gitName) $ find ((== T.pack n) . humanName) versions
 
 findPrev :: Text -> [GitCommit] -> Text
 findPrev name (x : y : xx)
