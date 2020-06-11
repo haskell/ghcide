@@ -370,14 +370,16 @@ data Diagram = Diagram
 data RunLog = RunLog
   { runVersion :: !String,
     _runExperiment :: !String,
-    runFrames :: ![Frame]
+    runFrames :: ![Frame],
+    runSuccess :: !Bool
   }
 
 loadRunLog :: FilePath -> Escaped FilePath -> FilePath -> Action RunLog
 loadRunLog buildF exp ver = do
-  let fp = buildF </> ver </> escaped exp <.> "benchmark-gcStats"
-  need [fp]
-  log <- liftIO $ lines <$> readFile fp
+  let log_fp = buildF </> ver </> escaped exp <.> "benchmark-gcStats"
+      csv_fp = replaceExtension log_fp "csv"
+  log <- readFileLines log_fp
+  csv <- readFileLines csv_fp
   let frames =
         [ f
           | l <- log,
@@ -385,7 +387,10 @@ loadRunLog buildF exp ver = do
             -- filter out gen 0 events as there are too many
             generation f == 1
         ]
-  return $ RunLog ver (dropExtension $ escaped exp) frames
+      success = case map (T.split (== ',') . T.pack) csv of
+          [_header, _name:s:_] | Just s <- readMaybe (T.unpack s) -> s
+          _ -> error $ "Cannot parse: " <> csv_fp
+  return $ RunLog ver (dropExtension $ escaped exp) frames success
 
 plotDiagram :: Diagram -> FilePath -> Action ()
 plotDiagram t@Diagram {traceMetric, runLogs} out = do
@@ -395,7 +400,7 @@ plotDiagram t@Diagram {traceMetric, runLogs} out = do
     forM_ runLogs $ \rl ->
       E.plot
         ( E.line
-            (runVersion rl)
+            (runVersion rl ++ if runSuccess rl then "" else " (FAILED)")
             [ [ (totElapsed f, extract f)
                 | f <- runFrames rl
               ]
