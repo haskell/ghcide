@@ -3,7 +3,7 @@
 samples: 100
 
 # Path to the ghcide-bench binary to use for experiments
-ghcideBench: ./ghcide-bench
+ghcideBench: ghcide-bench
 
 # The set of experiments to execute
 experiments:
@@ -18,40 +18,22 @@ experiments:
 
 # An ordered list of versions to analyze
 versions:
+# A version can be defined briefly:
+# - <tag>
+# - <branch>
+# - <commit hash>
+
+# Or in extended form:
+# - <name>:
+#    - git: <tag/branch/commithash>
+#    - include: true                   # whether to include in comparison graphs
+#    - parent: <tag/branch/commithash> # version to compare with in .diff graphs
+
+
 # - v0.0.5
 # - v0.0.6
-- v0.1.0
-# - haskell-lsp-0_20:
-#     git: e59d3e2c778b07fde3a916046cfa2662ea6107ad
-#     include: false
-# - hashmap:
-#     git: 4e89d4574d538d663bd37f074ef6ef973d14a0f1
-#     include: false
-# - guessAllImports:
-#     git: da92de218a5d8f3b5f2c1f36726e5d079e6dcb79
-#     include: false
-# - haskell-lsp-0_21:
-#     git: 9951f35b08b997fb0565443d7f61400df3a2557d
-#     include: false
-# - interface_files:
-#     git: f804b138dcc99413a173450289d0f1adc084b459
-#     include: true
-# - parse_module_headers:
-#     git: 4f9c7561ee26edbc1ecb00c8ee7655d904f8b134
-#     include: true
-# - haskell-lsp-0_22:
-#     git: 5661348b5e47d2abbd9f6f8d44da8ccab5b807a8
-#     include: false
-# - spaceleaks_hashable:
-#     git: 0c9a0961abbeef851b4117e6408f15a6d46eb1f1
-#     include: true
+# - v0.1.0
 - v0.2.0
-# - shakeSession: 0ff88c6ccccefd1239cf5a82adaa5a675d4ac09d
 - upstream: origin/master
-- cacheGhcSession:
-    git: da29106dc619a81c2dc795c4c0279d0f3724a96f
-    include: true
-- mpickering-stale:
-    git: 1b186bb8091d8c4dd6c0ec62dfbf5cdffc1c48db
-    parent: upstream
 - HEAD
+
