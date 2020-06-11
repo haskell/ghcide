@@ -449,6 +449,8 @@ getSpanInfoRule =
 #if MIN_GHC_API_VERSION(8,6,0) && !defined(GHC_LIB)
         let parsedDeps = []
 #else
+        deps <- maybe (TransitiveDependencies [] [] []) fst <$> useWithStale GetDependencies file
+        let tdeps = transitiveModuleDeps deps
         parsedDeps <- mapMaybe (fmap fst) <$> usesWithStale GetParsedModule tdeps
 #endif
 
