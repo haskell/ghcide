@@ -253,9 +253,10 @@ runBenchmarks (filter select -> benchmarks) = do
   results <- forM benchmarks $ \b -> (b,) <$> runBench b
 
   -- output raw data as CSV
-  let headers = ["name", "samples", "startup", "setup", "experiment", "maxResidency"]
+  let headers = ["name", "success", "samples", "startup", "setup", "experiment", "maxResidency"]
       rows =
         [ [ name,
+            show success,
             show samples,
             show startup,
             show runSetup',
@@ -274,6 +275,7 @@ runBenchmarks (filter select -> benchmarks) = do
       outputRow = putStrLn . intercalate " | "
       rowsHuman =
         [ [ name,
+            show success,
             show samples,
             showDuration startup,
             showDuration runSetup',
