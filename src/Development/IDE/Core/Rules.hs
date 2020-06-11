@@ -461,9 +461,10 @@ getSpanInfoRule =
 typeCheckRule :: Rules ()
 typeCheckRule = define $ \TypeCheck file -> do
     pm <- use_ GetParsedModule file
+    hsc  <- hscEnv <$> use_ GhcSessionDeps file
     -- do not generate interface files as this rule is called
     -- for files of interest on every keystroke
-    typeCheckRuleDefinition file pm SkipGenerationOfInterfaceFiles
+    typeCheckRuleDefinition hsc pm SkipGenerationOfInterfaceFiles
 
 data GenerateInterfaceFiles
     = DoGenerateInterfaceFiles
@@ -475,12 +476,11 @@ data GenerateInterfaceFiles
 -- garbage collect all the intermediate typechecked modules rather than
 -- retain the information forever in the shake graph.
 typeCheckRuleDefinition
-    :: NormalizedFilePath     -- ^ Path to source file
+    :: HscEnv
     -> ParsedModule
     -> GenerateInterfaceFiles -- ^ Should generate .hi and .hie files ?
     -> Action (IdeResult TcModuleResult)
-typeCheckRuleDefinition file pm generateArtifacts = do
-  hsc  <- hscEnv <$> use_ GhcSessionDeps file
+typeCheckRuleDefinition hsc pm generateArtifacts = do
   setPriority priorityTypeCheck
   IdeOptions { optDefer = defer } <- getIdeOptions
 
@@ -569,7 +569,10 @@ loadGhcSession = do
                 Nothing -> BS.pack (show (hash (snd val)))
         return (Just cutoffHash, val)
 
-    define $ \GhcSessionDeps file -> do
+    define $ \GhcSessionDeps file -> ghcSessionDepsDefinition file
+
+ghcSessionDepsDefinition :: NormalizedFilePath -> Action (IdeResult HscEnvEq)
+ghcSessionDepsDefinition file = do
         hsc <- hscEnv <$> use_ GhcSession file
         (ms,_) <- useWithStale_ GetModSummary file
         (deps,_) <- useWithStale_ GetDependencies file
@@ -682,10 +685,14 @@ getModIfaceRule = define $ \GetModIface f -> do
             case mb_pm of
                 Nothing -> return (diags, Nothing)
                 Just pm -> do
-                    (diags', tmr) <- typeCheckRuleDefinition f pm DoGenerateInterfaceFiles
-                    -- Bang pattern is important to avoid leaking 'tmr'
-                    let !res = extract tmr
-                    return (diags <> diags', res)
+                    (diags, mb_hsc) <- ghcSessionDepsDefinition f
+                    case mb_hsc of
+                        Nothing -> return (diags, Nothing)
+                        Just hsc -> do
+                            (diags', tmr) <- typeCheckRuleDefinition (hscEnv hsc) pm DoGenerateInterfaceFiles
+                            -- Bang pattern is important to avoid leaking 'tmr'
+                            let !res = extract tmr
+                            return (diags <> diags', res)
     where
       extract Nothing = Nothing
       extract (Just tmr) =
