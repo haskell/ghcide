@@ -1,6 +1,3 @@
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DerivingStrategies #-}
 {-  Bench history
 
     A Shake script to analyze the performance of ghcide over the git history of the project
@@ -39,13 +36,9 @@
    > stack exec benchHist bench-hist/HEAD/results.csv bench-hist/HEAD/edit.diff.svg
 
  -}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE DeriveAnyClass    #-}
+{-# LANGUAGE DerivingStrategies#-}
+{-# LANGUAGE TypeFamilies      #-}
 
 import Control.Applicative (Alternative (empty))
 import Control.Monad (forM, forM_, replicateM)
@@ -137,7 +130,7 @@ main = shakeArgs shakeOptions {shakeChange = ChangeModtimeAndDigest} $ do
       let [_,ver,_] = splitDirectories out
       mbEntry <- find ((== T.pack ver) . humanName) <$> readVersions
       let gitThing :: String
-          gitThing = fromMaybe ver $ T.unpack . gitName <$> mbEntry
+          gitThing = maybe ver (T.unpack . gitName) mbEntry
       Stdout commitid <- command [] "git" ["rev-list", "-n", "1", gitThing]
       writeFileChanged out $ init commitid
 
@@ -382,7 +375,7 @@ data RunLog = RunLog
 
 loadRunLog :: FilePath -> Escaped FilePath -> FilePath -> Action RunLog
 loadRunLog buildF exp ver = do
-  let fp = (buildF </> ver </> escaped exp <.> "benchmark-gcStats")
+  let fp = buildF </> ver </> escaped exp <.> "benchmark-gcStats"
   need [fp]
   log <- liftIO $ lines <$> readFile fp
   let frames =

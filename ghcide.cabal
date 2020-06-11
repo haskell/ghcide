@@ -178,6 +178,21 @@ executable benchHist
     buildable: True
     ghc-options: -Wall -Wno-name-shadowing -threaded
     main-is: bench/Hist/Main.hs
+    default-extensions:
+        BangPatterns
+        DeriveFunctor
+        DeriveGeneric
+        GeneralizedNewtypeDeriving
+        LambdaCase
+        NamedFieldPuns
+        OverloadedStrings
+        RecordWildCards
+        ScopedTypeVariables
+        StandaloneDeriving
+        TupleSections
+        TypeApplications
+        ViewPatterns
+
     build-depends:
         aeson,
         base == 4.*,
