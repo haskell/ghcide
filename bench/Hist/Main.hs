@@ -41,7 +41,7 @@
 {-# LANGUAGE TypeFamilies      #-}
 
 import Control.Applicative (Alternative (empty))
-import Control.Monad (forM, forM_, replicateM)
+import Control.Monad (when, forM, forM_, replicateM)
 import Data.Foldable (find)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
@@ -241,7 +241,7 @@ main = shakeArgs shakeOptions {shakeChange = ChangeModtimeAndDigest} $ do
 
       let diagram = Diagram Live [runLog, runLogPrev] title
           title = show (unescapeExperiment exp) <> " - live bytes over time compared"
-      plotDiagram diagram out
+      plotDiagram True diagram out
 
   priority 1 $
     build -/- "*/*.svg" %> \out -> do
@@ -249,7 +249,7 @@ main = shakeArgs shakeOptions {shakeChange = ChangeModtimeAndDigest} $ do
       runLog <- loadRunLog b (Escaped $ dropExtension exp) ver
       let diagram = Diagram Live [runLog] title
           title = ver <> " live bytes over time"
-      plotDiagram diagram out
+      plotDiagram True diagram out
 
   build -/- "*.svg" %> \out -> do
     let exp = Escaped $ dropExtension $ takeFileName out
@@ -260,7 +260,7 @@ main = shakeArgs shakeOptions {shakeChange = ChangeModtimeAndDigest} $ do
 
     let diagram = Diagram Live runLogs title
         title = show (unescapeExperiment exp) <> " - live bytes over time"
-    plotDiagram diagram out
+    plotDiagram False diagram out
 
 ----------------------------------------------------------------------------------------------------
 
@@ -392,20 +392,21 @@ loadRunLog buildF exp ver = do
           _ -> error $ "Cannot parse: " <> csv_fp
   return $ RunLog ver (dropExtension $ escaped exp) frames success
 
-plotDiagram :: Diagram -> FilePath -> Action ()
-plotDiagram t@Diagram {traceMetric, runLogs} out = do
+plotDiagram :: Bool -> Diagram -> FilePath -> Action ()
+plotDiagram includeFailed t@Diagram {traceMetric, runLogs} out = do
   let extract = frameMetric traceMetric
   liftIO $ E.toFile E.def out $ do
     E.layout_title .= title t
     forM_ runLogs $ \rl ->
-      E.plot
-        ( E.line
-            (runVersion rl ++ if runSuccess rl then "" else " (FAILED)")
-            [ [ (totElapsed f, extract f)
-                | f <- runFrames rl
+      when (includeFailed || runSuccess rl) $
+        E.plot
+          ( E.line
+              (runVersion rl ++ if runSuccess rl then "" else " (FAILED)")
+              [ [ (totElapsed f, extract f)
+                  | f <- runFrames rl
+                ]
               ]
-            ]
-        )
+          )
 
 s :: String -> String
 s = id
