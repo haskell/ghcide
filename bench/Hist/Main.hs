@@ -397,16 +397,16 @@ plotDiagram includeFailed t@Diagram {traceMetric, runLogs} out = do
   let extract = frameMetric traceMetric
   liftIO $ E.toFile E.def out $ do
     E.layout_title .= title t
+    E.setColors myColors
     forM_ runLogs $ \rl ->
-      when (includeFailed || runSuccess rl) $
-        E.plot
-          ( E.line
-              (runVersion rl ++ if runSuccess rl then "" else " (FAILED)")
-              [ [ (totElapsed f, extract f)
-                  | f <- runFrames rl
+      when (includeFailed || runSuccess rl) $ E.plot $ do
+        lplot <- E.line
+            (runVersion rl ++ if runSuccess rl then "" else " (FAILED)")
+            [ [ (totElapsed f, extract f)
+                | f <- runFrames rl
                 ]
-              ]
-          )
+            ]
+        return (lplot E.& E.plot_lines_style . E.line_width E.*~ 2)
 
 s :: String -> String
 s = id
@@ -430,3 +430,44 @@ unescapeExperiment = Unescaped . map f . escaped
   where
     f '_' = ' '
     f other = other
+
+myColors :: [E.AlphaColour Double]
+myColors = map E.opaque
+  [ E.blue
+  , E.green
+  , E.red
+  , E.orange
+  , E.yellow
+  , E.violet
+  , E.black
+  , E.gold
+  , E.brown
+  , E.hotpink
+  , E.aliceblue
+  , E.aqua
+  , E.beige
+  , E.bisque
+  , E.blueviolet
+  , E.burlywood
+  , E.cadetblue
+  , E.chartreuse
+  , E.coral
+  , E.crimson
+  , E.darkblue
+  , E.darkgray
+  , E.darkgreen
+  , E.darkkhaki
+  , E.darkmagenta
+  , E.deeppink
+  , E.dodgerblue
+  , E.firebrick
+  , E.forestgreen
+  , E.fuchsia
+  , E.greenyellow
+  , E.lightsalmon
+  , E.seagreen
+  , E.olive
+  , E.sandybrown
+  , E.sienna
+  , E.peru
+  ]
