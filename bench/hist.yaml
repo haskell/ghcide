@@ -5,6 +5,9 @@ samples: 100
 # Path to the ghcide-bench binary to use for experiments
 ghcideBench: ghcide-bench
 
+# Output folder for the experiments
+outputFolder: bench-hist
+
 # The set of experiments to execute
 experiments:
     - hover

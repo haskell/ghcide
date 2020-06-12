@@ -71,9 +71,6 @@ readConfigIO = do
 readConfig :: Action Config
 readConfig = need [config] >> liftIO readConfigIO
 
-build :: String
-build = "bench-hist"
-
 newtype GetSamples = GetSamples () deriving newtype (Binary, Eq, Hashable, NFData, Show)
 
 newtype GetExperiments = GetExperiments () deriving newtype (Binary, Eq, Hashable, NFData, Show)
@@ -107,6 +104,8 @@ main = shakeArgs shakeOptions {shakeChange = ChangeModtimeAndDigest} $ do
       readExperiments = askOracle $ GetExperiments ()
       readSamples = askOracle $ GetSamples ()
       getParent = askOracle . GetParent
+
+  build <- liftIO $ outputFolder <$> readConfigIO
 
   phony "all" $ do
     Config {..} <- readConfig
@@ -269,7 +268,9 @@ data Config = Config
     samples :: Natural,
     versions :: [GitCommit],
     -- | Path to the ghcide-bench binary for the experiments
-    ghcideBench :: FilePath
+    ghcideBench :: FilePath,
+    -- | Output folder ('foo' works, 'foo/bar' does not)
+    outputFolder :: String
   }
   deriving (Generic, Show)
   deriving anyclass (FromJSON, ToJSON)
