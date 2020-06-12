@@ -663,7 +663,7 @@ getModIfaceRule = define $ \GetModIface f -> do
                 Nothing -> do
                     -- if parsing fails, try parsing again with Haddock turned off
                     (_, (diagsNoHaddock, mb_pm)) <- liftIO $ getParsedModuleDefinition hsc opt comp_pkgs f contents
-                    return (mergeParseErrorsHaddock diagsNoHaddock diags, mb_pm)
+                    return (mergeParseErrorsHaddock diags diagsNoHaddock, mb_pm)
             case mb_pm of
                 Nothing -> return (diags, Nothing)
                 Just pm -> do
