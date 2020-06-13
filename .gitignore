@@ -11,3 +11,5 @@ bench/example/
 bench-hist/
 bench-temp/
 .shake/
+ghcide
+*.benchmark-gcStats
