@@ -64,12 +64,8 @@ config :: FilePath
 config = "bench/hist.yaml"
 
 -- | Read the config without dependency
-readConfigIO :: IO Config
-readConfigIO = do
-  decodeFileThrow config
-
-readConfig :: Action Config
-readConfig = need [config] >> liftIO readConfigIO
+readConfigIO :: FilePath -> IO Config
+readConfigIO = decodeFileThrow
 
 newtype GetSamples = GetSamples () deriving newtype (Binary, Eq, Hashable, NFData, Show)
 
@@ -95,20 +91,23 @@ main :: IO ()
 main = shakeArgs shakeOptions {shakeChange = ChangeModtimeAndDigest} $ do
   want ["all"]
 
-  _ <- addOracle $ \GetSamples {} -> samples <$> readConfig
-  _ <- addOracle $ \GetExperiments {} -> experiments <$> readConfig
-  _ <- addOracle $ \GetVersions {} -> versions <$> readConfig
-  _ <- addOracle $ \(GetParent name) -> findPrev name . versions <$> readConfig
+  readConfig <- newCache $ \fp -> need [fp] >> liftIO (readConfigIO fp)
+
+  _ <- addOracle $ \GetSamples {} -> samples <$> readConfig config
+  _ <- addOracle $ \GetExperiments {} -> experiments <$> readConfig config
+  _ <- addOracle $ \GetVersions {} -> versions <$> readConfig config
+  _ <- addOracle $ \(GetParent name) -> findPrev name . versions <$> readConfig config
 
   let readVersions = askOracle $ GetVersions ()
       readExperiments = askOracle $ GetExperiments ()
       readSamples = askOracle $ GetSamples ()
       getParent = askOracle . GetParent
 
-  build <- liftIO $ outputFolder <$> readConfigIO
+  build <- liftIO $ outputFolder <$> readConfigIO config
+  ghcideBenchPath <- ghcideBench <$> liftIO (readConfigIO config)
 
   phony "all" $ do
-    Config {..} <- readConfig
+    Config {..} <- readConfig config
 
     forM_ versions $ \ver ->
       need [build </> T.unpack (humanName ver) </> "results.csv"]
@@ -189,7 +188,6 @@ main = shakeArgs shakeOptions {shakeChange = ChangeModtimeAndDigest} $ do
             ghcpath = dropFileName outcsv </> "ghc.path"
         need [ghcide, ghcpath]
         ghcPath <- readFile' ghcpath
-        ghcideBenchPath <- ghcideBench <$> liftIO readConfigIO
         verb <- getVerbosity
         withResource ghcideBenchResource 1 $ do
           Stdout res <-
