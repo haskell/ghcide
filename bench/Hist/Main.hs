@@ -46,7 +46,7 @@ import Data.Foldable (find)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
-import Data.Yaml ((.!=), (.:), (.:?), FromJSON (..), ToJSON (..), Value (..), decodeFileThrow)
+import Data.Yaml ((.!=), (.:?), FromJSON (..), ToJSON (..), Value (..), decodeFileThrow)
 import Development.Shake
 import Development.Shake.Classes (Binary, Hashable, NFData)
 import GHC.Exts (IsList (..))
@@ -291,7 +291,7 @@ instance FromJSON GitCommit where
     pure $ GitCommit gitName (Just name) Nothing True
   parseJSON (Object (toList -> [(name, Object props)])) =
     GitCommit
-      <$> props .: "git"
+      <$> props .:? "git"  .!= name
       <*> pure (Just name)
       <*> props .:? "parent"
       <*> props .:? "include" .!= True

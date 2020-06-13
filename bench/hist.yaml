@@ -26,11 +26,11 @@ versions:
 # - <branch>
 # - <commit hash>
 
-# Or in extended form:
+# Or in extended form, where all the fields are optional:
 # - <name>:
-#    - git: <tag/branch/commithash>
-#    - include: true                   # whether to include in comparison graphs
-#    - parent: <tag/branch/commithash> # version to compare with in .diff graphs
+#    git: <tag/branch/commithash>
+#    include: true                   # whether to include in comparison graphs
+#    parent: <tag/branch/commithash> # version to compare with in .diff graphs
 
 
 # - v0.0.5
