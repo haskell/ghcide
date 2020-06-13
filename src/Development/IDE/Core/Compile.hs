@@ -474,7 +474,7 @@ getModSummaryFromImports fp contents = do
         -- To avoid silent issues where something is not processed because the date
         -- has not changed, we make sure that things blow up if they depend on the date.
                 , ms_hsc_src      = sourceType
-                , ms_hspp_buf     = Nothing
+                , ms_hspp_buf     = Just contents
                 , ms_hspp_file    = fp
                 , ms_hspp_opts    = dflags
                 , ms_iface_date   = Nothing

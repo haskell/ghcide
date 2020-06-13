@@ -78,6 +78,8 @@ import Control.Concurrent.Async (concurrently)
 import Control.Monad.State
 import System.IO.Error (isDoesNotExistError)
 import Control.Exception.Safe (IOException, catch)
+import FastString (FastString(uniq))
+import qualified HeaderInfo as Hdr
 
 -- | This is useful for rules to convert rules that can only produce errors or
 -- a result into the more general IdeResult type that supports producing
@@ -299,7 +301,7 @@ execRawDepM act =
 -- imports recursively.
 rawDependencyInformation :: [NormalizedFilePath] -> Action RawDependencyInformation
 rawDependencyInformation fs = do
-    (rdi, ss) <- execRawDepM (mapM_ go fs)
+    (rdi, ss) <- execRawDepM (mapM_ go $ reverse fs)
     let bm = IntMap.foldrWithKey (updateBootMap rdi) IntMap.empty ss
     return (rdi { rawBootMap = bm })
   where
@@ -643,12 +645,25 @@ getModIfaceFromDiskRule = defineEarlyCutoff $ \GetModIfaceFromDisk f -> do
               pure (Nothing, ([], Nothing))
 
 getModSummaryRule :: Rules ()
-getModSummaryRule = define $ \GetModSummary f -> do
+getModSummaryRule = defineEarlyCutoff $ \GetModSummary f -> do
     dflags <- hsc_dflags . hscEnv <$> use_ GhcSession f
     (_, mFileContent) <- getFileContents f
     modS <- liftIO $ evalWithDynFlags dflags $ runExceptT $
         getModSummaryFromImports (fromNormalizedFilePath f) (textToStringBuffer <$> mFileContent)
-    return $ either (,Nothing) (([], ) . Just) modS
+    case modS of
+        Right ms@ModSummary{..} -> do
+            let fingerPrint =
+                    ( moduleNameString (moduleName ms_mod)
+                    , ml_hs_file ms_location
+                    , fingerPrintImports ms_srcimps
+                    , fingerPrintImports ms_textual_imps
+                    , map unLoc opts
+                    )
+                fingerPrintImports = map (fmap uniq *** (moduleNameString . unLoc))
+                opts = Hdr.getOptions dflags (fromJust ms_hspp_buf) (fromNormalizedFilePath f)
+                fp = hash fingerPrint
+            return ( Just (BS.pack $ show fp), ([], Just ms{ms_hspp_buf=Nothing}))
+        Left diags -> return (Nothing, (diags, Nothing))
 
 getModIfaceRule :: Rules ()
 getModIfaceRule = define $ \GetModIface f -> do
