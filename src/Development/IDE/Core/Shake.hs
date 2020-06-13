@@ -496,10 +496,15 @@ newSession IdeState{shakeExtras=ShakeExtras{..}, ..} systemActs userActs = do
     --  The session stays open until 'cancelShakeSession' is called
     let runInShakeSession :: forall a . Action a -> IO (IO a)
         runInShakeSession act = do
-              res <- newBarrier
-              let act' = actionCatch @SomeException (Right <$> act) (pure . Left)
-              atomically $ writeTQueue actionQueue (act' >>= liftIO . signalBarrier res)
-              return (waitBarrier res >>= either throwIO return)
+              res <- newEmptyMVar -- almost a Barrier, but we attempt to write more than once
+              let act' = do
+                    -- work gets reenqueued when the Shake session is restarted
+                    -- it can happen that a work item finished just as it was reenqueud
+                    -- in that case, returning the already produced value is fine
+                    alreadyDone <- liftIO $ tryReadMVar res
+                    maybe (actionCatch @SomeException (Right <$> act) (pure . Left)) return alreadyDone
+              atomically $ writeTQueue actionQueue (act' >>= liftIO . void . tryPutMVar res)
+              return (readMVar res >>= either throwIO return)
 
     --  Cancelling is required to flush the Shake database when either
     --  the filesystem or the Ghc configuration have changed
