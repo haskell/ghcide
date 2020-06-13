@@ -17,7 +17,9 @@ module Development.IDE.Core.Rules(
     priorityGenerateCore,
     priorityFilesOfInterest,
     runAction, useE, useNoFileE, usesE,
-    toIdeResult, defineNoFile,
+    toIdeResult,
+    defineNoFile,
+    defineEarlyCutOffNoFile,
     mainRule,
     getAtPoint,
     getDefinition,
@@ -101,6 +103,11 @@ usesE k = MaybeT . fmap sequence . uses k
 defineNoFile :: IdeRule k v => (k -> Action v) -> Rules ()
 defineNoFile f = define $ \k file -> do
     if file == emptyFilePath then do res <- f k; return ([], Just res) else
+        fail $ "Rule " ++ show k ++ " should always be called with the empty string for a file"
+
+defineEarlyCutOffNoFile :: IdeRule k v => (k -> Action (ByteString, v)) -> Rules ()
+defineEarlyCutOffNoFile f = defineEarlyCutoff $ \k file -> do
+    if file == emptyFilePath then do (hash, res) <- f k; return (Just hash, ([], Just res)) else
         fail $ "Rule " ++ show k ++ " should always be called with the empty string for a file"
 
 
@@ -542,23 +549,26 @@ instance Hashable GhcSessionIO
 instance NFData   GhcSessionIO
 instance Binary   GhcSessionIO
 
-newtype GhcSessionFun = GhcSessionFun (FilePath -> Action (IdeResult HscEnvEq))
+data GhcSessionFun = GhcSessionFun
+  { hscEnvFunVersion :: !Int
+  , hscEnvFun :: FilePath -> Action (IdeResult HscEnvEq)
+  }
+
 instance Show GhcSessionFun where show _ = "GhcSessionFun"
 instance NFData GhcSessionFun where rnf !_ = ()
 
-
 loadGhcSession :: Rules ()
 loadGhcSession = do
-    defineNoFile $ \GhcSessionIO -> do
-        opts <- getIdeOptions
-        GhcSessionFun <$> optGhcSession opts
-    -- This function should always be rerun because it consults a cache to
-    -- see what HscEnv needs to be used for the file, which can change.
-    -- However, it should also cut-off early if it's the same HscEnv as
-    -- last time
-    defineEarlyCutoff $ \GhcSession file -> do
-        GhcSessionFun fun <- useNoFile_ GhcSessionIO
+    -- This function should always be rerun because it tracks changes
+    -- to the version of the collection of HscEnv's.
+    defineEarlyCutOffNoFile $ \GhcSessionIO -> do
         alwaysRerun
+        opts <- getIdeOptions
+        res <- uncurry GhcSessionFun <$> optGhcSession opts
+        return (BS.pack $ show (hscEnvFunVersion res), res)
+
+    defineEarlyCutoff $ \GhcSession file -> do
+        GhcSessionFun _ fun <- useNoFile_ GhcSessionIO
         val <- fun $ fromNormalizedFilePath file
 
         -- TODO: What was this doing before?

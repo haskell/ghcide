@@ -122,7 +122,8 @@ main = do
         runLanguageServer options (pluginHandler plugins) onInitialConfiguration onConfigurationChange $ \getLspId event vfs caps wProg wIndefProg -> do
             t <- t
             hPutStrLn stderr $ "Started LSP server in " ++ showDuration t
-            let options = (defaultIdeOptions $ loadSessionShake dir)
+            sessionLoader <- loadSessionShake dir
+            let options = (defaultIdeOptions sessionLoader)
                     { optReportProgress = clientSupportsProgress caps
                     , optShakeProfiling = argsShakeProfiling
                     , optTesting        = IdeTesting argsTesting
@@ -154,7 +155,8 @@ main = do
         vfs <- makeVFSHandle
         debouncer <- newAsyncDebouncer
         let dummyWithProg _ _ f = f (const (pure ()))
-        ide <- initialise def mainRule (pure $ IdInt 0) (showEvent lock) dummyWithProg (const (const id)) (logger minBound) debouncer (defaultIdeOptions $ loadSessionShake dir) vfs
+        sessionLoader <- loadSessionShake dir
+        ide <- initialise def mainRule (pure $ IdInt 0) (showEvent lock) dummyWithProg (const (const id)) (logger minBound) debouncer (defaultIdeOptions sessionLoader)  vfs
 
         putStrLn "\nStep 4/4: Type checking the files"
         setFilesOfInterest ide $ HashSet.fromList $ map toNormalizedFilePath' files
@@ -223,40 +225,47 @@ targetToFile _ (TargetFile f _) = do
 setNameCache :: IORef NameCache -> HscEnv -> HscEnv
 setNameCache nc hsc = hsc { hsc_NC = nc }
 
-loadSessionShake :: FilePath -> Action (FilePath -> Action (IdeResult HscEnvEq))
+loadSessionShake :: FilePath -> IO (Action (Int, FilePath -> Action (IdeResult HscEnvEq)))
 loadSessionShake fp = do
-  se <- getShakeExtras
-  IdeOptions{optTesting = IdeTesting ideTesting} <- getIdeOptions
-  res <- liftIO $ loadSession ideTesting se fp
-  return (fmap liftIO res)
+  res <- loadSession fp
+  -- the classic triple fmap in action
+  return $ (fmap.fmap.fmap) liftIO res
 
 -- | This is the key function which implements multi-component support. All
 -- components mapping to the same hie.yaml file are mapped to the same
 -- HscEnv which is updated as new components are discovered.
-loadSession :: Bool -> ShakeExtras -> FilePath -> IO (FilePath -> IO (IdeResult HscEnvEq))
-loadSession optTesting ShakeExtras{logger, eventer, restartShakeSession, withIndefiniteProgress} dir = do
+loadSession :: FilePath -> IO (Action (Int, FilePath -> IO (IdeResult HscEnvEq)))
+loadSession dir = do
   -- Mapping from hie.yaml file to HscEnv, one per hie.yaml file
   hscEnvs <- newVar Map.empty :: IO (Var HieMap)
   -- Mapping from a Filepath to HscEnv
   fileToFlags <- newVar Map.empty :: IO (Var FlagsMap)
+  -- Version of the mappings above
+  version <- newVar 0
+  let returnWithVersion x = (,x) <$> liftIO (readVar version)
+  -- This caches the mapping from Mod.hs -> hie.yaml
+  cradleLoc <- liftIO $ memoIO $ \v -> do
+      res <- findCradle v
+      -- Sometimes we get C:, sometimes we get c:, and sometimes we get a relative path
+      -- try and normalise that
+      -- e.g. see https://github.com/digital-asset/ghcide/issues/126
+      res' <- traverse IO.makeAbsolute res
+      return $ normalise <$> res'
 
   libdir <- getLibdir
   installationCheck <- ghcVersionChecker libdir
+
+  dummyAs <- async $ return (error "Uninitialised")
+  runningCradle <- newVar dummyAs :: IO (Var (Async (IdeResult HscEnvEq)))
 
   case installationCheck of
     InstallationNotFound{..} ->
         error $ "GHC installation not found in libdir: " <> libdir
     InstallationMismatch{..} ->
-        return $ \fp -> return ([renderPackageSetupException compileTime fp GhcVersionMismatch{..}], Nothing)
-    InstallationChecked compileTime ghcLibCheck -> do
-      -- This caches the mapping from Mod.hs -> hie.yaml
-      cradleLoc <- memoIO $ \v -> do
-          res <- findCradle v
-          -- Sometimes we get C:, sometimes we get c:, and sometimes we get a relative path
-          -- try and normalise that
-          -- e.g. see https://github.com/digital-asset/ghcide/issues/126
-          res' <- traverse IO.makeAbsolute res
-          return $ normalise <$> res'
+        return $ returnWithVersion $ \fp -> return ([renderPackageSetupException compileTime fp GhcVersionMismatch{..}], Nothing)
+    InstallationChecked compileTime ghcLibCheck -> return $ do
+      ShakeExtras{logger, eventer, restartShakeSession, withIndefiniteProgress} <- getShakeExtras
+      IdeOptions{optTesting = IdeTesting optTesting} <- getIdeOptions
 
       -- Create a new HscEnv from a hieYaml root and a set of options
       -- If the hieYaml file already has an HscEnv, the new component is
@@ -350,6 +359,7 @@ loadSession optTesting ShakeExtras{logger, eventer, restartShakeSession, withInd
                 pure $ Map.insert hieYaml (HM.fromList (cs ++ cached_targets)) var
 
             -- Invalidate all the existing GhcSession build nodes by restarting the Shake session
+            modifyVar_ version (return . succ)
             restartShakeSession [kick]
 
             return (fst res)
@@ -400,8 +410,6 @@ loadSession optTesting ShakeExtras{logger, eventer, restartShakeSession, withInd
                   else return opts
               Nothing -> consultCradle hieYaml cfp
 
-      dummyAs <- async $ return (error "Uninitialised")
-      runningCradle <- newVar dummyAs :: IO (Var (Async (IdeResult HscEnvEq)))
       -- The main function which gets options for a file. We only want one of these running
       -- at a time. Therefore the IORef contains the currently running cradle, if we try
       -- to get some more options then we wait for the currently running action to finish
@@ -412,14 +420,12 @@ loadSession optTesting ShakeExtras{logger, eventer, restartShakeSession, withInd
               sessionOpts (hieYaml, file) `catch` \e ->
                   return ([renderPackageSetupException compileTime file e], Nothing)
 
-      return $ \file -> do
-        join $ mask_ $ modifyVar runningCradle $ \as -> do
+      returnWithVersion $ \file -> do
+        liftIO $ join $ mask_ $ modifyVar runningCradle $ \as -> do
           -- If the cradle is not finished, then wait for it to finish.
           void $ wait as
           as <- async $ getOptions file
           return (as, wait as)
-
-
 
 -- | Create a mapping from FilePaths to HscEnvEqs
 newComponentCache
