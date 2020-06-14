@@ -377,6 +377,9 @@ setup = do
   writeFile
     (examplesPath </> examplePackage </> "cabal.project")
     "packages: ."
+  writeFile
+    (examplesPath </> examplePackage </> "cabal.project.local")
+    ""
 
   whenJust (shakeProfiling ?config) $ createDirectoryIfMissing True
 
