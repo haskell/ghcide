@@ -12,7 +12,7 @@
 --
 module Development.IDE.Core.Rules(
     IdeState, GetDependencies(..), GetParsedModule(..), TransitiveDependencies(..),
-    Priority(..), GhcSessionIO(..), GhcSessionFun(..),
+    Priority(..), GhcSessionIO(..),
     priorityTypeCheck,
     priorityGenerateCore,
     priorityFilesOfInterest,
@@ -542,20 +542,12 @@ generateByteCodeRule =
 -- A local rule type to get caching. We want to use newCache, but it has
 -- thread killed exception issues, so we lift it to a full rule.
 -- https://github.com/digital-asset/daml/pull/2808#issuecomment-529639547
-type instance RuleResult GhcSessionIO = GhcSessionFun
+type instance RuleResult GhcSessionIO = IdeGhcSession
 
 data GhcSessionIO = GhcSessionIO deriving (Eq, Show, Typeable, Generic)
 instance Hashable GhcSessionIO
 instance NFData   GhcSessionIO
 instance Binary   GhcSessionIO
-
-data GhcSessionFun = GhcSessionFun
-  { hscEnvFunVersion :: !Int
-  , hscEnvFun :: FilePath -> Action (IdeResult HscEnvEq)
-  }
-
-instance Show GhcSessionFun where show _ = "GhcSessionFun"
-instance NFData GhcSessionFun where rnf !_ = ()
 
 loadGhcSession :: Rules ()
 loadGhcSession = do
@@ -564,14 +556,22 @@ loadGhcSession = do
     defineEarlyCutOffNoFile $ \GhcSessionIO -> do
         alwaysRerun
         opts <- getIdeOptions
-        res <- uncurry GhcSessionFun <$> optGhcSession opts
-        return (BS.pack $ show (hscEnvFunVersion res), res)
+        res <- optGhcSession opts
+
+        let fingerprint = hash (sessionVersion res)
+        return (BS.pack (show fingerprint), res)
 
     defineEarlyCutoff $ \GhcSession file -> do
-        GhcSessionFun _ fun <- useNoFile_ GhcSessionIO
-        val <- fun $ fromNormalizedFilePath file
+        IdeGhcSession{loadSessionFun} <- useNoFile_ GhcSessionIO
+        (val,deps) <- liftIO $ loadSessionFun $ fromNormalizedFilePath file
 
-        -- TODO: What was this doing before?
+        -- add the deps to the Shake graph
+        let addDependency fp = do
+                let nfp = toNormalizedFilePath' fp
+                itExists <- getFileExists nfp
+                when itExists $ void $ use_ GetModificationTime nfp
+        mapM_ addDependency deps
+
         opts <- getIdeOptions
         let cutoffHash =
               case optShakeFiles opts of
