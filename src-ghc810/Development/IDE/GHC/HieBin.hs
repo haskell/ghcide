@@ -350,7 +350,12 @@ fromHieName :: NameCache -> HieName -> (NameCache, Name)
 fromHieName nc (ExternalName mod occ span) =
     let cache = nsNames nc
     in case lookupOrigNameCache cache mod occ of
-         Just name -> (nc, name)
+         Just name
+           | nameSrcSpan name == span -> (nc, name)
+           | otherwise ->
+             let name' = setNameLoc name span
+                 new_cache = extendNameCache cache mod occ name'
+             in ( nc{ nsNames = new_cache }, name' )
          Nothing ->
            let (uniq, us) = takeUniqFromSupply (nsUniqs nc)
                name       = mkExternalName uniq mod occ span
