@@ -104,10 +104,18 @@ experiments =
             not . null <$> getCodeActions doc (Range p p)
         ),
       ---------------------------------------------------------------------------------------
-      bench "code actions after edit" 10 $ \doc -> do
-        changeDoc doc [breakingEdit]
-        void (skipManyTill anyMessage message :: Session WorkDoneProgressEndNotification)
-        not . null <$> getCodeActions doc (Range identifierP identifierP)
+      benchWithSetup
+        "code actions after edit"
+        10
+        ( \doc -> do
+            changeDoc doc [breakingEdit]
+            return identifierP
+        )
+        ( \p doc -> do
+            changeDoc doc [hygienicEdit]
+            whileM (null <$> waitForDiagnostics)
+            not . null <$> getCodeActions doc (Range p p)
+        )
     ]
 
 ---------------------------------------------------------------------------------------------
