@@ -481,6 +481,7 @@ codeActionTests = testGroup "code actions"
   , addSigActionTests
   , insertNewDefinitionTests
   , deleteUnusedDefinitionTests
+  , addConstraintTests
   ]
 
 codeLensesTests :: TestTree
@@ -1327,6 +1328,35 @@ fillTypedHoleTests = let
           "_a" "_b"  "parameterInt"
 #endif
   ]
+
+addConstraintTests :: TestTree
+addConstraintTests = let
+  sourceCode :: Maybe T.Text -> T.Text
+  sourceCode mConstraint =
+    let constraint = maybe "" (\c -> "(" <> c <> ") => ") mConstraint
+     in T.unlines
+    [ "module Testing where"
+    , ""
+    , "data Wrap a = Wrap a"
+    , ""
+    , "instance " <> constraint <> "Eq (Wrap a) where"
+    , "  (Wrap x) == (Wrap y) = x == y"
+    ]
+
+  check :: T.Text -> TestTree
+  check actionTitle = testSession (T.unpack actionTitle) $ do
+    let originalCode = sourceCode Nothing
+    let expectedCode = sourceCode $ Just "Eq a"
+    doc <- createDoc "Testing.hs" "haskell" originalCode
+    _ <- waitForDiagnostics
+    actionsOrCommands <- getCodeActions doc (Range (Position 6 0) (Position 6 maxBound))
+    chosenAction <- liftIO $ pickActionWithTitle actionTitle actionsOrCommands
+    executeCodeAction chosenAction
+    modifiedCode <- documentContents doc
+    liftIO $ expectedCode @=? modifiedCode
+
+  in testGroup "add constraint"
+  [ check "Add `(Eq a)` to the context of the instance declaration" ]
 
 addSigActionTests :: TestTree
 addSigActionTests = let

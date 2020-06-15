@@ -56,6 +56,7 @@ import Outputable (ppr, showSDocUnsafe)
 import DynFlags (xFlags, FlagSpec(..))
 import GHC.LanguageExtensions.Type (Extension)
 import System.Time.Extra (showDuration, duration)
+import Data.Function
 
 plugin :: Plugin c
 plugin = codeActionPluginWithRules rules codeAction <> Plugin mempty setHandlersCodeLens
@@ -155,6 +156,7 @@ suggestAction dflags packageExports ideOptions parsedModule text diag = concat
     , suggestModuleTypo diag
     , suggestReplaceIdentifier text diag
     , suggestSignature True diag
+    , suggestInstanceConstraint text diag
     ] ++ concat
     [  suggestNewDefinition ideOptions pm text diag
     ++ suggestRemoveRedundantImport pm text diag
@@ -403,6 +405,26 @@ suggestSignature isQuickFix Diagnostic{_range=_range@Range{..},..}
             = 0
 
 suggestSignature _ _ = []
+
+suggestInstanceConstraint :: Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
+suggestInstanceConstraint contents Diagnostic {..}
+-- • No instance for (Eq a) arising from a use of ‘==’
+--   Possible fix: add (Eq a) to the context of the instance declaration
+-- • In the expression: x == y
+--   In an equation for ‘==’: (Wrap x) == (Wrap y) = x == y
+--   In the instance declaration for ‘Eq (Wrap a)’
+  | Just c <- contents
+  , Just [constraint] <- matchRegex _message "No instance for ([^’]*) arising from a use of"
+  , Just [instanceDeclaration] <- matchRegex _message "In the instance declaration for ‘([^`]*)’"
+  = let instanceLine = c
+            & T.splitOn ("instance " <> instanceDeclaration)
+            & head & T.lines & length
+        startOfConstraint = Position instanceLine (length ("instance " :: String))
+        range = Range startOfConstraint startOfConstraint
+        title = "Add `" <> constraint <> "` to the context of the instance declaration"
+        newConstraint = constraint <> " => "
+     in [(title, [TextEdit range newConstraint])]
+  |  otherwise = []
 
 -------------------------------------------------------------------------------------------------
 
