@@ -81,7 +81,6 @@ import qualified Data.Map.Strict                          as Map
 import           System.FilePath
 import           System.Directory
 import           System.IO.Extra
-import Data.Either.Extra (maybeToEither)
 import Control.DeepSeq (rnf)
 import Control.Exception (evaluate)
 import Exception (ExceptionMonad)
@@ -564,29 +563,29 @@ loadHieFile f = do
         let nameCache = initNameCache u []
         fmap (GHC.hie_file_result . fst) $ GHC.readHieFile nameCache f
 
--- | Retuns an up-to-date module interface if available.
+-- | Retuns an up-to-date module interface, regenerating if needed.
 --   Assumes file exists.
 --   Requires the 'HscEnv' to be set up with dependencies
 loadInterface
-  :: HscEnv
+  :: MonadIO m => HscEnv
   -> ModSummary
   -> [HiFileResult]
-  -> IO (Either String ModIface)
-loadInterface session ms deps = do
+  -> (m ([FileDiagnostic], Maybe HiFileResult))
+  -> m ([FileDiagnostic], Maybe HiFileResult)
+loadInterface session ms deps regen = do
   let hiFile = case ms_hsc_src ms of
                 HsBootFile -> addBootSuffix (ml_hi_file $ ms_location ms)
                 _ -> ml_hi_file $ ms_location ms
-  r <- initIfaceLoad session $ readIface (ms_mod ms) hiFile
+  r <- liftIO $ initIfaceLoad session $ readIface (ms_mod ms) hiFile
   case r of
     Maybes.Succeeded iface -> do
-      session' <- foldM (\e d -> loadDepModuleIO (hirModIface d) Nothing e) session deps
-      (reason, iface') <- checkOldIface session' ms SourceUnmodified (Just iface)
-      return $ maybeToEither (showReason reason) iface'
+      session' <- foldM (\e d -> liftIO $ loadDepModuleIO (hirModIface d) Nothing e) session deps
+      res <- liftIO $ checkOldIface session' ms SourceUnmodified (Just iface)
+      case res of
+          (UpToDate, Just x) -> return ([], Just $ HiFileResult ms x)
+          _ -> regen
     Maybes.Failed err -> do
-      let errMsg = showSDoc (hsc_dflags session) err
-      return $ Left errMsg
-
-showReason :: RecompileRequired -> String
-showReason MustCompile = "Stale"
-showReason (RecompBecause reason) = "Stale (" ++ reason ++ ")"
-showReason UpToDate = "Up to date"
+      let errMsg = showSDoc dflags err
+          dflags = hsc_dflags session
+          diag = diagFromString "interface file loading" DsError (noSpan hiFile) errMsg
+      return (diag, Nothing)
