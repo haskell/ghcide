@@ -582,10 +582,28 @@ loadInterface session ms deps regen = do
       session' <- foldM (\e d -> liftIO $ loadDepModuleIO (hirModIface d) Nothing e) session deps
       res <- liftIO $ checkOldIface session' ms SourceUnmodified (Just iface)
       case res of
-          (UpToDate, Just x) -> return ([], Just $ HiFileResult ms x)
+          (UpToDate, Just x)
+            -- If the module used TH splices when it was last
+            -- compiled, then the recompilation check is not
+            -- accurate enough (#481) and we must ignore
+            -- it.  However, if the module is stable (none of
+            -- the modules it depends on, directly or
+            -- indirectly, changed), then we *can* skip
+            -- recompilation. This is why the SourceModified
+            -- type contains SourceUnmodifiedAndStable, and
+            -- it's pretty important: otherwise ghc --make
+            -- would always recompile TH modules, even if
+            -- nothing at all has changed. Stability is just
+            -- the same check that make is doing for us in
+            -- one-shot mode.
+            | not (mi_used_th iface) || stable
+            -> return ([], Just $ HiFileResult ms x)
           _ -> regen
     Maybes.Failed err -> do
       let errMsg = showSDoc dflags err
           dflags = hsc_dflags session
           diag = diagFromString "interface file loading" DsError (noSpan hiFile) errMsg
       return (diag, Nothing)
+    where
+        -- TODO support stability
+        stable = False
