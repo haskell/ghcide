@@ -275,7 +275,7 @@ loadSession dir = do
             hscEnv <- emptyHscEnv
             (df, targets) <- evalGhcEnv hscEnv $
                 setOptions opts (hsc_dflags hscEnv)
-            let deps = (componentDependencies opts ++ maybeToList hieYaml)
+            let deps = componentDependencies opts ++ maybeToList hieYaml
             dep_info <- getDependencyInfo deps
             -- Now lookup to see whether we are combining with an existing HscEnv
             -- or making a new one. The lookup returns the HscEnv and a list of
