@@ -465,6 +465,7 @@ diagnosticTests = testGroup "diagnostics"
           failure msg = liftIO $ assertFailure $ "Expected file path to be stripped but got " <> T.unpack msg
       Lens.mapMOf_ offenders failure notification
   , ifaceErrorTest
+  , ifaceErrorTest2
   ]
 
 codeActionTests :: TestTree
@@ -2197,7 +2198,7 @@ simpleMultiTest2 = testCase "simple-multi-test2" $ withoutStackEnv $ runWithExtr
     expectNoMoreDiagnostics 0.5
 
 ifaceErrorTest :: TestTree
-ifaceErrorTest = testCase "iface-error-test" $ withoutStackEnv $ runWithExtraFiles "recomp" $ \dir -> do
+ifaceErrorTest = testCase "iface-error-test-1" $ withoutStackEnv $ runWithExtraFiles "recomp" $ \dir -> do
     let aPath = dir </> "lib/A.hs"
         bPath = dir </> "lib/B.hs"
         pPath = dir </> "lib/P.hs"
@@ -2229,11 +2230,39 @@ ifaceErrorTest = testCase "iface-error-test" $ withoutStackEnv $ runWithExtraFil
     -- This is clearly inconsistent, yet we don't get an error
     expectDiagnostics [("lib/P.hs", [(DsWarning,(4,0), "Top-level binding")])
                       ,("lib/P.hs", [(DsWarning,(6,0), "Top-level binding")])
+                      ,("lib/A.hs", [(DsError, (5, 4), "Couldn't match expected type 'Int' with actual type 'Bool'")])
                       ]
-    expectDiagnostics
-      [("lib/A.hs", [(DsError, (5, 4), "Couldn't match expected type 'Int' with actual type 'Bool'")])]
     expectNoMoreDiagnostics 2
 
+ifaceErrorTest2 :: TestTree
+ifaceErrorTest2 = testCase "iface-error-test-2" $ withoutStackEnv $ runWithExtraFiles "recomp" $ \dir -> do
+    let bPath = dir </> "lib/B.hs"
+        pPath = dir </> "lib/P.hs"
+
+    bSource <- liftIO $ readFileUtf8 bPath -- y :: Int
+    pSource <- liftIO $ readFileUtf8 pPath -- bar = x :: Int
+
+    bdoc <- createDoc bPath "haskell" bSource
+    pdoc <- createDoc pPath "haskell" pSource
+    expectDiagnostics [("lib/P.hs", [(DsWarning,(4,0), "Top-level binding")]) -- So that we know P has been loaded
+                      ]
+
+    -- Change y from Int to B
+    changeDoc bdoc [TextDocumentContentChangeEvent Nothing Nothing $ T.unlines ["module B where", "y :: Bool", "y = undefined"]]
+
+    -- Add a new definition to P
+    changeDoc pdoc [TextDocumentContentChangeEvent Nothing Nothing $ pSource <> "\nfoo = y :: Bool" ]
+    -- Now in P we have
+    -- bar = x :: Int
+    -- foo = y :: Bool
+    -- HOWEVER, in A...
+    -- x = y  :: Int
+    expectDiagnostics
+      [("lib/A.hs", [(DsError, (5, 4), "Couldn't match expected type 'Int' with actual type 'Bool'")])
+      ,("lib/P.hs", [(DsWarning,(4,0), "Top-level binding")])
+      ,("lib/P.hs", [(DsWarning,(6,0), "Top-level binding")])
+      ]
+    expectNoMoreDiagnostics 2
 
 sessionDepsArePickedUp :: TestTree
 sessionDepsArePickedUp = testSession'
