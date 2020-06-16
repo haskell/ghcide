@@ -1,0 +1,13 @@
+cabal-version:       >=1.10
+name:                recomp
+version:             0.1.0.0
+author:              Zubin Duggal
+maintainer:          zubin@cmi.ac.in
+build-type:          Simple
+
+library
+  exposed-modules:     A, B, P
+  ghc-options:         -Wmissing-signatures
+  hs-source-dirs:      lib
+  build-depends:       base
+  default-language:    Haskell2010

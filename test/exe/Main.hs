@@ -464,6 +464,7 @@ diagnosticTests = testGroup "diagnostics"
             Lens.filtered (T.isInfixOf ("/" <> name <> ".hs:"))
           failure msg = liftIO $ assertFailure $ "Expected file path to be stripped but got " <> T.unpack msg
       Lens.mapMOf_ offenders failure notification
+  , ifaceErrorTest
   ]
 
 codeActionTests :: TestTree
@@ -2194,6 +2195,45 @@ simpleMultiTest2 = testCase "simple-multi-test2" $ withoutStackEnv $ runWithExtr
     let fooL = mkL adoc 2 0 2 3
     checkDefs locs (pure [fooL])
     expectNoMoreDiagnostics 0.5
+
+ifaceErrorTest :: TestTree
+ifaceErrorTest = testCase "iface-error-test" $ withoutStackEnv $ runWithExtraFiles "recomp" $ \dir -> do
+    let aPath = dir </> "lib/A.hs"
+        bPath = dir </> "lib/B.hs"
+        pPath = dir </> "lib/P.hs"
+
+    aSource <- liftIO $ readFileUtf8 aPath -- x = y :: Int
+    bSource <- liftIO $ readFileUtf8 bPath -- y :: Int
+    pSource <- liftIO $ readFileUtf8 pPath -- bar = x :: Int
+
+    bdoc <- createDoc bPath "haskell" bSource
+    pdoc <- createDoc pPath "haskell" pSource
+    expectDiagnostics [("lib/P.hs", [(DsWarning,(4,0), "Top-level binding")]) -- So what we know P has been loaded
+                      ]
+
+    -- Change y from Int to B
+    changeDoc bdoc [TextDocumentContentChangeEvent Nothing Nothing $ T.unlines ["module B where", "y :: Bool", "y = undefined"]]
+
+    -- Check that the error propogates to A
+    adoc <- createDoc aPath "haskell" aSource
+    expectDiagnostics
+      [("lib/A.hs", [(DsError, (5, 4), "Couldn't match expected type 'Int' with actual type 'Bool'")])]
+    closeDoc adoc -- Close A
+
+    changeDoc pdoc [TextDocumentContentChangeEvent Nothing Nothing $ pSource <> "\nfoo = y :: Bool" ]
+    -- Now in P we have
+    -- bar = x :: Int
+    -- foo = y :: Bool
+    -- HOWEVER, in A...
+    -- x = y  :: Int
+    -- This is clearly inconsistent, yet we don't get an error
+    expectDiagnostics [("lib/P.hs", [(DsWarning,(4,0), "Top-level binding")])
+                      ,("lib/P.hs", [(DsWarning,(6,0), "Top-level binding")])
+                      ]
+    expectDiagnostics
+      [("lib/A.hs", [(DsError, (5, 4), "Couldn't match expected type 'Int' with actual type 'Bool'")])]
+    expectNoMoreDiagnostics 2
+
 
 sessionDepsArePickedUp :: TestTree
 sessionDepsArePickedUp = testSession'
