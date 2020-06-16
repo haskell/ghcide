@@ -301,7 +301,7 @@ execRawDepM act =
 -- imports recursively.
 rawDependencyInformation :: [NormalizedFilePath] -> Action RawDependencyInformation
 rawDependencyInformation fs = do
-    (rdi, ss) <- execRawDepM (mapM_ go $ reverse fs)
+    (rdi, ss) <- execRawDepM (mapM_ go fs)
     let bm = IntMap.foldrWithKey (updateBootMap rdi) IntMap.empty ss
     return (rdi { rawBootMap = bm })
   where
