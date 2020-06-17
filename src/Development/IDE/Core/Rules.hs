@@ -82,6 +82,7 @@ import System.IO.Error (isDoesNotExistError)
 import Control.Exception.Safe (IOException, catch)
 import FastString (FastString(uniq))
 import qualified HeaderInfo as Hdr
+import qualified System.Directory as IO
 
 -- | This is useful for rules to convert rules that can only produce errors or
 -- a result into the more general IdeResult type that supports producing
@@ -636,25 +637,29 @@ getModIfaceFromDiskRule = defineEarlyCutoff $ \GetModIfaceFromDisk f -> do
   case sequence depHis of
     Nothing -> pure (Nothing, ([], Nothing))
     Just deps -> do
-        mbHiVersion <- use  GetModificationTime hiFile
-        modVersion  <- use_ GetModificationTime f
-        case (mbHiVersion, modVersion) of
-            (Just hiVersion, ModificationTime{})
-              | modificationTime hiVersion >= modificationTime modVersion -> do
-                session <- hscEnv <$> use_ GhcSession f
-                r <- loadInterface session ms deps (regenerateHiFile f)
-                case r of
-                  (diags, Just x) -> result diags x
-                  (diags, Nothing) -> return (Nothing, (diags, Nothing))
-            (_, VFSVersion{}) ->
-                error "internal error - GetModIfaceFromDisk of file of interest"
-            _ -> do
-                -- the interface file does not exist or is out of date.
-                mbRes <- regenerateHiFile f
-                case mbRes of
-                    (diags, Just res) -> result diags res
-                    (diags, Nothing) -> return (Nothing, (diags, Nothing))
+        -- GetModificationTime produces diagnostics if the target doesnt exist
+        hiFileExists <- liftIO $ IO.doesFileExist (fromNormalizedFilePath hiFile)
+        if not hiFileExists then doRegenerate f else do
+            hiVersion <- use_ GetModificationTime hiFile
+            modVersion  <- use_ GetModificationTime f
+            case modVersion of
+                VFSVersion{} ->
+                    error "internal error - GetModIfaceFromDisk of file of interest"
+                ModificationTime{}
+                    | modificationTime hiVersion >= modificationTime modVersion
+                    -> do
+                        session <- hscEnv <$> use_ GhcSession f
+                        r <- loadInterface session ms deps (regenerateHiFile f)
+                        case r of
+                            (diags, Just x) -> result diags x
+                            (diags, Nothing) -> return (Nothing, (diags, Nothing))
+                    | otherwise -> doRegenerate f
     where
+        doRegenerate f = do
+            mbRes <- regenerateHiFile f
+            case mbRes of
+                (diags, Just res) -> result diags res
+                (diags, Nothing) -> return (Nothing, (diags, Nothing))
         result diags x =
             return (Just (fingerprintToBS (getModuleHash (hirModIface x))), (diags, Just x))
 
