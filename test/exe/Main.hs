@@ -466,6 +466,7 @@ diagnosticTests = testGroup "diagnostics"
       Lens.mapMOf_ offenders failure notification
   , ifaceErrorTest
   , ifaceErrorTest2
+  , ifaceErrorTest3
   ]
 
 codeActionTests :: TestTree
@@ -2225,10 +2226,11 @@ ifaceErrorTest = testCase "iface-error-test-1" $ withoutStackEnv $ runWithExtraF
     -- foo = y :: Bool
     -- HOWEVER, in A...
     -- x = y  :: Int
-    -- This is clearly inconsistent, yet we don't get an error
+    -- This is clearly inconsistent, and the expected outcome a bit surprising:
+    --   - The diagnostic for A has already been received. Ghcide does not repeat diagnostics
+    --   - P is being typechecked with the last successful artifacts for A.
     expectDiagnostics [("lib/P.hs", [(DsWarning,(4,0), "Top-level binding")])
                       ,("lib/P.hs", [(DsWarning,(6,0), "Top-level binding")])
-                      ,("lib/A.hs", [(DsError, (5, 4), "Couldn't match expected type 'Int' with actual type 'Bool'")])
                       ]
     expectNoMoreDiagnostics 2
 
@@ -2256,9 +2258,35 @@ ifaceErrorTest2 = testCase "iface-error-test-2" $ withoutStackEnv $ runWithExtra
     -- HOWEVER, in A...
     -- x = y  :: Int
     expectDiagnostics
+    -- As in the other test, P is being typechecked with the last successful artifacts for A
+    -- (ot thanks to -dferred-type-errors)
       [("lib/A.hs", [(DsError, (5, 4), "Couldn't match expected type 'Int' with actual type 'Bool'")])
       ,("lib/P.hs", [(DsWarning,(4,0), "Top-level binding")])
       ,("lib/P.hs", [(DsWarning,(6,0), "Top-level binding")])
+      ]
+    expectNoMoreDiagnostics 2
+
+ifaceErrorTest3 :: TestTree
+ifaceErrorTest3 = testCase "iface-error-test-3" $ withoutStackEnv $ runWithExtraFiles "recomp" $ \dir -> do
+    let bPath = dir </> "lib/B.hs"
+        pPath = dir </> "lib/P.hs"
+
+    bSource <- liftIO $ readFileUtf8 bPath -- y :: Int
+    pSource <- liftIO $ readFileUtf8 pPath -- bar = x :: Int
+
+    bdoc <- createDoc bPath "haskell" bSource
+
+    -- Change y from Int to B
+    changeDoc bdoc [TextDocumentContentChangeEvent Nothing Nothing $ T.unlines ["module B where", "y :: Bool", "y = undefined"]]
+
+    -- P should not typecheck, as there arre no last valid artifacts for0A
+    _pdoc <- createDoc pPath "haskell" pSource
+
+    -- In this example the interface file for A should not exist (modulo the cache folder)
+    -- Despite that P still type checks, as we can generatea an interface file for A thanks to -fdeferred-type-errors
+    expectDiagnostics
+      [("lib/A.hs", [(DsError, (5, 4), "Couldn't match expected type 'Int' with actual type 'Bool'")])
+      ,("lib/P.hs", [(DsWarning,(4,0), "Top-level binding")])
       ]
     expectNoMoreDiagnostics 2
 
