@@ -1,4 +1,4 @@
-module P where
+module P() where
 import A
 import B
 

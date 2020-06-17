@@ -570,7 +570,7 @@ loadInterface
   :: MonadIO m => HscEnv
   -> ModSummary
   -> [HiFileResult]
-  -> (m ([FileDiagnostic], Maybe HiFileResult))
+  -> m ([FileDiagnostic], Maybe HiFileResult)
   -> m ([FileDiagnostic], Maybe HiFileResult)
 loadInterface session ms deps regen = do
   let hiFile = case ms_hsc_src ms of

@@ -696,12 +696,12 @@ getModIfaceRule :: Rules ()
 getModIfaceRule = define $ \GetModIface f -> do
 #if MIN_GHC_API_VERSION(8,6,0) && !defined(GHC_LIB)
     fileOfInterest <- use_ IsFileOfInterest f
-    case fileOfInterest of
-        True -> do
+    if fileOfInterest
+        then do
             -- Never load from disk for files of interest
             tmr <- use TypeCheck f
             return ([], extractHiFileResult tmr)
-        False ->
+        else
             ([],) <$> use GetModIfaceFromDisk f
 #else
     tm <- use TypeCheck f

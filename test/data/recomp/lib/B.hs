@@ -1,4 +1,4 @@
-module B where
+module B(y) where
 
 y :: Int
 y = undefined

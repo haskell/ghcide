@@ -1,4 +1,4 @@
-module A where
+module A(x) where
 
 import B
 
