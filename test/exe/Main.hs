@@ -1354,9 +1354,7 @@ checkDefs defs mkExpectations = traverse_ check =<< mkExpectations where
     liftIO $ expectedRange @=? foundRange
 
 canonicalizeLocation :: Location -> IO Location
-canonicalizeLocation (Location uri range) = Location <$> canonUri uri <*> pure range
-  where
-    canonUri uri = filePathToUri <$> canonicalizePath (fromJust (uriToFilePath uri))
+canonicalizeLocation (Location uri range) = Location <$> canonicalizeUri uri <*> pure range
 
 findDefinitionAndHoverTests :: TestTree
 findDefinitionAndHoverTests = let
