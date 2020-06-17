@@ -651,19 +651,27 @@ getModSummaryRule = defineEarlyCutoff $ \GetModSummary f -> do
     modS <- liftIO $ evalWithDynFlags dflags $ runExceptT $
         getModSummaryFromImports (fromNormalizedFilePath f) (textToStringBuffer <$> mFileContent)
     case modS of
-        Right ms@ModSummary{..} -> do
+        Right ms -> do
+            -- Clear the contents as no longer needed
+            let !ms' = ms{ms_hspp_buf=Nothing}
+            return ( Just (computeFingerprint f dflags ms), ([], Just ms'))
+        Left diags -> return (Nothing, (diags, Nothing))
+    where
+        -- Compute a fingerprint from the contents of `ModSummary`,
+        -- eliding the timestamps and other non relevant fields.
+        computeFingerprint f dflags ModSummary{..} =
             let fingerPrint =
                     ( moduleNameString (moduleName ms_mod)
+                    , ms_hspp_file
+                    , map unLoc opts
                     , ml_hs_file ms_location
                     , fingerPrintImports ms_srcimps
                     , fingerPrintImports ms_textual_imps
-                    , map unLoc opts
                     )
                 fingerPrintImports = map (fmap uniq *** (moduleNameString . unLoc))
                 opts = Hdr.getOptions dflags (fromJust ms_hspp_buf) (fromNormalizedFilePath f)
                 fp = hash fingerPrint
-            return ( Just (BS.pack $ show fp), ([], Just ms{ms_hspp_buf=Nothing}))
-        Left diags -> return (Nothing, (diags, Nothing))
+            in BS.pack (show fp)
 
 getModIfaceRule :: Rules ()
 getModIfaceRule = define $ \GetModIface f -> do
@@ -702,6 +710,8 @@ getModIfaceRule = define $ \GetModIface f -> do
             case mb_pm of
                 Nothing -> return (diags, Nothing)
                 Just pm -> do
+                    -- We want GhcSessionDeps cache objects only for files of interest
+                    -- As that's no the case here, call the implementation directly
                     (diags, mb_hsc) <- ghcSessionDepsDefinition f
                     case mb_hsc of
                         Nothing -> return (diags, Nothing)
