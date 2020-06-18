@@ -1,11 +1,12 @@
-{-# LANGUAGE RecursiveDo #-}
 -- Copyright (c) 2019 The DAML Authors. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
 
 {-# LANGUAGE ExistentialQuantification  #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE ConstraintKinds            #-}
+{-# LANGUAGE PatternSynonyms            #-}
 
 -- | A Shake implementation of the compiler service.
 --
@@ -23,7 +24,7 @@
 module Development.IDE.Core.Shake(
     IdeState, shakeExtras,
     ShakeExtras(..), getShakeExtras, getShakeExtrasRules,
-    IdeRule, IdeResult, GetModificationTime(..),
+    IdeRule, IdeResult, GetModificationTime(GetModificationTime, GetModificationTime_),
     shakeOpen, shakeShut,
     shakeRestart,
     shakeEnqueue,
@@ -903,11 +904,17 @@ actionLogger = do
     return logger
 
 
-data GetModificationTime = GetModificationTime
+data GetModificationTime = GetModificationTime_
+    { missingFileDiagnostics :: Bool
+      -- ^ If false, missing file diagnostics are not reported
+    }
     deriving (Eq, Show, Generic)
 instance Hashable GetModificationTime
 instance NFData   GetModificationTime
 instance Binary   GetModificationTime
+
+pattern GetModificationTime :: GetModificationTime
+pattern GetModificationTime = GetModificationTime_ True
 
 -- | Get the modification time of a file.
 type instance RuleResult GetModificationTime = FileVersion

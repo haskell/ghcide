@@ -94,7 +94,7 @@ instance Binary   GetFileContents
 
 getModificationTimeRule :: VFSHandle -> Rules ()
 getModificationTimeRule vfs =
-    defineEarlyCutoff $ \GetModificationTime file -> do
+    defineEarlyCutoff $ \(GetModificationTime_ missingFileDiags) file -> do
         let file' = fromNormalizedFilePath file
         let wrap time@(l,s) = (Just $ BS.pack $ show time, ([], Just $ ModificationTime l s))
         alwaysRerun
@@ -106,7 +106,12 @@ getModificationTimeRule vfs =
               `catch` \(e :: IOException) -> do
                 let err | isDoesNotExistError e = "File does not exist: " ++ file'
                         | otherwise = "IO error while reading " ++ file' ++ ", " ++ displayException e
-                return (Nothing, ([ideErrorText file $ T.pack err], Nothing))
+                    (fp, _, d) = ideErrorText file (T.pack err)
+                    -- Do not report diags for missing interface files
+                    -- (the ModIfaceFromDisk rule relies on this)
+                    showDiag = if missingFileDiags then ShowDiag else HideDiag
+                    diag = (fp, showDiag, d)
+                return (Nothing, ([diag], Nothing))
   where
     -- Dir.getModificationTime is surprisingly slow since it performs
     -- a ton of conversions. Since we do not actually care about

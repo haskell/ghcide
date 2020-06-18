@@ -38,7 +38,6 @@ import Development.IDE.GHC.Util
 import qualified GHC.LanguageExtensions.Type as GHC
 import Development.IDE.Types.Options
 import Development.IDE.Types.Location
-import Outputable
 
 #if MIN_GHC_API_VERSION(8,6,0)
 import           DynamicLoading (initializePlugins)
@@ -59,8 +58,6 @@ import           GhcMonad
 import           GhcPlugins                     as GHC hiding (fst3, (<>))
 import qualified HeaderInfo                     as Hdr
 import           HscMain                        (hscInteractive, hscSimplify)
-import           LoadIface                      (readIface)
-import qualified Maybes
 import           MkIface
 import           NameCache
 import           StringBuffer                   as SB
@@ -569,19 +566,12 @@ loadHieFile f = do
 loadInterface
   :: MonadIO m => HscEnv
   -> ModSummary
-  -> [HiFileResult]
+  -> SourceModified
   -> m ([FileDiagnostic], Maybe HiFileResult)
   -> m ([FileDiagnostic], Maybe HiFileResult)
-loadInterface session ms deps regen = do
-  let hiFile = case ms_hsc_src ms of
-                HsBootFile -> addBootSuffix (ml_hi_file $ ms_location ms)
-                _ -> ml_hi_file $ ms_location ms
-  r <- liftIO $ initIfaceLoad session $ readIface (ms_mod ms) hiFile
-  case r of
-    Maybes.Succeeded iface -> do
-      session' <- foldM (\e d -> liftIO $ loadDepModuleIO (hirModIface d) Nothing e) session deps
-      res <- liftIO $ checkOldIface session' ms SourceUnmodified (Just iface)
-      case res of
+loadInterface session ms sourceMod regen = do
+    res <- liftIO $ checkOldIface session ms sourceMod Nothing
+    case res of
           (UpToDate, Just x)
             -- If the module used TH splices when it was last
             -- compiled, then the recompilation check is not
@@ -596,14 +586,9 @@ loadInterface session ms deps regen = do
             -- nothing at all has changed. Stability is just
             -- the same check that make is doing for us in
             -- one-shot mode.
-            | not (mi_used_th iface) || stable
+            | not (mi_used_th x) || stable
             -> return ([], Just $ HiFileResult ms x)
-          _ -> regen
-    Maybes.Failed err -> do
-      let errMsg = showSDoc dflags err
-          dflags = hsc_dflags session
-          diag = diagFromString "interface file loading" DsError (noSpan hiFile) errMsg
-      return (diag, Nothing)
+          (_reason, _) -> regen
     where
         -- TODO support stability
         stable = False

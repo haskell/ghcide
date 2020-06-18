@@ -82,7 +82,6 @@ import System.IO.Error (isDoesNotExistError)
 import Control.Exception.Safe (IOException, catch)
 import FastString (FastString(uniq))
 import qualified HeaderInfo as Hdr
-import qualified System.Directory as IO
 
 -- | This is useful for rules to convert rules that can only produce errors or
 -- a result into the more general IdeResult type that supports producing
@@ -623,45 +622,26 @@ ghcSessionDepsDefinition file = do
 
 getModIfaceFromDiskRule :: Rules ()
 getModIfaceFromDiskRule = defineEarlyCutoff $ \GetModIfaceFromDisk f -> do
-  -- get all dependencies interface files, to check for freshness
-  (deps,_) <- use_ GetLocatedImports f
-  depHis  <- traverse (use GetModIface) (mapMaybe (fmap artifactFilePath . snd) deps)
-
   ms <- use_ GetModSummary f
-
-  let hiFile = toNormalizedFilePath'
-             $ case ms_hsc_src ms of
-                HsBootFile -> addBootSuffix (ml_hi_file $ ms_location ms)
-                _ -> ml_hi_file $ ms_location ms
-
-  case sequence depHis of
-    Nothing -> pure (Nothing, ([], Nothing))
-    Just deps -> do
-        -- GetModificationTime produces diagnostics if the target doesnt exist
-        hiFileExists <- liftIO $ IO.doesFileExist (fromNormalizedFilePath hiFile)
-        if not hiFileExists then doRegenerate f else do
-            hiVersion <- use_ GetModificationTime hiFile
-            modVersion  <- use_ GetModificationTime f
-            case modVersion of
-                VFSVersion{} ->
-                    error "internal error - GetModIfaceFromDisk of file of interest"
-                ModificationTime{}
-                    | modificationTime hiVersion >= modificationTime modVersion
-                    -> do
-                        session <- hscEnv <$> use_ GhcSession f
-                        r <- loadInterface session ms deps (regenerateHiFile f)
-                        case r of
-                            (diags, Just x) -> result diags x
-                            (diags, Nothing) -> return (Nothing, (diags, Nothing))
-                    | otherwise -> doRegenerate f
-    where
-        doRegenerate f = do
-            mbRes <- regenerateHiFile f
-            case mbRes of
-                (diags, Just res) -> result diags res
-                (diags, Nothing) -> return (Nothing, (diags, Nothing))
-        result diags x =
-            return (Just (fingerprintToBS (getModuleHash (hirModIface x))), (diags, Just x))
+  (diags_session, mb_session) <- ghcSessionDepsDefinition f
+  case mb_session of
+      Nothing -> return (Nothing, (diags_session, Nothing))
+      Just (hscEnv -> session) -> do
+        let hiFile = toNormalizedFilePath'
+                    $ case ms_hsc_src ms of
+                        HsBootFile -> addBootSuffix (ml_hi_file $ ms_location ms)
+                        _ -> ml_hi_file $ ms_location ms
+        mbHiVersion <- use  (GetModificationTime_ False) hiFile
+        modVersion  <- use_ GetModificationTime f
+        let sourceModified = case mbHiVersion of
+                Nothing -> SourceModified
+                Just x -> if modificationTime x >= modificationTime modVersion then SourceUnmodified else SourceModified
+        r <- loadInterface session ms sourceModified (regenerateHiFile f)
+        case r of
+            (diags, Just x) -> do
+                let fp = fingerprintToBS (getModuleHash (hirModIface x))
+                return (Just fp, (diags <> diags_session, Just x))
+            (diags, Nothing) -> return (Nothing, (diags ++ diags_session, Nothing))
 
 getModSummaryRule :: Rules ()
 getModSummaryRule = defineEarlyCutoff $ \GetModSummary f -> do
