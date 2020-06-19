@@ -57,6 +57,7 @@ import DynFlags (xFlags, FlagSpec(..))
 import GHC.LanguageExtensions.Type (Extension)
 import System.Time.Extra (showDuration, duration)
 import Data.Function
+import Control.Arrow ((>>>))
 
 plugin :: Plugin c
 plugin = codeActionPluginWithRules rules codeAction <> Plugin mempty setHandlersCodeLens
@@ -414,17 +415,51 @@ suggestInstanceConstraint contents Diagnostic {..}
 --   In an equation for ‘==’: (Wrap x) == (Wrap y) = x == y
 --   In the instance declaration for ‘Eq (Wrap a)’
   | Just c <- contents
-  , Just [constraint] <- matchRegex _message "No instance for ([^’]*) arising from a use of"
+  , Just [constraint] <- matchRegex _message "No instance for \\((.+)\\) arising from a use of"
   , Just [instanceDeclaration] <- matchRegex _message "In the instance declaration for ‘([^`]*)’"
   = let instanceLine = c
-            & T.splitOn ("instance " <> instanceDeclaration)
-            & head & T.lines & length
+          & T.splitOn ("instance " <> instanceDeclaration)
+          & head & T.lines & length
         startOfConstraint = Position instanceLine (length ("instance " :: String))
         range = Range startOfConstraint startOfConstraint
         title = "Add `" <> constraint <> "` to the context of the instance declaration"
         newConstraint = constraint <> " => "
      in [(title, [TextEdit range newConstraint])]
-  |  otherwise = []
+-- • Could not deduce (Eq b) arising from a use of ‘==’
+--   from the context: Eq a
+--     bound by the instance declaration at /path/to/Main.hs:7:10-32
+--   Possible fix: add (Eq b) to the context of the instance declaration
+-- • In the second argument of ‘(&&)’, namely ‘x' == y'’
+--   In the expression: x == y && x' == y'
+--   In an equation for ‘==’:
+--       (Pair x x') == (Pair y y') = x == y && x' == y'
+  | Just [constraint] <- matchRegex _message "Could not deduce \\((.+)\\) arising from a use of"
+  , Just [instanceLineStr, constraintFirstCharStr]
+    <- matchRegex _message "bound by the instance declaration at .+:([0-9]+):([0-9]+)"
+  = let existingConstraint = secondLine _message
+        newConstraints = normalizeConstraints existingConstraint constraint
+        instanceLine = readPositionNumber instanceLineStr
+        constraintFirstChar = readPositionNumber constraintFirstCharStr
+        startOfConstraint = Position instanceLine constraintFirstChar
+        endOfConstraint = Position instanceLine $ constraintFirstChar + (T.length existingConstraint)
+        range = Range startOfConstraint endOfConstraint
+        title = "Add `" <> constraint <> "` to the context of the instance declaration"
+     in [(title, [TextEdit range newConstraints])]
+  | otherwise = []
+    where
+      secondLine :: T.Text -> T.Text
+      secondLine = T.lines >>> flip (!!) 1 >>> T.strip >>> T.replace "from the context: " ""
+
+      readPositionNumber :: T.Text -> Int
+      readPositionNumber = T.unpack >>> read >>> pred
+
+      normalizeConstraints :: T.Text -> T.Text -> T.Text
+      normalizeConstraints existingConstraint constraint =
+        (if "(" `T.isPrefixOf` existingConstraint
+           then T.dropEnd 1 existingConstraint
+           else "(" <> existingConstraint
+        ) <> ", " <> constraint <> ")"
+
 
 -------------------------------------------------------------------------------------------------
 
