@@ -635,7 +635,8 @@ getModIfaceFromDiskRule = defineEarlyCutoff $ \GetModIfaceFromDisk f -> do
         modVersion  <- use_ GetModificationTime f
         let sourceModified = case mbHiVersion of
                 Nothing -> SourceModified
-                Just x -> if modificationTime x >= modificationTime modVersion then SourceUnmodified else SourceModified
+                Just x -> if modificationTime x >= modificationTime modVersion
+                            then SourceUnmodified else SourceModified
         r <- loadInterface session ms sourceModified (regenerateHiFile f)
         case r of
             (diags, Just x) -> do
