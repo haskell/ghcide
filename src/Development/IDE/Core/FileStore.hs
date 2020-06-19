@@ -107,8 +107,6 @@ getModificationTimeRule vfs =
                 let err | isDoesNotExistError e = "File does not exist: " ++ file'
                         | otherwise = "IO error while reading " ++ file' ++ ", " ++ displayException e
                     (fp, _, d) = ideErrorText file (T.pack err)
-                    -- Do not report diags for missing interface files
-                    -- (the ModIfaceFromDisk rule relies on this)
                     showDiag = if missingFileDiags then ShowDiag else HideDiag
                     diag = (fp, showDiag, d)
                 return (Nothing, ([diag], Nothing))
