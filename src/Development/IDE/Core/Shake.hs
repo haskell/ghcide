@@ -904,12 +904,23 @@ actionLogger = do
     return logger
 
 
+-- The Shake key type for getModificationTime queries
 data GetModificationTime = GetModificationTime_
     { missingFileDiagnostics :: Bool
       -- ^ If false, missing file diagnostics are not reported
     }
-    deriving (Eq, Show, Generic)
-instance Hashable GetModificationTime
+    deriving (Show, Generic)
+
+instance Eq GetModificationTime where
+    -- Since the diagnostics are not part of the answer, the query identity is
+    -- independent from the 'missingFileDiagnostics' field
+    _ == _ = True
+
+instance Hashable GetModificationTime where
+    -- Since the diagnostics are not part of the answer, the query identity is
+    -- independent from the 'missingFileDiagnostics' field
+    hashWithSalt salt _ = salt
+
 instance NFData   GetModificationTime
 instance Binary   GetModificationTime
 
