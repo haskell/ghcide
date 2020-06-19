@@ -356,6 +356,9 @@ shakeOpen getLspId eventer withProgress withIndefiniteProgress logger debouncer
     let ideState = IdeState{..}
     return ideState
 
+data ProgressWorkDone = ProgressWorkDone deriving (Eq, Show)
+instance Exception ProgressWorkDone
+
 lspShakeProgress :: Hashable a => IdeTesting -> IO LSP.LspId -> (LSP.FromServerMessage -> IO ()) -> Var (HMap.HashMap a Int) -> IO ()
 lspShakeProgress (IdeTesting ideTesting) getLspId sendMsg inProgress = do
     -- first sleep a bit, so we only show progress messages if it's going to take
@@ -366,7 +369,8 @@ lspShakeProgress (IdeTesting ideTesting) getLspId sendMsg inProgress = do
     sendMsg $ LSP.ReqWorkDoneProgressCreate $ LSP.fmServerWorkDoneProgressCreateRequest
       lspId $ LSP.WorkDoneProgressCreateParams
       { _token = u }
-    bracket_ (start u) (stop u) (loop u Nothing)
+    start u
+    loop u Nothing `catch` \ProgressWorkDone -> stop u
     where
         start id = sendMsg $ LSP.NotWorkDoneProgressBegin $ LSP.fmServerWorkDoneProgressBeginNotification
             LSP.ProgressParams
@@ -491,7 +495,7 @@ newSession IdeState{shakeExtras=ShakeExtras{..}, ..} systemActs userActs = do
                 , parallel systemActs
                     -- Only system actions are considered for progress reporting
                     -- When done, cancel the progressThread to indicate completion
-                    <* liftIO (cancel progressThread)
+                    <* liftIO (cancelWith progressThread ProgressWorkDone)
                 ]
           res <- try @SomeException
                  (restore $ shakeRunDatabase shakeDb systemActs')
