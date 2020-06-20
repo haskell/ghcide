@@ -460,7 +460,7 @@ suggestInstanceConstraint contents Diagnostic {..}
         constraintFirstChar = readPositionNumber constraintFirstCharStr
         startOfConstraint = Position instanceLine constraintFirstChar
         endOfConstraint = Position instanceLine $
-          constraintFirstChar + (T.length existingConstraints)
+          constraintFirstChar + T.length existingConstraints
         range = Range startOfConstraint endOfConstraint
         title = "Add `" <> constraint <> "` to the context of the instance declaration"
      in [(title, [TextEdit range newConstraints])]
