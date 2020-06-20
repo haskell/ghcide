@@ -473,7 +473,7 @@ suggestInstanceConstraint contents Diagnostic {..}
       readPositionNumber = T.unpack >>> read >>> pred
 
 findTypeSignatureName :: T.Text -> Maybe T.Text
-findTypeSignatureName t = matchRegex t "([a-zA-Z0-9]+) :: " <&> head
+findTypeSignatureName t = matchRegex t "\\n\\s*(.+) :: " <&> head
 
 findTypeSignatureLine :: T.Text -> T.Text -> Int
 findTypeSignatureLine contents typeSignatureName =
