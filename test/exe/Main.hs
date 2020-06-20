@@ -1405,11 +1405,35 @@ addFunctionConstraintTests = let
     , "eq x y = x == y"
     ]
 
+  incompleteConstraintSourceCode :: Maybe T.Text -> T.Text
+  incompleteConstraintSourceCode mConstraint =
+    let constraint = maybe "Eq a" (\c -> "(Eq a, " <> c <> ")") mConstraint
+     in T.unlines
+    [ "module Testing where"
+    , ""
+    , "data Pair a b = Pair a b"
+    , ""
+    , "eq :: " <> constraint <> " => Pair a b -> Pair a b -> Bool"
+    , "eq (Pair x y) (Pair x' y') = x == x' && y == y'"
+    ]
+
+  incompleteConstraintSourceCode2 :: Maybe T.Text -> T.Text
+  incompleteConstraintSourceCode2 mConstraint =
+    let constraint = maybe "(Eq a, Eq b)" (\c -> "(Eq a, Eq b, " <> c <> ")") mConstraint
+     in T.unlines
+    [ "module Testing where"
+    , ""
+    , "data Three a b c = Three a b c"
+    , ""
+    , "eq :: " <> constraint <> " => Three a b c -> Three a b c -> Bool"
+    , "eq (Three x y z) (Three x' y' z') = x == x' && y == y' && z == z'"
+    ]
+
   check :: T.Text -> T.Text -> T.Text -> TestTree
   check actionTitle originalCode expectedCode = testSession (T.unpack actionTitle) $ do
     doc <- createDoc "Testing.hs" "haskell" originalCode
     _ <- waitForDiagnostics
-    actionsOrCommands <- getCodeActions doc (Range (Position 6 0) (Position 6 68))
+    actionsOrCommands <- getCodeActions doc (Range (Position 6 0) (Position 6 maxBound))
     chosenAction <- liftIO $ pickActionWithTitle actionTitle actionsOrCommands
     executeCodeAction chosenAction
     modifiedCode <- documentContents doc
@@ -1420,6 +1444,14 @@ addFunctionConstraintTests = let
     "Add `Eq a` to the context of the type signature for `eq`"
     (missingConstraintSourceCode Nothing)
     (missingConstraintSourceCode $ Just "Eq a")
+  , check
+    "Add `Eq b` to the context of the type signature for `eq`"
+    (incompleteConstraintSourceCode Nothing)
+    (incompleteConstraintSourceCode $ Just "Eq b")
+  , check
+    "Add `Eq c` to the context of the type signature for `eq`"
+    (incompleteConstraintSourceCode2 Nothing)
+    (incompleteConstraintSourceCode2 $ Just "Eq c")
   ]
 
 addSigActionTests :: TestTree

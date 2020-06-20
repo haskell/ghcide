@@ -410,7 +410,16 @@ suggestSignature isQuickFix Diagnostic{_range=_range@Range{..},..}
 suggestSignature _ _ = []
 
 findMissingConstraint :: T.Text -> Maybe T.Text
-findMissingConstraint t = matchRegex t "No instance for \\((.+)\\) arising from a use of" <&> head
+findMissingConstraint t =
+    let regex = "(No instance for|Could not deduce) \\((.+)\\) arising from a use of"
+     in matchRegex t regex <&> last
+
+normalizeConstraints :: T.Text -> T.Text -> T.Text
+normalizeConstraints existingConstraints constraint =
+  let constraintsInit = if "(" `T.isPrefixOf` existingConstraints
+                           then T.dropEnd 1 existingConstraints
+                           else "(" <> existingConstraints
+   in constraintsInit <> ", " <> constraint <> ")"
 
 suggestInstanceConstraint :: Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
 suggestInstanceConstraint contents Diagnostic {..}
@@ -438,15 +447,16 @@ suggestInstanceConstraint contents Diagnostic {..}
 --   In the expression: x == y && x' == y'
 --   In an equation for ‘==’:
 --       (Pair x x') == (Pair y y') = x == y && x' == y'
-  | Just [constraint] <- matchRegex _message "Could not deduce \\((.+)\\) arising from a use of"
+  | Just constraint <- findMissingConstraint _message
   , Just [instanceLineStr, constraintFirstCharStr]
     <- matchRegex _message "bound by the instance declaration at .+:([0-9]+):([0-9]+)"
-  = let existingConstraint = secondLine _message
-        newConstraints = normalizeConstraints existingConstraint constraint
+  = let existingConstraints = secondLine _message
+        newConstraints = normalizeConstraints existingConstraints constraint
         instanceLine = readPositionNumber instanceLineStr
         constraintFirstChar = readPositionNumber constraintFirstCharStr
         startOfConstraint = Position instanceLine constraintFirstChar
-        endOfConstraint = Position instanceLine $ constraintFirstChar + (T.length existingConstraint)
+        endOfConstraint = Position instanceLine $
+          constraintFirstChar + (T.length existingConstraints)
         range = Range startOfConstraint endOfConstraint
         title = "Add `" <> constraint <> "` to the context of the instance declaration"
      in [(title, [TextEdit range newConstraints])]
@@ -458,12 +468,12 @@ suggestInstanceConstraint contents Diagnostic {..}
       readPositionNumber :: T.Text -> Int
       readPositionNumber = T.unpack >>> read >>> pred
 
-      normalizeConstraints :: T.Text -> T.Text -> T.Text
-      normalizeConstraints existingConstraint constraint =
-        (if "(" `T.isPrefixOf` existingConstraint
-           then T.dropEnd 1 existingConstraint
-           else "(" <> existingConstraint
-        ) <> ", " <> constraint <> ")"
+findTypeSignatureName :: T.Text -> Maybe T.Text
+findTypeSignatureName t = matchRegex t "([a-zA-Z0-9]+) :: " <&> head
+
+findTypeSignatureLine :: T.Text -> T.Text -> Int
+findTypeSignatureLine contents typeSignatureName =
+  T.splitOn (typeSignatureName <> " :: ") contents & head & T.lines & length
 
 suggestFunctionConstraint :: Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
 suggestFunctionConstraint contents Diagnostic{..}
@@ -474,19 +484,50 @@ suggestFunctionConstraint contents Diagnostic{..}
 --         eq :: forall a. a -> a -> Bool
 -- • In the expression: x == y
 --   In an equation for ‘eq’: eq x y = x == y
-  | Just c <- contents
-  , Just [] <- matchRegex _message "In an equation for"
-  , Just constraint <- findMissingConstraint _message
-  , Just [typeSignatureName] <- matchRegex _message "([a-zA-Z0-9]+) :: "
-  = let newConstraint = constraint <> " => "
-        typeSignatureLine = T.splitOn c typeSignatureName & head & T.lines & length & (+1)
-        typeSignatureFirstChar = T.length $ typeSignatureName <> " :: "
-        title = "Add `" <> constraint <> "` to the context of the type signature for `" <> typeSignatureName <> "`"
-        position = Position typeSignatureLine typeSignatureFirstChar
-        range = Range position position
-     in [(title, [TextEdit range newConstraint])]
-  | otherwise = []
 
+-- • Could not deduce (Eq b) arising from a use of ‘==’
+--   from the context: Eq a
+--     bound by the type signature for:
+--                eq :: forall a b. Eq a => Pair a b -> Pair a b -> Bool
+--     at Main.hs:5:1-42
+--   Possible fix:
+--     add (Eq b) to the context of
+--       the type signature for:
+--         eq :: forall a b. Eq a => Pair a b -> Pair a b -> Bool
+-- • In the second argument of ‘(&&)’, namely ‘y == y'’
+--   In the expression: x == x' && y == y'
+--   In an equation for ‘eq’:
+--       eq (Pair x y) (Pair x' y') = x == x' && y == y'
+  | Just c <- contents
+  , True <- _message =~ ("the type signature for:" :: String)
+  , Just constraint <- findMissingConstraint _message
+  , Just typeSignatureName <- findTypeSignatureName _message
+  = let mExistingConstraints = findExistingConstraints _message
+        newConstraint = buildNewConstraints constraint mExistingConstraints
+        typeSignatureLine = findTypeSignatureLine c typeSignatureName
+        typeSignatureFirstChar = T.length $ typeSignatureName <> " :: "
+        startOfConstraint = Position typeSignatureLine typeSignatureFirstChar
+        endOfConstraint = Position typeSignatureLine $
+          typeSignatureFirstChar + maybe 0 T.length mExistingConstraints
+        range = Range startOfConstraint endOfConstraint
+     in [(actionTitle constraint typeSignatureName, [TextEdit range newConstraint])]
+  | otherwise = []
+    where
+      findExistingConstraints :: T.Text -> Maybe T.Text
+      findExistingConstraints message =
+        if message =~ ("from the context:" :: String)
+           then matchRegex message "\\. ([^=]+)" <&> head <&> T.strip
+           else Nothing
+
+      buildNewConstraints :: T.Text -> Maybe T.Text -> T.Text
+      buildNewConstraints constraint mExistingConstraints =
+        case mExistingConstraints of
+          Just existingConstraints -> normalizeConstraints existingConstraints constraint
+          Nothing -> constraint <> " => "
+
+      actionTitle :: T.Text -> T.Text -> T.Text
+      actionTitle constraint typeSignatureName = "Add `" <> constraint
+        <> "` to the context of the type signature for `" <> typeSignatureName <> "`"
 
 -------------------------------------------------------------------------------------------------
 
