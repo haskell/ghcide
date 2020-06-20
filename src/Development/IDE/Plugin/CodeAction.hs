@@ -58,6 +58,7 @@ import GHC.LanguageExtensions.Type (Extension)
 import System.Time.Extra (showDuration, duration)
 import Data.Function
 import Control.Arrow ((>>>))
+import Data.Functor
 
 plugin :: Plugin c
 plugin = codeActionPluginWithRules rules codeAction <> Plugin mempty setHandlersCodeLens
@@ -158,6 +159,7 @@ suggestAction dflags packageExports ideOptions parsedModule text diag = concat
     , suggestReplaceIdentifier text diag
     , suggestSignature True diag
     , suggestInstanceConstraint text diag
+    , suggestFunctionConstraint text diag
     ] ++ concat
     [  suggestNewDefinition ideOptions pm text diag
     ++ suggestRemoveRedundantImport pm text diag
@@ -407,6 +409,9 @@ suggestSignature isQuickFix Diagnostic{_range=_range@Range{..},..}
 
 suggestSignature _ _ = []
 
+findMissingConstraint :: T.Text -> Maybe T.Text
+findMissingConstraint t = matchRegex t "No instance for \\((.+)\\) arising from a use of" <&> head
+
 suggestInstanceConstraint :: Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
 suggestInstanceConstraint contents Diagnostic {..}
 -- • No instance for (Eq a) arising from a use of ‘==’
@@ -415,7 +420,7 @@ suggestInstanceConstraint contents Diagnostic {..}
 --   In an equation for ‘==’: (Wrap x) == (Wrap y) = x == y
 --   In the instance declaration for ‘Eq (Wrap a)’
   | Just c <- contents
-  , Just [constraint] <- matchRegex _message "No instance for \\((.+)\\) arising from a use of"
+  , Just constraint <- findMissingConstraint _message
   , Just [instanceDeclaration] <- matchRegex _message "In the instance declaration for ‘([^`]*)’"
   = let instanceLine = c
           & T.splitOn ("instance " <> instanceDeclaration)
@@ -459,6 +464,28 @@ suggestInstanceConstraint contents Diagnostic {..}
            then T.dropEnd 1 existingConstraint
            else "(" <> existingConstraint
         ) <> ", " <> constraint <> ")"
+
+suggestFunctionConstraint :: Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
+suggestFunctionConstraint contents Diagnostic{..}
+-- • No instance for (Eq a) arising from a use of ‘==’
+--   Possible fix:
+--     add (Eq a) to the context of
+--       the type signature for:
+--         eq :: forall a. a -> a -> Bool
+-- • In the expression: x == y
+--   In an equation for ‘eq’: eq x y = x == y
+  | Just c <- contents
+  , Just [] <- matchRegex _message "In an equation for"
+  , Just constraint <- findMissingConstraint _message
+  , Just [typeSignatureName] <- matchRegex _message "([a-zA-Z0-9]+) :: "
+  = let newConstraint = constraint <> " => "
+        typeSignatureLine = T.splitOn c typeSignatureName & head & T.lines & length & (+1)
+        typeSignatureFirstChar = T.length $ typeSignatureName <> " :: "
+        title = "Add `" <> constraint <> "` to the context of the type signature for `" <> typeSignatureName <> "`"
+        position = Position typeSignatureLine typeSignatureFirstChar
+        range = Range position position
+     in [(title, [TextEdit range newConstraint])]
+  | otherwise = []
 
 
 -------------------------------------------------------------------------------------------------

@@ -482,6 +482,7 @@ codeActionTests = testGroup "code actions"
   , insertNewDefinitionTests
   , deleteUnusedDefinitionTests
   , addInstanceConstraintTests
+  , addFunctionConstraintTests
   ]
 
 codeLensesTests :: TestTree
@@ -1377,7 +1378,7 @@ addInstanceConstraintTests = let
     modifiedCode <- documentContents doc
     liftIO $ expectedCode @=? modifiedCode
 
-  in testGroup "add constraint"
+  in testGroup "add instance constraint"
   [ check
     "Add `Eq a` to the context of the instance declaration"
     (missingConstraintSourceCode Nothing)
@@ -1390,6 +1391,35 @@ addInstanceConstraintTests = let
     "Add `Eq c` to the context of the instance declaration"
     (incompleteConstraintSourceCode2 Nothing)
     (incompleteConstraintSourceCode2 $ Just "Eq c")
+  ]
+
+addFunctionConstraintTests :: TestTree
+addFunctionConstraintTests = let
+  missingConstraintSourceCode :: Maybe T.Text -> T.Text
+  missingConstraintSourceCode mConstraint =
+    let constraint = maybe "" (<> " => ") mConstraint
+     in T.unlines
+    [ "module Testing where"
+    , ""
+    , "eq :: " <> constraint <> "a -> a -> Bool"
+    , "eq x y = x == y"
+    ]
+
+  check :: T.Text -> T.Text -> T.Text -> TestTree
+  check actionTitle originalCode expectedCode = testSession (T.unpack actionTitle) $ do
+    doc <- createDoc "Testing.hs" "haskell" originalCode
+    _ <- waitForDiagnostics
+    actionsOrCommands <- getCodeActions doc (Range (Position 6 0) (Position 6 68))
+    chosenAction <- liftIO $ pickActionWithTitle actionTitle actionsOrCommands
+    executeCodeAction chosenAction
+    modifiedCode <- documentContents doc
+    liftIO $ expectedCode @=? modifiedCode
+
+  in testGroup "add function constraint"
+  [ check
+    "Add `Eq a` to the context of the type signature for `eq`"
+    (missingConstraintSourceCode Nothing)
+    (missingConstraintSourceCode $ Just "Eq a")
   ]
 
 addSigActionTests :: TestTree
