@@ -118,7 +118,9 @@ import Control.Monad.IO.Class
 import Control.Monad.Reader
 import Control.Monad.Trans.Maybe
 import Data.Traversable
+import Text.Printf
 import Data.Hashable
+import Development.IDE.Core.Tracing
 
 import Data.IORef
 import NameCache
@@ -849,7 +851,7 @@ defineEarlyCutoff
     :: IdeRule k v
     => (k -> NormalizedFilePath -> Action (Maybe BS.ByteString, IdeResult v))
     -> Rules ()
-defineEarlyCutoff op = addBuiltinRule noLint noIdentity $ \(Q (key, file)) (old :: Maybe BS.ByteString) mode -> do
+defineEarlyCutoff op = addBuiltinRule noLint noIdentity $ \(Q (key, file)) (old :: Maybe BS.ByteString) mode -> otTracedAction key file $ do
     extras@ShakeExtras{state, inProgress} <- getShakeExtras
     -- don't do progress for GetFileExists, as there are lots of non-nodes for just that one key
     (if show key == "GetFileExists" then id else withProgressVar inProgress file) $ do

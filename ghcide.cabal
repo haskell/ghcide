@@ -167,6 +167,7 @@ library
         Development.IDE.Core.Compile
         Development.IDE.Core.Preprocessor
         Development.IDE.Core.FileExists
+        Development.IDE.Core.Tracing
         Development.IDE.GHC.CPP
         Development.IDE.GHC.Orphans
         Development.IDE.GHC.Warnings

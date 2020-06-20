@@ -15,6 +15,7 @@ module Development.IDE.LSP.HoverDefinition
 
 import           Development.IDE.Core.Rules
 import           Development.IDE.Core.Shake
+import           Development.IDE.Core.Tracing
 import           Development.IDE.LSP.Server
 import           Development.IDE.Types.Location
 import           Development.IDE.Types.Logger
