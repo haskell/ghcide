@@ -7,6 +7,7 @@ module Experiments
 , BenchRun(..)
 , Config(..)
 , Verbosity(..)
+, CabalStack(..)
 , experiments
 , configP
 , defConfig
@@ -135,7 +136,8 @@ data Config = Config
     -- For some reason, the Shake profile files are truncated and won't load
     shakeProfiling :: !(Maybe FilePath),
     outputCSV :: !FilePath,
-    cradle :: !Cradle,
+    cradle :: !CabalStack,
+    hackageGet :: !CabalStack,
     rtsOptions :: ![String],
     matches :: ![String],
     repetitions :: Maybe Natural,
@@ -152,7 +154,7 @@ quiet, verbose :: Config -> Bool
 verbose = (== All) . verbosity
 quiet   = (== Quiet) . verbosity
 
-data Cradle = Cabal | Stack
+data CabalStack = Cabal | Stack
   deriving (Eq, Show)
 
 type HasConfig = (?config :: Config)
@@ -167,6 +169,7 @@ configP =
     <*> optional (strOption (long "shake-profiling" <> metavar "PATH"))
     <*> strOption (long "csv" <> metavar "PATH" <> value "results.csv" <> showDefault)
     <*> flag Cabal Stack (long "stack" <> help "Use a stack cradle")
+    <*> flag Cabal Stack (long "stack-hackage" <> help "Use stack to fetch from Hackage")
     <*> many (strOption (long "rts" <> help "additional RTS options for ghcide"))
     <*> many (strOption (short 's' <> long "select" <> help "select which benchmarks to run"))
     <*> optional (option auto (long "samples" <> metavar "NAT" <> help "override sampling count"))
@@ -343,7 +346,9 @@ setup :: HasConfig => IO (IO ())
 setup = do
   alreadyExists <- doesDirectoryExist examplesPath
   when alreadyExists $ removeDirectoryRecursive examplesPath
-  callCommand $ "cabal get -v0 " <> examplePackage <> " -d " <> examplesPath
+  case hackageGet ?config of
+      Cabal -> callCommand $ "cabal get -v0 " <> examplePackage <> " -d " <> examplesPath
+      Stack -> callCommand $ "stack unpack " <> examplePackage <> " --to " <> examplesPath
   writeFile
     (examplesPath </> examplePackage </> "hie.yaml")
     exampleCradle

@@ -2249,6 +2249,7 @@ benchmarkTests =
     let ?config = Bench.defConfig
             { Bench.verbosity = Bench.Quiet
             , Bench.repetitions = Just 3
+            , Bench.hackageGet = Bench.Stack
             } in
     withResource Bench.setup id $ \_ -> testGroup "benchmark experiments"
     [ testCase (Bench.name e) $ do
