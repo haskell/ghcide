@@ -2,45 +2,25 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE ImplicitParams #-}
 
-{- An automated benchmark built around the simple experiment described in:
-
-  > https://neilmitchell.blogspot.com/2020/05/fixing-space-leaks-in-ghcide.html
-
-  As an example project, it unpacks Cabal-3.2.0.0 in the local filesystem and
-  loads the module 'Distribution.Simple'. The rationale for this choice is:
-
-    - It's convenient to download with `cabal unpack Cabal-3.2.0.0`
-    - It has very few dependencies, and all are already needed to build ghcide
-    - Distribution.Simple has 235 transitive module dependencies, so non trivial
-
-  The experiments are sequences of lsp commands scripted using lsp-test.
-  A more refined approach would be to record and replay real IDE interactions,
-  once the replay functionality is available in lsp-test.
-  A more declarative approach would be to reuse ide-debug-driver:
-
-  > https://github.com/digital-asset/daml/blob/master/compiler/damlc/ide-debug-driver/README.md
-
-  The result of an experiment is a total duration in seconds after a preset
-  number of iterations. There is ample room for improvement:
-     - Statistical analysis to detect outliers and auto infer the number of iterations needed
-     - GC stats analysis (currently -S is printed as part of the experiment)
-     - Analyisis of performance over the commit history of the project
-
-  How to run:
-     1. `cabal bench`
-     2. `cabal exec cabal run ghcide-bench -- -- ghcide-bench-options`
-
-  Note that the package database influences the response times of certain actions,
-  e.g. code actions, and therefore the two methods above do not necessarily
-  produce the same results.
-
- -}
-
+module Experiments
+( Bench(..)
+, BenchRun(..)
+, Config(..)
+, Verbosity(..)
+, experiments
+, configP
+, defConfig
+, output
+, setup
+, runBench
+, runBenchmarks
+) where
 import Control.Applicative.Combinators (skipManyTill)
 import Control.Concurrent
 import Control.Exception.Safe
 import Control.Monad.Extra
 import Control.Monad.IO.Class
+import Data.Char (isDigit)
 import Data.List
 import Data.Maybe
 import Data.Version
@@ -54,7 +34,6 @@ import System.FilePath ((</>))
 import System.Process
 import System.Time.Extra
 import Text.ParserCombinators.ReadP (readP_to_S)
-import Data.Char (isDigit)
 
 -- Points to a string in the target file,
 -- convenient for hygienic edits
@@ -82,16 +61,8 @@ breakingEdit =
 identifierP :: Position
 identifierP = Position 853 12
 
-main :: IO ()
-main = do
-  config <- execParser $ info (configP <**> helper) fullDesc
-  let ?config = config
-
-  output "starting test"
-
-  cleanUp <- setup
-
-  runBenchmarks
+experiments :: [Bench]
+experiments =
     [ ---------------------------------------------------------------------------------------
       bench "hover" 10 $ \doc ->
         isJust <$> getHover doc identifierP,
@@ -136,7 +107,6 @@ main = do
         void (skipManyTill anyMessage message :: Session WorkDoneProgressEndNotification)
         not . null <$> getCodeActions doc (Range identifierP identifierP)
     ]
-    `finally` cleanUp
 
 ---------------------------------------------------------------------------------------------
 
@@ -174,6 +144,9 @@ data Config = Config
     examplePackageUsed :: (String, Version, String)
   }
   deriving (Eq, Show)
+
+defConfig :: Config
+Success defConfig = execParserPure defaultPrefs (info configP fullDesc) []
 
 quiet, verbose :: Config -> Bool
 verbose = (== All) . verbosity
@@ -231,25 +204,26 @@ select Bench {name, enabled} =
     mm = matches ?config
 
 benchWithSetup ::
-  HasConfig =>
   String ->
   Natural ->
   (TextDocumentIdentifier -> Session p) ->
   (p -> Experiment) ->
   Bench
-benchWithSetup name defSamples benchSetup experiment = Bench {..}
+benchWithSetup name samples benchSetup experiment = Bench {..}
   where
     enabled = True
-    samples = fromMaybe defSamples (repetitions ?config)
 
-bench :: HasConfig => String -> Natural -> Experiment -> Bench
+bench :: String -> Natural -> Experiment -> Bench
 bench name defSamples userExperiment =
   benchWithSetup name defSamples (const $ pure ()) experiment
   where
     experiment () = userExperiment
 
 runBenchmarks :: HasConfig => [Bench] -> IO ()
-runBenchmarks (filter select -> benchmarks) = do
+runBenchmarks allBenchmarks = do
+  let benchmarks = [ b{samples = fromMaybe (samples b) (repetitions ?config) }
+                   | b <- allBenchmarks
+                   , select b ]
   results <- forM benchmarks $ \b -> (b,) <$> runBench b
 
   -- output raw data as CSV
