@@ -16,6 +16,7 @@ extra-deps:
 - tasty-rerun-1.1.17
 - ghc-check-0.5.0.1
 - extra-1.7.2
+- opentelemetry-0.4.2
 nix:
   packages: [zlib]
 
