@@ -421,8 +421,10 @@ normalizeConstraints existingConstraints constraint =
                            else "(" <> existingConstraints
    in constraintsInit <> ", " <> constraint <> ")"
 
+-- | Suggests a constraint for an instance declaration for which a constraint is missing.
 suggestInstanceConstraint :: Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
 suggestInstanceConstraint contents Diagnostic {..}
+-- Suggests a constraint for an instance declaration with no existing constraints.
 -- • No instance for (Eq a) arising from a use of ‘==’
 --   Possible fix: add (Eq a) to the context of the instance declaration
 -- • In the expression: x == y
@@ -439,6 +441,8 @@ suggestInstanceConstraint contents Diagnostic {..}
         title = "Add `" <> constraint <> "` to the context of the instance declaration"
         newConstraint = constraint <> " => "
      in [(title, [TextEdit range newConstraint])]
+
+-- Suggests a constraint for an instance declaration with one or more existing constraints.
 -- • Could not deduce (Eq b) arising from a use of ‘==’
 --   from the context: Eq a
 --     bound by the instance declaration at /path/to/Main.hs:7:10-32
@@ -475,8 +479,10 @@ findTypeSignatureLine :: T.Text -> T.Text -> Int
 findTypeSignatureLine contents typeSignatureName =
   T.splitOn (typeSignatureName <> " :: ") contents & head & T.lines & length
 
+-- | Suggests a constraint for a type signature for which a constraint is missing.
 suggestFunctionConstraint :: Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
 suggestFunctionConstraint contents Diagnostic{..}
+-- Suggests a constraint for a type signature with any number of existing constraints.
 -- • No instance for (Eq a) arising from a use of ‘==’
 --   Possible fix:
 --     add (Eq a) to the context of
