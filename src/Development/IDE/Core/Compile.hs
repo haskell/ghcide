@@ -12,6 +12,7 @@ module Development.IDE.Core.Compile
   , RunSimplifier(..)
   , compileModule
   , parseModule
+  , parseHeader
   , typecheckModule
   , computePackageDeps
   , addRelativeImport
@@ -483,6 +484,24 @@ getModSummaryFromImports fp contents = do
                 }
     return summary
 
+-- | Parse only the module header
+parseHeader
+       :: GhcMonad m
+       => DynFlags -- ^ flags to use
+       -> FilePath  -- ^ the filename (for source locations)
+       -> SB.StringBuffer -- ^ Haskell module source text (full Unicode is supported)
+       -> ExceptT [FileDiagnostic] m (Located(HsModule GhcPs))
+parseHeader dflags filename contents = do
+   let loc  = mkRealSrcLoc (mkFastString filename) 1 1
+   case unP Parser.parseHeader (mkPState dflags contents loc) of
+#if MIN_GHC_API_VERSION(8,10,0)
+     PFailed pst ->
+        throwE $ diagFromErrMsgs "parser" dflags $ getErrorMessages pst dflags
+#else
+     PFailed _ locErr msgErr ->
+        throwE $ diagFromErrMsg "parser" dflags $ mkPlainErrMsg dflags locErr msgErr
+#endif
+     POk _ rdr_module -> return rdr_module
 
 -- | Given a buffer, flags, and file path, produce a
 -- parsed module (or errors) and any parse warnings. Does not run any preprocessors

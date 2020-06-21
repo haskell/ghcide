@@ -18,11 +18,19 @@ import Development.IDE.Plugin
 import Development.IDE.Core.Service
 import Development.IDE.Plugin.Completions.Logic
 import Development.IDE.Types.Location
+import Development.IDE.Types.Options
+import Development.IDE.Core.Compile
 import Development.IDE.Core.PositionMapping
 import Development.IDE.Core.RuleTypes
 import Development.IDE.Core.Shake
+import Development.IDE.GHC.Compat (hsmodExports, ParsedModule(..), ModSummary (ms_hspp_buf))
+
 import Development.IDE.GHC.Util
 import Development.IDE.LSP.Server
+import Control.Monad.Trans.Except (runExceptT)
+import HscTypes (HscEnv(hsc_dflags))
+import Data.Maybe (fromJust)
+import Data.Functor ((<&>))
 
 #if !MIN_GHC_API_VERSION(8,6,0) || defined(GHC_LIB)
 import Data.Maybe
@@ -32,36 +40,78 @@ import Development.IDE.Import.DependencyInformation
 plugin :: Plugin c
 plugin = Plugin produceCompletions setHandlersCompletion
 
-produceCompletions :: Rules ()
-produceCompletions =
-    define $ \ProduceCompletions file -> do
 
--- When possible, rely on the haddocks embedded in our interface files
--- This creates problems on ghc-lib, see comment on 'getDocumentationTryGhc'
-#if MIN_GHC_API_VERSION(8,6,0) && !defined(GHC_LIB)
-        let parsedDeps = []
-#else
-        deps <- maybe (TransitiveDependencies [] [] []) fst <$> useWithStale GetDependencies file
-        parsedDeps <- mapMaybe (fmap fst) <$> usesWithStale GetParsedModule (transitiveModuleDeps deps)
-#endif
-        tm <- fmap fst <$> useWithStale TypeCheck file
-        packageState <- fmap (hscEnv . fst) <$> useWithStale GhcSession file
-        case (tm, packageState) of
-            (Just tm', Just packageState') -> do
-                cdata <- liftIO $ cacheDataProducer packageState'
-                                                    (tmrModule tm') parsedDeps
+produceCompletions :: Rules ()
+produceCompletions = do
+    define $ \ProduceCompletions file -> do
+        local <- useWithStale LocalCompletions file
+        nonLocal <- useWithStale NonLocalCompletions file
+        let extract = fmap fst
+        return ([], extract local <> extract nonLocal)
+    define $ \LocalCompletions file -> do
+        pm <- useWithStale GetParsedModule file
+        case pm of
+            Just (pm, _) -> do
+                let cdata = localCompletionsForParsedModule pm
                 return ([], Just cdata)
             _ -> return ([], Nothing)
-
+    define $ \NonLocalCompletions file -> do
+        -- For non local completions we avoid depending on the parsed module,
+        -- synthetizing a fake module with an empty body from the buffer
+        -- in the ModSummary, which preserves all the imports
+        ms <- fmap fst <$> useWithStale GetModSummary file
+        sess <- fmap fst <$> useWithStale GhcSessionDeps file
+        case (ms, sess) of
+            (Just ms, Just sess) -> do
+                -- After parsing the module remove all package imports referring to
+                -- these packages as we have already dealt with what they map to.
+                let env = hscEnv sess
+                    buf = fromJust $ ms_hspp_buf ms
+                    f = fromNormalizedFilePath file
+                    dflags = hsc_dflags env
+                pm <- liftIO $ evalGhcEnv env $ runExceptT $ parseHeader dflags f buf
+                case pm of
+                    Right hsMod -> do
+                        let hsModNoExports = hsMod <&> \x -> x{hsmodExports = Nothing}
+                            pm = ParsedModule
+                                    { pm_mod_summary = ms
+                                    , pm_parsed_source = hsModNoExports
+                                    , pm_extra_src_files = [] -- src imports not allowed
+                                    , pm_annotations = mempty
+                                    }
+                        tm <- liftIO $ typecheckModule (IdeDefer True) env pm
+                        case tm of
+                            (_, Just (_,TcModuleResult{..})) -> do
+                                cdata <- liftIO $ cacheDataProducer env tmrModule []
+                                return ([], Just cdata)
+                            (_diag, _) ->
+                                return ([], Nothing)
+                    Left _diag ->
+                        return ([], Nothing)
+            _ -> return ([], Nothing)
 
 -- | Produce completions info for a file
 type instance RuleResult ProduceCompletions = CachedCompletions
+type instance RuleResult LocalCompletions = CachedCompletions
+type instance RuleResult NonLocalCompletions = CachedCompletions
 
 data ProduceCompletions = ProduceCompletions
     deriving (Eq, Show, Typeable, Generic)
 instance Hashable ProduceCompletions
 instance NFData   ProduceCompletions
 instance Binary   ProduceCompletions
+
+data LocalCompletions = LocalCompletions
+    deriving (Eq, Show, Typeable, Generic)
+instance Hashable LocalCompletions
+instance NFData   LocalCompletions
+instance Binary   LocalCompletions
+
+data NonLocalCompletions = NonLocalCompletions
+    deriving (Eq, Show, Typeable, Generic)
+instance Hashable NonLocalCompletions
+instance NFData   NonLocalCompletions
+instance Binary   NonLocalCompletions
 
 
 -- | Generate code actions.
@@ -91,6 +141,7 @@ getCompletionsLSP lsp ide
               (Just (VFS.PosPrefixInfo _ "" _ _), Just CompletionContext { _triggerCharacter = Just "."})
                 -> return (Completions $ List [])
               (Just pfix', _) -> do
+                  -- TODO pass the real capabilities here (or remove the logic for snippets)
                 let fakeClientCapabilities = ClientCapabilities Nothing Nothing Nothing Nothing
                 Completions . List <$> getCompletions ideOpts cci' pm pfix' fakeClientCapabilities (WithSnippets True)
               _ -> return (Completions $ List [])
