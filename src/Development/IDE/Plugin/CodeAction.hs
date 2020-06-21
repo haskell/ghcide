@@ -194,7 +194,7 @@ suggestDeleteTopBinding ParsedModule{pm_parsed_source = L _ HsModule{hsmodDecls}
       nextLine r = r {_end = (_end r) {_line = (_line . _end $ r) + 1, _character = 0}}
 
       matchesBindingName :: HsDecl GhcPs -> String -> Bool
-      matchesBindingName (ValD (FunBind {fun_id=L _ x})) b = showSDocUnsafe (ppr x) == b
+      matchesBindingName (ValD FunBind {fun_id=L _ x}) b = showSDocUnsafe (ppr x) == b
       matchesBindingName (SigD _ (TypeSig _ (L _ x:_) _)) b = showSDocUnsafe (ppr x) == b
       matchesBindingName _ _ = False
 
