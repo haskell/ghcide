@@ -158,8 +158,7 @@ suggestAction dflags packageExports ideOptions parsedModule text diag = concat
     , suggestModuleTypo diag
     , suggestReplaceIdentifier text diag
     , suggestSignature True diag
-    , suggestInstanceConstraint text diag
-    , suggestFunctionConstraint text diag
+    , suggestConstraint text diag
     ] ++ concat
     [  suggestNewDefinition ideOptions pm text diag
     ++ suggestRemoveRedundantImport pm text diag
@@ -409,10 +408,21 @@ suggestSignature isQuickFix Diagnostic{_range=_range@Range{..},..}
 
 suggestSignature _ _ = []
 
-findMissingConstraint :: T.Text -> Maybe T.Text
-findMissingConstraint t =
-    let regex = "(No instance for|Could not deduce) \\((.+)\\) arising from a use of"
-     in matchRegex t regex <&> last
+-- | Suggests a constraint for a declaration for which a constraint is missing.
+suggestConstraint :: Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
+suggestConstraint mContents diag@Diagnostic {..}
+  | Just contents <- mContents
+  , Just missingConstraint <- findMissingConstraint _message
+  = let codeAction = if _message =~ ("the type signature for:" :: String)
+                        then suggestFunctionConstraint
+                        else suggestInstanceConstraint
+     in codeAction contents diag missingConstraint
+  | otherwise = []
+    where
+      findMissingConstraint :: T.Text -> Maybe T.Text
+      findMissingConstraint t =
+        let regex = "(No instance for|Could not deduce) \\((.+)\\) arising from a use of"
+         in matchRegex t regex <&> last
 
 normalizeConstraints :: T.Text -> T.Text -> T.Text
 normalizeConstraints existingConstraints constraint =
@@ -422,25 +432,22 @@ normalizeConstraints existingConstraints constraint =
    in constraintsInit <> ", " <> constraint <> ")"
 
 -- | Suggests a constraint for an instance declaration for which a constraint is missing.
-suggestInstanceConstraint :: Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
-suggestInstanceConstraint contents Diagnostic {..}
+suggestInstanceConstraint :: T.Text -> Diagnostic -> T.Text -> [(T.Text, [TextEdit])]
+suggestInstanceConstraint contents Diagnostic {..} missingConstraint
 -- Suggests a constraint for an instance declaration with no existing constraints.
 -- • No instance for (Eq a) arising from a use of ‘==’
 --   Possible fix: add (Eq a) to the context of the instance declaration
 -- • In the expression: x == y
 --   In an equation for ‘==’: (Wrap x) == (Wrap y) = x == y
 --   In the instance declaration for ‘Eq (Wrap a)’
-  | Just c <- contents
-  , Just constraint <- findMissingConstraint _message
-  , Just [instanceDeclaration] <- matchRegex _message "In the instance declaration for ‘([^`]*)’"
-  = let instanceLine = c
+  | Just [instanceDeclaration] <- matchRegex _message "In the instance declaration for ‘([^`]*)’"
+  = let instanceLine = contents
           & T.splitOn ("instance " <> instanceDeclaration)
           & head & T.lines & length
         startOfConstraint = Position instanceLine (length ("instance " :: String))
         range = Range startOfConstraint startOfConstraint
-        title = "Add `" <> constraint <> "` to the context of the instance declaration"
-        newConstraint = constraint <> " => "
-     in [(title, [TextEdit range newConstraint])]
+        newConstraint = missingConstraint <> " => "
+     in [(actionTitle missingConstraint, [TextEdit range newConstraint])]
 
 -- Suggests a constraint for an instance declaration with one or more existing constraints.
 -- • Could not deduce (Eq b) arising from a use of ‘==’
@@ -451,37 +458,40 @@ suggestInstanceConstraint contents Diagnostic {..}
 --   In the expression: x == y && x' == y'
 --   In an equation for ‘==’:
 --       (Pair x x') == (Pair y y') = x == y && x' == y'
-  | Just constraint <- findMissingConstraint _message
-  , Just [instanceLineStr, constraintFirstCharStr]
+  | Just [instanceLineStr, constraintFirstCharStr]
     <- matchRegex _message "bound by the instance declaration at .+:([0-9]+):([0-9]+)"
-  = let existingConstraints = secondLine _message
-        newConstraints = normalizeConstraints existingConstraints constraint
+  = let existingConstraints = findExistingConstraints _message
+        newConstraints = normalizeConstraints existingConstraints missingConstraint
         instanceLine = readPositionNumber instanceLineStr
         constraintFirstChar = readPositionNumber constraintFirstCharStr
         startOfConstraint = Position instanceLine constraintFirstChar
         endOfConstraint = Position instanceLine $
           constraintFirstChar + T.length existingConstraints
         range = Range startOfConstraint endOfConstraint
-        title = "Add `" <> constraint <> "` to the context of the instance declaration"
-     in [(title, [TextEdit range newConstraints])]
+     in [(actionTitle missingConstraint, [TextEdit range newConstraints])]
   | otherwise = []
     where
-      secondLine :: T.Text -> T.Text
-      secondLine = T.lines >>> flip (!!) 1 >>> T.strip >>> T.replace "from the context: " ""
+      findExistingConstraints :: T.Text -> T.Text
+      findExistingConstraints =
+        T.lines >>> flip (!!) 1 >>> T.strip >>> T.replace "from the context: " ""
 
       readPositionNumber :: T.Text -> Int
       readPositionNumber = T.unpack >>> read >>> pred
 
+      actionTitle :: T.Text -> T.Text
+      actionTitle constraint = "Add `" <> constraint
+        <> "` to the context of the instance declaration"
+
 findTypeSignatureName :: T.Text -> Maybe T.Text
-findTypeSignatureName t = matchRegex t "\\n\\s*(.+) :: " <&> head
+findTypeSignatureName t = matchRegex t "([^ ]+) :: " <&> head
 
 findTypeSignatureLine :: T.Text -> T.Text -> Int
 findTypeSignatureLine contents typeSignatureName =
   T.splitOn (typeSignatureName <> " :: ") contents & head & T.lines & length
 
 -- | Suggests a constraint for a type signature for which a constraint is missing.
-suggestFunctionConstraint :: Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
-suggestFunctionConstraint contents Diagnostic{..}
+suggestFunctionConstraint :: T.Text -> Diagnostic -> T.Text -> [(T.Text, [TextEdit])]
+suggestFunctionConstraint contents Diagnostic{..} missingConstraint
 -- Suggests a constraint for a type signature with any number of existing constraints.
 -- • No instance for (Eq a) arising from a use of ‘==’
 --   Possible fix:
@@ -504,19 +514,16 @@ suggestFunctionConstraint contents Diagnostic{..}
 --   In the expression: x == x' && y == y'
 --   In an equation for ‘eq’:
 --       eq (Pair x y) (Pair x' y') = x == x' && y == y'
-  | Just c <- contents
-  , True <- _message =~ ("the type signature for:" :: String)
-  , Just constraint <- findMissingConstraint _message
-  , Just typeSignatureName <- findTypeSignatureName _message
+  | Just typeSignatureName <- findTypeSignatureName _message
   = let mExistingConstraints = findExistingConstraints _message
-        newConstraint = buildNewConstraints constraint mExistingConstraints
-        typeSignatureLine = findTypeSignatureLine c typeSignatureName
+        newConstraint = buildNewConstraints missingConstraint mExistingConstraints
+        typeSignatureLine = findTypeSignatureLine contents typeSignatureName
         typeSignatureFirstChar = T.length $ typeSignatureName <> " :: "
         startOfConstraint = Position typeSignatureLine typeSignatureFirstChar
         endOfConstraint = Position typeSignatureLine $
           typeSignatureFirstChar + maybe 0 T.length mExistingConstraints
         range = Range startOfConstraint endOfConstraint
-     in [(actionTitle constraint typeSignatureName, [TextEdit range newConstraint])]
+     in [(actionTitle missingConstraint typeSignatureName, [TextEdit range newConstraint])]
   | otherwise = []
     where
       findExistingConstraints :: T.Text -> Maybe T.Text
