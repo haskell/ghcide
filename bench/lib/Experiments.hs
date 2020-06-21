@@ -367,7 +367,7 @@ setup = do
             (path </> "cabal.project.local")
             ""
       Stack -> do
-        callCommand $ "stack unpack " <> examplePackage <> " --to " <> examplesPath
+        callCommand $ "stack --silent unpack " <> examplePackage <> " --to " <> examplesPath
         stack_yaml <- fromMaybe "stack.yaml" <$> getEnv "STACK_YAML"
         resolver <- find ("resolver" `isPrefixOf`) . lines <$> readFile stack_yaml
         writeFile (path </> stack_yaml)
