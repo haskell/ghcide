@@ -161,6 +161,7 @@ suggestAction dflags packageExports ideOptions parsedModule text diag = concat
     ++ suggestDeleteTopBinding pm diag
     | Just pm <- [parsedModule]]
 
+
 suggestRemoveRedundantImport :: ParsedModule -> Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
 suggestRemoveRedundantImport ParsedModule{pm_parsed_source = L _  HsModule{hsmodImports}} contents Diagnostic{_range=_range,..}
 --     The qualified import of ‘many’ from module ‘Control.Applicative’ is redundant
@@ -195,7 +196,7 @@ suggestDeleteTopBinding ParsedModule{pm_parsed_source = L _ HsModule{hsmodDecls}
 
       matchesBindingName :: HsDecl GhcPs -> String -> Bool
       matchesBindingName (ValD FunBind {fun_id=L _ x}) b = showSDocUnsafe (ppr x) == b
-      matchesBindingName (SigD _ (TypeSig _ (L _ x:_) _)) b = showSDocUnsafe (ppr x) == b
+      matchesBindingName (SigD (TypeSig (L _ x:_) _)) b = showSDocUnsafe (ppr x) == b
       matchesBindingName _ _ = False
 
 suggestReplaceIdentifier :: Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
