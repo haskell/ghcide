@@ -476,6 +476,7 @@ codeActionTests = testGroup "code actions"
   , fillTypedHoleTests
   , addSigActionTests
   , insertNewDefinitionTests
+  , deleteUnusedDefinitionTests
   ]
 
 codeLensesTests :: TestTree
@@ -1143,6 +1144,40 @@ insertNewDefinitionTests = testGroup "insert new definition actions"
         ]
         ++ txtB')
   ]
+
+
+deleteUnusedDefinitionTests :: TestTree
+deleteUnusedDefinitionTests = testGroup "delete unused definition action"
+  [ testSession "delete unused top level binding" $ do
+      let source = T.unlines [ "{-# OPTIONS_GHC -Wunused-top-binds #-}"
+                             , "module A (some) where"
+                             , ""
+                             , "f :: Int -> Int"
+                             , "f 1 = let a = 1"
+                             , "      in a"
+                             , "f 2 = 2"
+                             , ""
+                             , "some = ()"
+                             ]
+      docId <- createDoc "A.hs" "haskell" source
+      expectDiagnostics [ ("A.hs", [(DsWarning, (4, 0), "not used")]) ]
+
+      Just (CACodeAction action@CodeAction { _title = actionTitle })
+                  <- find (\(CACodeAction CodeAction{_title=x}) -> "Delete" `T.isPrefixOf` x )
+                     <$> getCodeActions docId (R 0 0 0 0)
+
+      liftIO $ actionTitle @?= "Delete ‘f’"
+      executeCodeAction action
+      contentAfterAction <- documentContents docId
+      liftIO $ contentAfterAction @?= T.unlines [
+        "{-# OPTIONS_GHC -Wunused-top-binds #-}"
+        , "module A (some) where"
+        , ""
+        , ""
+        , "some = ()"
+        ]
+  ]
+
 
 fixConstructorImportTests :: TestTree
 fixConstructorImportTests = testGroup "fix import actions"
