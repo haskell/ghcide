@@ -227,7 +227,9 @@ runBenchmarks allBenchmarks = do
   let benchmarks = [ b{samples = fromMaybe (samples b) (repetitions ?config) }
                    | b <- allBenchmarks
                    , select b ]
-  results <- forM benchmarks $ \b -> (b,) <$> runBench b
+  results <- forM benchmarks $ \b@Bench{name} ->
+                let run dir = runSessionWithConfig conf (cmd name dir) lspTestCaps dir
+                in (b,) <$> runBench run b
 
   -- output raw data as CSV
   let headers = ["name", "success", "samples", "startup", "setup", "experiment", "maxResidency"]
@@ -265,6 +267,33 @@ runBenchmarks allBenchmarks = do
   outputRow paddedHeaders
   outputRow $ (map . map) (const '-') paddedHeaders
   forM_ rowsHuman $ \row -> outputRow $ zipWith pad pads row
+  where
+    gcStats name = escapeSpaces (name <> ".benchmark-gcStats")
+    cmd name dir =
+      unwords $
+        [ ghcide ?config,
+          "--lsp",
+          "--cwd",
+          dir,
+          "+RTS",
+          "-S" <> gcStats name
+        ]
+          ++ rtsOptions ?config
+          ++ [ "-RTS"
+             ]
+          ++ concat
+            [ ["--shake-profiling", path]
+              | Just path <- [shakeProfiling ?config]
+            ]
+    lspTestCaps =
+      fullCaps {_window = Just $ WindowClientCapabilities $ Just True}
+    conf =
+      defaultConfig
+        { logStdErr = verbose ?config,
+          logMessages = verbose ?config,
+          logColor = False,
+          messageTimeout = timeoutLsp ?config
+        }
 
 data BenchRun = BenchRun
   { startup :: !Seconds,
@@ -281,9 +310,9 @@ waitForProgressDone :: Session ()
 waitForProgressDone =
       void(skipManyTill anyMessage message :: Session WorkDoneProgressEndNotification)
 
-runBench :: HasConfig => Bench -> IO BenchRun
-runBench Bench {..} = handleAny (\e -> print e >> return badRun)
-  $ runSessionWithConfig conf cmd lspTestCaps dir
+runBench :: (?config::Config) => (String -> Session BenchRun -> IO BenchRun) -> Bench -> IO BenchRun
+runBench runSess Bench {..} = handleAny (\e -> print e >> return badRun)
+  $ runSess dir
   $ do
     doc <- openDoc exampleModulePath "haskell"
     (startup, _) <- duration $ do
@@ -310,37 +339,15 @@ runBench Bench {..} = handleAny (\e -> print e >> return badRun)
     -- sleep to give ghcide a chance to GC
     liftIO $ threadDelay 1100000
 
-    maxResidency <- liftIO $ parseMaxResidency <$> readFile gcStats
+    maxResidency <- liftIO $
+        ifM (doesFileExist gcStats)
+            (parseMaxResidency <$> readFile gcStats)
+            (pure 0)
 
     return BenchRun {..}
   where
-    gcStats = escapeSpaces (name <> ".benchmark-gcStats")
-    cmd =
-      unwords $
-        [ ghcide ?config,
-          "--lsp",
-          "--cwd",
-          dir,
-          "+RTS",
-          "-S" <> gcStats
-        ]
-          ++ rtsOptions ?config
-          ++ [ "-RTS"
-             ]
-          ++ concat
-            [ ["--shake-profiling", path]
-              | Just path <- [shakeProfiling ?config]
-            ]
     dir = "bench/example/" <> examplePackage
-    lspTestCaps =
-      fullCaps {_window = Just $ WindowClientCapabilities $ Just True}
-    conf =
-      defaultConfig
-        { logStdErr = verbose ?config,
-          logMessages = verbose ?config,
-          logColor = False,
-          messageTimeout = timeoutLsp ?config
-        }
+    gcStats = escapeSpaces (name <> ".benchmark-gcStats")
 
 setup :: HasConfig => IO (IO ())
 setup = do

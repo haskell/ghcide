@@ -2253,7 +2253,7 @@ benchmarkTests =
             } in
     withResource Bench.setup id $ \_ -> testGroup "benchmark experiments"
     [ testCase (Bench.name e) $ do
-        res <- Bench.runBench e
+        res <- Bench.runBench runInDir e
         assertBool "did not successfully complete 5 repetitions" $ Bench.success res
         | e <- Bench.experiments
     ]
