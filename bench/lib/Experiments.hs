@@ -35,6 +35,7 @@ import System.FilePath ((</>))
 import System.Process
 import System.Time.Extra
 import Text.ParserCombinators.ReadP (readP_to_S)
+import System.Environment.Blank (getEnv)
 
 -- Points to a string in the target file,
 -- convenient for hygienic edits
@@ -136,8 +137,7 @@ data Config = Config
     -- For some reason, the Shake profile files are truncated and won't load
     shakeProfiling :: !(Maybe FilePath),
     outputCSV :: !FilePath,
-    cradle :: !CabalStack,
-    hackageGet :: !CabalStack,
+    buildTool :: !CabalStack,
     rtsOptions :: ![String],
     matches :: ![String],
     repetitions :: Maybe Natural,
@@ -168,8 +168,7 @@ configP =
         )
     <*> optional (strOption (long "shake-profiling" <> metavar "PATH"))
     <*> strOption (long "csv" <> metavar "PATH" <> value "results.csv" <> showDefault)
-    <*> flag Cabal Stack (long "stack" <> help "Use a stack cradle")
-    <*> flag Cabal Stack (long "stack-hackage" <> help "Use stack to fetch from Hackage")
+    <*> flag Cabal Stack (long "stack" <> help "Use stack (by default cabal is used)")
     <*> many (strOption (long "rts" <> help "additional RTS options for ghcide"))
     <*> many (strOption (short 's' <> long "select" <> help "select which benchmarks to run"))
     <*> optional (option auto (long "samples" <> metavar "NAT" <> help "override sampling count"))
@@ -353,19 +352,30 @@ setup :: HasConfig => IO (IO ())
 setup = do
   alreadyExists <- doesDirectoryExist examplesPath
   when alreadyExists $ removeDirectoryRecursive examplesPath
-  case hackageGet ?config of
-      Cabal -> callCommand $ "cabal get -v0 " <> examplePackage <> " -d " <> examplesPath
-      Stack -> callCommand $ "stack unpack " <> examplePackage <> " --to " <> examplesPath
-  writeFile
-    (examplesPath </> examplePackage </> "hie.yaml")
-    exampleCradle
-  -- Need this in case there is a parent cabal.project somewhere
-  writeFile
-    (examplesPath </> examplePackage </> "cabal.project")
-    "packages: ."
-  writeFile
-    (examplesPath </> examplePackage </> "cabal.project.local")
-    ""
+  let path = examplesPath </> examplePackage
+  case buildTool ?config of
+      Cabal -> do
+        callCommand $ "cabal get -v0 " <> examplePackage <> " -d " <> examplesPath
+        writeFile
+            (path </> "hie.yaml")
+            ("cradle: {cabal: {component: " <> show examplePackageName <> "}}")
+        -- Need this in case there is a parent cabal.project somewhere
+        writeFile
+            (path </> "cabal.project")
+            "packages: ."
+        writeFile
+            (path </> "cabal.project.local")
+            ""
+      Stack -> do
+        callCommand $ "stack unpack " <> examplePackage <> " --to " <> examplesPath
+        stack_yaml <- fromMaybe "stack.yaml" <$> getEnv "STACK_YAML"
+        resolver <- find ("resolver" `isPrefixOf`) . lines <$> readFile stack_yaml
+        writeFile (path </> stack_yaml)
+                  (unlines [fromMaybe (error "impossible") resolver, "packages: [.]"])
+
+        writeFile
+            (path </> "hie.yaml")
+            ("cradle: {stack: {component: " <> show (examplePackageName <> ":lib") <> "}}")
 
   whenJust (shakeProfiling ?config) $ createDirectoryIfMissing True
 
@@ -386,11 +396,6 @@ escapeSpaces = map f
   where
     f ' ' = '_'
     f x = x
-
-exampleCradle :: HasConfig => String
-exampleCradle = case cradle ?config of
-  Cabal -> "cradle: {cabal: {component: " <> show examplePackageName <> "}}"
-  Stack -> "cradle: {stack: {component: " <> show (examplePackageName <> ":lib") <> "}}"
 
 pad :: Int -> String -> String
 pad n [] = replicate n ' '
