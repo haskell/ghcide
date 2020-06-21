@@ -376,10 +376,20 @@ setup = do
             ""
       Stack -> do
         callCommand $ "stack --silent unpack " <> examplePackage <> " --to " <> examplesPath
+        -- Generate the stack descriptor to match the one used to build ghcide
         stack_yaml <- fromMaybe "stack.yaml" <$> getEnv "STACK_YAML"
-        resolver <- find ("resolver" `isPrefixOf`) . lines <$> readFile stack_yaml
+        stack_yaml_lines <- lines <$> readFile stack_yaml
         writeFile (path </> stack_yaml)
-                  (unlines [fromMaybe (error "impossible") resolver, "packages: [.]"])
+                  (unlines $
+                   "packages: [.]" :
+                    [ l
+                    | l <- stack_yaml_lines
+                    , any (`isPrefixOf` l)
+                        ["resolver"
+                        ,"allow-newer"
+                        ,"compiler"]
+                    ]
+                  )
 
         writeFile
             (path </> "hie.yaml")
