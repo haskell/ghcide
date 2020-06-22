@@ -352,9 +352,8 @@ shakeOpen getLspId eventer withProgress withIndefiniteProgress logger debouncer
         mostRecentProgressEvent <- newTVarIO KickCompleted
         let progressUpdate = atomically . writeTVar mostRecentProgressEvent
         progressAsync <- async $
-            if reportProgress
-                then progressThread mostRecentProgressEvent inProgress
-                else return ()
+            when reportProgress $
+                progressThread mostRecentProgressEvent inProgress
 
         pure (ShakeExtras{..}, cancel progressAsync)
     (shakeDbM, shakeClose) <-
