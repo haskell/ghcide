@@ -348,10 +348,10 @@ shakeOpen getLspId eventer withProgress withIndefiniteProgress logger debouncer
         publishedDiagnostics <- newVar mempty
         positionMapping <- newVar HMap.empty
         let restartShakeSession = shakeRestart ideState
-        progressQueue <- newTVarIO KickCompleted
-        let progressUpdate = atomically . writeTVar progressQueue
+        mostRecentProgressEvent <- newTVarIO KickCompleted
+        let progressUpdate = atomically . writeTVar mostRecentProgressEvent
         when reportProgress $
-            void $ async $ progressThread progressQueue inProgress
+            void $ async $ progressThread mostRecentProgressEvent inProgress
 
         pure ShakeExtras{..}
     (shakeDbM, shakeClose) <-
@@ -369,11 +369,11 @@ shakeOpen getLspId eventer withProgress withIndefiniteProgress logger debouncer
         -- And two transitions, modelled by 'ProgressEvent':
         --   1. KickCompleted - transitions from Reporting into Idle
         --   2. KickStarted - transitions from Idle into Reporting
-        progressThread progressQueue inProgress = progressLoopIdle
+        progressThread mostRecentProgressEvent inProgress = progressLoopIdle
           where
             progressLoopIdle = do
                 atomically $ do
-                    v <- readTVar progressQueue
+                    v <- readTVar mostRecentProgressEvent
                     case v of
                         KickCompleted -> STM.retry
                         KickStarted -> return ()
@@ -381,7 +381,7 @@ shakeOpen getLspId eventer withProgress withIndefiniteProgress logger debouncer
                 progressLoopReporting asyncReporter
             progressLoopReporting asyncReporter = do
                 atomically $ do
-                    v <- readTVar progressQueue
+                    v <- readTVar mostRecentProgressEvent
                     case v of
                         KickStarted -> STM.retry
                         KickCompleted -> return ()
@@ -864,6 +864,7 @@ updateFileDiagnostics fp k ShakeExtras{diagnostics, hiddenDiagnostics, published
                                   (T.pack $ show k) (map snd currentHidden) old
             let newDiags = getFileDiagnostics fp newDiagsStore
             _ <- evaluate newDiagsStore
+The performance bug was introduced by calling `ghcSessionDepsDefinition` an exponential number of times (`regenerateHiFile`
             _ <- evaluate newDiags
             return newDiagsStore
         let uri = filePathToUri' fp
