@@ -631,7 +631,7 @@ getModIfaceFromDiskRule = defineEarlyCutoff $ \GetModIfaceFromDisk f -> do
                     $ case ms_hsc_src ms of
                         HsBootFile -> addBootSuffix (ml_hi_file $ ms_location ms)
                         _ -> ml_hi_file $ ms_location ms
-        mbHiVersion <- use  (GetModificationTime_ False) hiFile
+        mbHiVersion <- use  GetModificationTime_{missingFileDiagnostics=False} hiFile
         modVersion  <- use_ GetModificationTime f
         let sourceModified = case mbHiVersion of
                 Nothing -> SourceModified

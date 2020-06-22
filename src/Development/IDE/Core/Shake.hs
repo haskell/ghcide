@@ -24,7 +24,8 @@
 module Development.IDE.Core.Shake(
     IdeState, shakeExtras,
     ShakeExtras(..), getShakeExtras, getShakeExtrasRules,
-    IdeRule, IdeResult, GetModificationTime(GetModificationTime, GetModificationTime_),
+    IdeRule, IdeResult,
+    GetModificationTime(GetModificationTime, GetModificationTime_, missingFileDiagnostics),
     shakeOpen, shakeShut,
     shakeRestart,
     shakeEnqueue,
@@ -925,7 +926,7 @@ instance NFData   GetModificationTime
 instance Binary   GetModificationTime
 
 pattern GetModificationTime :: GetModificationTime
-pattern GetModificationTime = GetModificationTime_ True
+pattern GetModificationTime = GetModificationTime_ {missingFileDiagnostics=True}
 
 -- | Get the modification time of a file.
 type instance RuleResult GetModificationTime = FileVersion

@@ -83,6 +83,7 @@ main = do
     , dependentFileTest
     , nonLspCommandLine
     , benchmarkTests
+    , ifaceTests
     ]
 
 initializeResponseTests :: TestTree
@@ -464,9 +465,6 @@ diagnosticTests = testGroup "diagnostics"
             Lens.filtered (T.isInfixOf ("/" <> name <> ".hs:"))
           failure msg = liftIO $ assertFailure $ "Expected file path to be stripped but got " <> T.unpack msg
       Lens.mapMOf_ offenders failure notification
-  , ifaceErrorTest
-  , ifaceErrorTest2
-  , ifaceErrorTest3
   ]
 
 codeActionTests :: TestTree
@@ -2195,6 +2193,14 @@ simpleMultiTest2 = testCase "simple-multi-test2" $ withoutStackEnv $ runWithExtr
     let fooL = mkL adoc 2 0 2 3
     checkDefs locs (pure [fooL])
     expectNoMoreDiagnostics 0.5
+
+ifaceTests :: TestTree
+ifaceTests = testGroup "Interface loading tests"
+    [ -- https://github.com/digital-asset/ghcide/pull/645/
+      ifaceErrorTest
+    , ifaceErrorTest2
+    , ifaceErrorTest3
+    ]
 
 ifaceErrorTest :: TestTree
 ifaceErrorTest = testCase "iface-error-test-1" $ withoutStackEnv $ runWithExtraFiles "recomp" $ \dir -> do

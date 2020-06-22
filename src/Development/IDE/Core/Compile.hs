@@ -567,7 +567,7 @@ loadInterface
   :: MonadIO m => HscEnv
   -> ModSummary
   -> SourceModified
-  -> m ([FileDiagnostic], Maybe HiFileResult)
+  -> m ([FileDiagnostic], Maybe HiFileResult) -- ^ Action to regenerate an interface
   -> m ([FileDiagnostic], Maybe HiFileResult)
 loadInterface session ms sourceMod regen = do
     res <- liftIO $ checkOldIface session ms sourceMod Nothing
@@ -575,7 +575,8 @@ loadInterface session ms sourceMod regen = do
           (UpToDate, Just x)
             -- If the module used TH splices when it was last
             -- compiled, then the recompilation check is not
-            -- accurate enough (#481) and we must ignore
+            -- accurate enough (https://gitlab.haskell.org/ghc/ghc/-/issues/481)
+            -- and we must ignore
             -- it.  However, if the module is stable (none of
             -- the modules it depends on, directly or
             -- indirectly, changed), then we *can* skip
