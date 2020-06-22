@@ -261,6 +261,7 @@ data IdeState = IdeState
     ,shakeClose      :: IO ()
     ,shakeExtras     :: ShakeExtras
     ,shakeProfileDir :: Maybe FilePath
+    ,stopProgressReporting :: IO ()
     }
 
 
@@ -340,7 +341,7 @@ shakeOpen getLspId eventer withProgress withIndefiniteProgress logger debouncer
   shakeProfileDir (IdeReportProgress reportProgress) (IdeTesting ideTesting) opts rules = mdo
 
     inProgress <- newVar HMap.empty
-    shakeExtras <- do
+    (shakeExtras, stopProgressReporting) <- do
         globals <- newVar HMap.empty
         state <- newVar HMap.empty
         diagnostics <- newVar mempty
@@ -350,10 +351,12 @@ shakeOpen getLspId eventer withProgress withIndefiniteProgress logger debouncer
         let restartShakeSession = shakeRestart ideState
         mostRecentProgressEvent <- newTVarIO KickCompleted
         let progressUpdate = atomically . writeTVar mostRecentProgressEvent
-        when reportProgress $
-            void $ async $ progressThread mostRecentProgressEvent inProgress
+        progressAsync <- async $
+            if reportProgress
+                then progressThread mostRecentProgressEvent inProgress
+                else return ()
 
-        pure ShakeExtras{..}
+        pure (ShakeExtras{..}, cancel progressAsync)
     (shakeDbM, shakeClose) <-
         shakeOpenDatabase
             opts { shakeExtra = addShakeExtra shakeExtras $ shakeExtra opts }
@@ -447,6 +450,7 @@ shakeShut IdeState{..} = withMVar shakeSession $ \runner -> do
     -- request so we first abort that.
     void $ cancelShakeSession runner
     shakeClose
+    stopProgressReporting
 
 -- | This is a variant of withMVar where the first argument is run unmasked and if it throws
 -- an exception, the previous value is restored while the second argument is executed masked.
@@ -864,7 +868,6 @@ updateFileDiagnostics fp k ShakeExtras{diagnostics, hiddenDiagnostics, published
                                   (T.pack $ show k) (map snd currentHidden) old
             let newDiags = getFileDiagnostics fp newDiagsStore
             _ <- evaluate newDiagsStore
-The performance bug was introduced by calling `ghcSessionDepsDefinition` an exponential number of times (`regenerateHiFile`
             _ <- evaluate newDiags
             return newDiagsStore
         let uri = filePathToUri' fp
