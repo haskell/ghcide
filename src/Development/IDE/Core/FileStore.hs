@@ -106,10 +106,10 @@ getModificationTimeRule vfs =
               `catch` \(e :: IOException) -> do
                 let err | isDoesNotExistError e = "File does not exist: " ++ file'
                         | otherwise = "IO error while reading " ++ file' ++ ", " ++ displayException e
-                    (fp, _, d) = ideErrorText file (T.pack err)
-                    showDiag = if missingFileDiags then ShowDiag else HideDiag
-                    diag = (fp, showDiag, d)
-                return (Nothing, ([diag], Nothing))
+                    diag = ideErrorText file (T.pack err)
+                if isDoesNotExistError e && not missingFileDiags
+                    then return (Nothing, ([], Nothing))
+                    else return (Nothing, ([diag], Nothing))
   where
     -- Dir.getModificationTime is surprisingly slow since it performs
     -- a ton of conversions. Since we do not actually care about
