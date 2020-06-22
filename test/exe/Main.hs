@@ -2259,7 +2259,7 @@ ifaceErrorTest2 = testCase "iface-error-test-2" $ withoutStackEnv $ runWithExtra
     -- x = y  :: Int
     expectDiagnostics
     -- As in the other test, P is being typechecked with the last successful artifacts for A
-    -- (ot thanks to -dferred-type-errors)
+    -- (ot thanks to -fdeferred-type-errors)
       [("lib/A.hs", [(DsError, (5, 4), "Couldn't match expected type 'Int' with actual type 'Bool'")])
       ,("lib/P.hs", [(DsWarning,(4,0), "Top-level binding")])
       ,("lib/P.hs", [(DsWarning,(6,0), "Top-level binding")])
@@ -2279,11 +2279,11 @@ ifaceErrorTest3 = testCase "iface-error-test-3" $ withoutStackEnv $ runWithExtra
     -- Change y from Int to B
     changeDoc bdoc [TextDocumentContentChangeEvent Nothing Nothing $ T.unlines ["module B where", "y :: Bool", "y = undefined"]]
 
-    -- P should not typecheck, as there arre no last valid artifacts for0A
+    -- P should not typecheck, as there are no last valid artifacts for A
     _pdoc <- createDoc pPath "haskell" pSource
 
     -- In this example the interface file for A should not exist (modulo the cache folder)
-    -- Despite that P still type checks, as we can generatea an interface file for A thanks to -fdeferred-type-errors
+    -- Despite that P still type checks, as we can generate an interface file for A thanks to -fdeferred-type-errors
     expectDiagnostics
       [("lib/A.hs", [(DsError, (5, 4), "Couldn't match expected type 'Int' with actual type 'Bool'")])
       ,("lib/P.hs", [(DsWarning,(4,0), "Top-level binding")])
