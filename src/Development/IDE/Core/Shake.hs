@@ -498,35 +498,18 @@ withMVar' var unmasked masked = mask $ \restore -> do
     pure c
 
 
--- | Actions with an ID for tracing purposes
-data DelayedActionExtra
-  = DelayedActionExtra
-  { _actionInternalId :: Unique
-  , _actionInternal :: Action ()
-  }
-
-type DelayedAction a = DelayedActionX (Action a)
-type DelayedActionInternal = DelayedActionX DelayedActionExtra
-
-{-# COMPLETE DelayedActionInternal#-}
-pattern DelayedActionInternal :: String -> Logger.Priority -> Action () -> Unique -> DelayedActionX DelayedActionExtra
-pattern DelayedActionInternal { _actionInternalName, _actionInternalPriority, getAction , _actionId}
-  = DelayedActionX _actionInternalName _actionInternalPriority (DelayedActionExtra _actionId getAction)
-
-{-# COMPLETE DelayedAction#-}
-pattern DelayedAction :: String ->  Logger.Priority -> Action a -> DelayedAction a
-pattern DelayedAction a b c = DelayedActionX a b c
-
 mkDelayedAction :: String -> Logger.Priority -> Action a -> DelayedAction a
 mkDelayedAction = DelayedAction
 
-data DelayedActionX a = DelayedActionX
+data DelayedAction a = DelayedAction
   { actionName :: String -- ^ Name we show to the user
   , actionPriority :: Logger.Priority -- ^ Priority with which to log the action
-  , _actionExtra :: a -- ^ The payload
+  , getAction :: Action a -- ^ The payload
   }
 
-instance Show (DelayedActionX a) where
+type DelayedActionInternal = DelayedAction ()
+
+instance Show (DelayedAction a) where
     show d = "DelayedAction: " ++ actionName d
 
 -- | These actions are run asynchronously after the current action is
@@ -640,7 +623,6 @@ newSession ShakeExtras{..} shakeDb systemActs userActs = do
 instantiateDelayedAction :: DelayedAction a -> IO (Barrier (Either SomeException a), DelayedActionInternal)
 instantiateDelayedAction (DelayedAction s p a) = do
   b <- newBarrier
-  i <- newUnique
   let a' = do 
         -- work gets reenqueued when the Shake session is restarted
         -- it can happen that a work item finished just as it was reenqueud
@@ -649,7 +631,7 @@ instantiateDelayedAction (DelayedAction s p a) = do
         unless alreadyDone $ do
           x <- actionCatch @SomeException (Right <$> a) (pure . Left)
           liftIO $ signalBarrier b x
-  let d = DelayedActionInternal s p a' i
+  let d = DelayedAction s p a'
   return (b, d)
 
 logDelayedAction :: Logger -> DelayedActionInternal -> Action ()

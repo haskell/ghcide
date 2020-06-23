@@ -280,6 +280,8 @@ runBenchmarks allBenchmarks = do
       unwords $
         [ ghcide ?config,
           "--lsp",
+          "--test",
+          "--verbose",
           "--cwd",
           dir,
           "+RTS",

@@ -84,8 +84,6 @@ import System.Directory ( getModificationTime )
 import Control.Exception
 
 import Control.Monad.State
-import System.IO.Error (isDoesNotExistError)
-import Control.Exception.Safe (IOException, catch)
 import FastString (FastString(uniq))
 import qualified HeaderInfo as Hdr
 
