@@ -7,7 +7,6 @@
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE ConstraintKinds            #-}
 {-# LANGUAGE PatternSynonyms            #-}
-{-# LANGUAGE ExplicitNamespaces         #-}
 
 -- | A Shake implementation of the compiler service.
 --
@@ -517,7 +516,7 @@ instance Show (DelayedAction a) where
 -- has already finished as is the case with useWithStaleFast
 delayedAction :: DelayedAction a -> IdeAction (IO a)
 delayedAction a = do
-  sq <- session <$> ask
+  sq <- asks session
   liftIO $ shakeEnqueueSession sq a
 
 -- | Restart the current 'ShakeSession' with the given system actions.
@@ -636,12 +635,11 @@ instantiateDelayedAction (DelayedAction s p a) = do
 
 logDelayedAction :: Logger -> DelayedActionInternal -> Action ()
 logDelayedAction l d  = do
-    start <- liftIO $ offsetTime
+    start <- liftIO offsetTime
     getAction d
-    runTime <- liftIO $ start
-    return ()
+    runTime <- liftIO start
     liftIO $ logPriority l (actionPriority d) $ T.pack $
-        "finish: " ++ (actionName d) ++ " (took " ++ showDuration runTime ++ ")"
+        "finish: " ++ actionName d ++ " (took " ++ showDuration runTime ++ ")"
 
 getDiagnostics :: IdeState -> IO [FileDiagnostic]
 getDiagnostics IdeState{shakeExtras = ShakeExtras{diagnostics}} = do
@@ -705,9 +703,7 @@ newtype IdeAction a = IdeAction { runIdeActionT  :: (ReaderT ShakeExtras IO) a }
 -- is stale Useful for UI actions like hover, completion where we don't want to
 -- block.
 runIdeAction :: String -> ShakeExtras -> IdeAction a -> IO a
-runIdeAction _herald s i = do
-    res <- runReaderT (runIdeActionT i) s
-    return res
+runIdeAction _herald s i = runReaderT (runIdeActionT i) s
 
 askShake :: IdeAction ShakeExtras
 askShake = ask
@@ -730,7 +726,7 @@ useWithStaleFast' key file = do
 
   -- Async trigger the key to be built anyway because we want to
   -- keep updating the value in the key.
-  wait <- delayedAction $ mkDelayedAction ("C:" ++ (show key)) Debug $ use key file
+  wait <- delayedAction $ mkDelayedAction ("C:" ++ show key) Debug $ use key file
 
   s@ShakeExtras{state} <- askShake
   r <- liftIO $ getValues state key file

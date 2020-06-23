@@ -54,7 +54,6 @@ import Text.Regex.TDFA.Text()
 import Outputable (ppr, showSDocUnsafe)
 import DynFlags (xFlags, FlagSpec(..))
 import GHC.LanguageExtensions.Type (Extension)
-import System.Time.Extra (showDuration, duration)
 import Data.Function
 import Control.Arrow ((>>>))
 import Data.Functor
