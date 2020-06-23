@@ -472,8 +472,8 @@ suggestInstanceConstraint contents Diagnostic {..} missingConstraint
   | otherwise = []
     where
       findExistingConstraints :: T.Text -> T.Text
-      findExistingConstraints =
-        T.lines >>> flip (!!) 1 >>> T.strip >>> T.replace "from the context: " ""
+      findExistingConstraints t =
+        T.replace "from the context: " "" . T.strip $ T.lines t !! 1
 
       readPositionNumber :: T.Text -> Int
       readPositionNumber = T.unpack >>> read >>> pred
@@ -529,7 +529,7 @@ suggestFunctionConstraint contents Diagnostic{..} missingConstraint
       findExistingConstraints :: T.Text -> Maybe T.Text
       findExistingConstraints message =
         if message =~ ("from the context:" :: String)
-           then matchRegex message "\\. ([^=]+)" <&> head <&> T.strip
+           then fmap (T.strip . head) $ matchRegex message "\\. ([^=]+)"
            else Nothing
 
       buildNewConstraints :: T.Text -> Maybe T.Text -> T.Text
