@@ -1,1 +1,1 @@
-cradle: {cabal: {component: "lib:recomp"}}
+cradle: {direct: {arguments: ["-Wmissing-signatures","B", "A", "P"]}}

@@ -2204,9 +2204,9 @@ ifaceTests = testGroup "Interface loading tests"
 
 ifaceErrorTest :: TestTree
 ifaceErrorTest = testCase "iface-error-test-1" $ withoutStackEnv $ runWithExtraFiles "recomp" $ \dir -> do
-    let aPath = dir </> "lib/A.hs"
-        bPath = dir </> "lib/B.hs"
-        pPath = dir </> "lib/P.hs"
+    let aPath = dir </> "A.hs"
+        bPath = dir </> "B.hs"
+        pPath = dir </> "P.hs"
 
     aSource <- liftIO $ readFileUtf8 aPath -- x = y :: Int
     bSource <- liftIO $ readFileUtf8 bPath -- y :: Int
@@ -2214,7 +2214,7 @@ ifaceErrorTest = testCase "iface-error-test-1" $ withoutStackEnv $ runWithExtraF
 
     bdoc <- createDoc bPath "haskell" bSource
     pdoc <- createDoc pPath "haskell" pSource
-    expectDiagnostics [("lib/P.hs", [(DsWarning,(4,0), "Top-level binding")]) -- So what we know P has been loaded
+    expectDiagnostics [("P.hs", [(DsWarning,(4,0), "Top-level binding")]) -- So what we know P has been loaded
                       ]
 
     -- Change y from Int to B
@@ -2223,7 +2223,7 @@ ifaceErrorTest = testCase "iface-error-test-1" $ withoutStackEnv $ runWithExtraF
     -- Check that the error propogates to A
     adoc <- createDoc aPath "haskell" aSource
     expectDiagnostics
-      [("lib/A.hs", [(DsError, (5, 4), "Couldn't match expected type 'Int' with actual type 'Bool'")])]
+      [("A.hs", [(DsError, (5, 4), "Couldn't match expected type 'Int' with actual type 'Bool'")])]
     closeDoc adoc -- Close A
 
     changeDoc pdoc [TextDocumentContentChangeEvent Nothing Nothing $ pSource <> "\nfoo = y :: Bool" ]
@@ -2235,22 +2235,22 @@ ifaceErrorTest = testCase "iface-error-test-1" $ withoutStackEnv $ runWithExtraF
     -- This is clearly inconsistent, and the expected outcome a bit surprising:
     --   - The diagnostic for A has already been received. Ghcide does not repeat diagnostics
     --   - P is being typechecked with the last successful artifacts for A.
-    expectDiagnostics [("lib/P.hs", [(DsWarning,(4,0), "Top-level binding")])
-                      ,("lib/P.hs", [(DsWarning,(6,0), "Top-level binding")])
+    expectDiagnostics [("P.hs", [(DsWarning,(4,0), "Top-level binding")])
+                      ,("P.hs", [(DsWarning,(6,0), "Top-level binding")])
                       ]
     expectNoMoreDiagnostics 2
 
 ifaceErrorTest2 :: TestTree
 ifaceErrorTest2 = testCase "iface-error-test-2" $ withoutStackEnv $ runWithExtraFiles "recomp" $ \dir -> do
-    let bPath = dir </> "lib/B.hs"
-        pPath = dir </> "lib/P.hs"
+    let bPath = dir </> "B.hs"
+        pPath = dir </> "P.hs"
 
     bSource <- liftIO $ readFileUtf8 bPath -- y :: Int
     pSource <- liftIO $ readFileUtf8 pPath -- bar = x :: Int
 
     bdoc <- createDoc bPath "haskell" bSource
     pdoc <- createDoc pPath "haskell" pSource
-    expectDiagnostics [("lib/P.hs", [(DsWarning,(4,0), "Top-level binding")]) -- So that we know P has been loaded
+    expectDiagnostics [("P.hs", [(DsWarning,(4,0), "Top-level binding")]) -- So that we know P has been loaded
                       ]
 
     -- Change y from Int to B
@@ -2266,16 +2266,16 @@ ifaceErrorTest2 = testCase "iface-error-test-2" $ withoutStackEnv $ runWithExtra
     expectDiagnostics
     -- As in the other test, P is being typechecked with the last successful artifacts for A
     -- (ot thanks to -fdeferred-type-errors)
-      [("lib/A.hs", [(DsError, (5, 4), "Couldn't match expected type 'Int' with actual type 'Bool'")])
-      ,("lib/P.hs", [(DsWarning,(4,0), "Top-level binding")])
-      ,("lib/P.hs", [(DsWarning,(6,0), "Top-level binding")])
+      [("A.hs", [(DsError, (5, 4), "Couldn't match expected type 'Int' with actual type 'Bool'")])
+      ,("P.hs", [(DsWarning,(4,0), "Top-level binding")])
+      ,("P.hs", [(DsWarning,(6,0), "Top-level binding")])
       ]
     expectNoMoreDiagnostics 2
 
 ifaceErrorTest3 :: TestTree
 ifaceErrorTest3 = testCase "iface-error-test-3" $ withoutStackEnv $ runWithExtraFiles "recomp" $ \dir -> do
-    let bPath = dir </> "lib/B.hs"
-        pPath = dir </> "lib/P.hs"
+    let bPath = dir </> "B.hs"
+        pPath = dir </> "P.hs"
 
     bSource <- liftIO $ readFileUtf8 bPath -- y :: Int
     pSource <- liftIO $ readFileUtf8 pPath -- bar = x :: Int
@@ -2291,8 +2291,8 @@ ifaceErrorTest3 = testCase "iface-error-test-3" $ withoutStackEnv $ runWithExtra
     -- In this example the interface file for A should not exist (modulo the cache folder)
     -- Despite that P still type checks, as we can generate an interface file for A thanks to -fdeferred-type-errors
     expectDiagnostics
-      [("lib/A.hs", [(DsError, (5, 4), "Couldn't match expected type 'Int' with actual type 'Bool'")])
-      ,("lib/P.hs", [(DsWarning,(4,0), "Top-level binding")])
+      [("A.hs", [(DsError, (5, 4), "Couldn't match expected type 'Int' with actual type 'Bool'")])
+      ,("P.hs", [(DsWarning,(4,0), "Top-level binding")])
       ]
     expectNoMoreDiagnostics 2
 
