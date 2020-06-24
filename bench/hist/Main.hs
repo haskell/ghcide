@@ -29,7 +29,7 @@
 
    To execute the script:
 
-   > stack build ghcide:exe:benchHist && stack exec benchHist all
+   > stack build --flag ghcide:bench-hist ghcide:exe:benchHist && stack exec benchHist all
 
    To build a specific analysis, enumerate the desired file artifacts
 
