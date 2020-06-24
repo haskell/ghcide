@@ -1148,35 +1148,63 @@ insertNewDefinitionTests = testGroup "insert new definition actions"
 
 deleteUnusedDefinitionTests :: TestTree
 deleteUnusedDefinitionTests = testGroup "delete unused definition action"
-  [ testSession "delete unused top level binding" $ do
-      let source = T.unlines [ "{-# OPTIONS_GHC -Wunused-top-binds #-}"
-                             , "module A (some) where"
-                             , ""
-                             , "f :: Int -> Int"
-                             , "f 1 = let a = 1"
-                             , "      in a"
-                             , "f 2 = 2"
-                             , ""
-                             , "some = ()"
-                             ]
-      docId <- createDoc "A.hs" "haskell" source
-      expectDiagnostics [ ("A.hs", [(DsWarning, (4, 0), "not used")]) ]
-
-      Just (CACodeAction action@CodeAction { _title = actionTitle })
-                  <- find (\(CACodeAction CodeAction{_title=x}) -> "Delete" `T.isPrefixOf` x )
-                     <$> getCodeActions docId (R 0 0 0 0)
-
-      liftIO $ actionTitle @?= "Delete ‘f’"
-      executeCodeAction action
-      contentAfterAction <- documentContents docId
-      liftIO $ contentAfterAction @?= T.unlines [
+  [ testSession "delete unused top level binding" $
+    testFor
+    (T.unlines [ "{-# OPTIONS_GHC -Wunused-top-binds #-}"
+               , "module A (some) where"
+               , ""
+               , "f :: Int -> Int"
+               , "f 1 = let a = 1"
+               , "      in a"
+               , "f 2 = 2"
+               , ""
+               , "some = ()"
+               ])
+    (4, 0)
+    "Delete ‘f’"
+    (T.unlines [
         "{-# OPTIONS_GHC -Wunused-top-binds #-}"
         , "module A (some) where"
         , ""
+        , "some = ()"
+        ])
+
+  , testSession "delete unused top level binding defined in infix form" $
+    testFor
+    (T.unlines [ "{-# OPTIONS_GHC -Wunused-top-binds #-}"
+               , "module A (some) where"
+               , ""
+               , "myPlus :: Int -> Int -> Int"
+               , "a `myPlus` b = a + b"
+               , ""
+               , "some = ()"
+               ])
+    (4, 2)
+    "Delete ‘myPlus’"
+    (T.unlines [
+        "{-# OPTIONS_GHC -Wunused-top-binds #-}"
+        , "module A (some) where"
         , ""
         , "some = ()"
-        ]
+      ])
   ]
+  where
+    testFor source pos expectedTitle expectedResult = do
+      docId <- createDoc "A.hs" "haskell" source
+      expectDiagnostics [ ("A.hs", [(DsWarning, pos, "not used")]) ]
+
+      (action, title) <- extractCodeAction docId "Delete"
+
+      liftIO $ title @?= expectedTitle
+      executeCodeAction action
+      contentAfterAction <- documentContents docId
+      liftIO $ contentAfterAction @?= expectedResult
+
+    extractCodeAction docId actionPrefix = do
+      Just (CACodeAction action@CodeAction { _title = actionTitle })
+                  <- find (\(CACodeAction CodeAction{_title=x}) -> actionPrefix `T.isPrefixOf` x)
+                     <$> getCodeActions docId (R 0 0 0 0)
+      return (action, actionTitle)
 
 
 fixConstructorImportTests :: TestTree

@@ -185,18 +185,24 @@ suggestDeleteTopBinding :: ParsedModule -> Diagnostic -> [(T.Text, [TextEdit])]
 suggestDeleteTopBinding ParsedModule{pm_parsed_source = L _ HsModule{hsmodDecls}} Diagnostic{_range=_range,..}
 -- Foo.hs:4:1: warning: [-Wunused-top-binds] Defined but not used: ‘f’
     | Just [name] <- matchRegex _message ".*Defined but not used: ‘([^ ]+)’"
-    , (_character . _start) _range == 0
-    , let sameName = filter (\(L l b) -> isTopLevel l && matchesBindingName b (T.unpack name)) hsmodDecls
-            = [("Delete ‘" <> name <> "’", [TextEdit (nextLine . srcSpanToRange $ l) "" | (L l _) <- sameName])]
+    , let
+        allTopLevel = filter (isTopLevel . fst) $ map (\(L l b) -> (srcSpanToRange l, b)) hsmodDecls
+        sameName = filter (matchesBindingName (T.unpack name) . snd) allTopLevel
+            = [("Delete ‘" <> name <> "’", flip TextEdit "" . toNextBinding allTopLevel . fst <$> sameName )]
     | otherwise = []
     where
-      isTopLevel l = (_character . _start) (srcSpanToRange l) == 0
+      isTopLevel l = (_character . _start) l == 0
 
-      nextLine r = r {_end = (_end r) {_line = (_line . _end $ r) + 1, _character = 0}}
+      forwardLines lines r = r {_end = (_end r) {_line = (_line . _end $ r) + lines, _character = 0}}
 
-      matchesBindingName :: HsDecl GhcPs -> String -> Bool
-      matchesBindingName (ValD FunBind {fun_id=L _ x}) b = showSDocUnsafe (ppr x) == b
-      matchesBindingName (SigD (TypeSig (L _ x:_) _)) b = showSDocUnsafe (ppr x) == b
+      toNextBinding bindings r@Range { _end = Position {_line = l} }
+        | Just (Range { _start = Position {_line = l'}}, _) <- find ((> l) . _line . _start . fst) bindings
+        = forwardLines (l' - l) r
+      toNextBinding _ r  = r
+
+      matchesBindingName :: String -> HsDecl GhcPs -> Bool
+      matchesBindingName b (ValD FunBind {fun_id=L _ x}) = showSDocUnsafe (ppr x) == b
+      matchesBindingName b (SigD (TypeSig (L _ x:_) _)) = showSDocUnsafe (ppr x) == b
       matchesBindingName _ _ = False
 
 suggestReplaceIdentifier :: Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
