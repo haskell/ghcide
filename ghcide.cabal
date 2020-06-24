@@ -309,7 +309,6 @@ test-suite ghcide-tests
         lens,
         lsp-test >= 0.11.0.1 && < 0.12,
         optparse-applicative,
-        parser-combinators,
         process,
         QuickCheck,
         quickcheck-instances,
@@ -360,7 +359,6 @@ executable ghcide-bench
         ghcide,
         lsp-test >= 0.11.0.2 && < 0.12,
         optparse-applicative,
-        parser-combinators,
         process,
         safe-exceptions
     hs-source-dirs: bench/lib bench/exe
