@@ -29,11 +29,11 @@
 
    To execute the script:
 
-   > stack build --flag ghcide:bench-hist ghcide:exe:benchHist && stack exec benchHist all
+   > stack bench
 
    To build a specific analysis, enumerate the desired file artifacts
 
-   > stack exec benchHist bench-hist/HEAD/results.csv bench-hist/HEAD/edit.diff.svg
+   > stack bench --ba "bench-hist/HEAD/results.csv bench-hist/HEAD/edit.diff.svg"
 
  -}
 {-# LANGUAGE DeriveAnyClass    #-}
