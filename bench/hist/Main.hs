@@ -190,9 +190,9 @@ main = shakeArgs shakeOptions {shakeChange = ChangeModtimeAndDigest} $ do
         need [ghcide, ghcpath]
         ghcPath <- readFile' ghcpath
         withResource ghcideBenchResource 1 $ do
-          Stdout res <-
-            command
+          command_
               [ EchoStdout False,
+                FileStdout outLog,
                 RemEnv "NIX_GHC_LIBDIR",
                 RemEnv "GHC_PACKAGE_PATH",
                 AddPath [takeDirectory ghcPath, "."] []
@@ -208,7 +208,6 @@ main = shakeArgs shakeOptions {shakeChange = ChangeModtimeAndDigest} $ do
                 "--select",
                 unescaped (unescapeExperiment (Escaped $ dropExtension exp))
               ]
-          writeFile' outLog res
           cmd_ Shell $ "mv *.benchmark-gcStats " <> dropFileName outcsv
 
   build -/- "results.csv" %> \out -> do
