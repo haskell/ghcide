@@ -191,6 +191,7 @@ suggestDeleteTopBinding ParsedModule{pm_parsed_source = L _ HsModule{hsmodDecls}
                         . sortLocated
                         $ hsmodDecls
           sameName = filter (matchesBindingName (T.unpack name) . snd) allTopLevel
+    , not (null sameName)
             = [("Delete ‘" <> name <> "’", flip TextEdit "" . toNextBinding allTopLevel . fst <$> sameName )]
     | otherwise = []
     where
