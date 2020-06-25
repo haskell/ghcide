@@ -48,6 +48,7 @@ import Data.List.Extra
 import qualified Data.Text as T
 import Data.Tuple.Extra ((&&&))
 import HscTypes
+import SrcLoc
 import Parser
 import Text.Regex.TDFA ((=~), (=~~))
 import Text.Regex.TDFA.Text()
@@ -185,9 +186,11 @@ suggestDeleteTopBinding :: ParsedModule -> Diagnostic -> [(T.Text, [TextEdit])]
 suggestDeleteTopBinding ParsedModule{pm_parsed_source = L _ HsModule{hsmodDecls}} Diagnostic{_range=_range,..}
 -- Foo.hs:4:1: warning: [-Wunused-top-binds] Defined but not used: ‘f’
     | Just [name] <- matchRegex _message ".*Defined but not used: ‘([^ ]+)’"
-    , let
-        allTopLevel = filter (isTopLevel . fst) $ map (\(L l b) -> (srcSpanToRange l, b)) hsmodDecls
-        sameName = filter (matchesBindingName (T.unpack name) . snd) allTopLevel
+    , let allTopLevel = filter (isTopLevel . fst)
+                        . map (\(L l b) -> (srcSpanToRange l, b))
+                        . sortLocated
+                        $ hsmodDecls
+          sameName = filter (matchesBindingName (T.unpack name) . snd) allTopLevel
             = [("Delete ‘" <> name <> "’", flip TextEdit "" . toNextBinding allTopLevel . fst <$> sameName )]
     | otherwise = []
     where
