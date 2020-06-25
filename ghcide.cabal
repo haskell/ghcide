@@ -204,7 +204,7 @@ benchmark benchHist
         diagrams,
         diagrams-svg,
         directory,
-        extra,
+        extra >= 1.7.2,
         filepath,
         shake,
         text,
