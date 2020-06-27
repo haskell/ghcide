@@ -1889,15 +1889,35 @@ completionTest name src pos expected = testSessionWait name $ do
 
 localCompletionTests :: [TestTree]
 localCompletionTests = [
-    completionTest "variable" ["bar = xx", "xxx :: ()", "xxx = ()", "data Xxx = XxxCon"] (Position 0 8)
-        [("xxx", CiFunction, True, False), ("XxxCon", CiConstructor, False, False)],
-    completionTest "constructor" ["bar = xx", "xxx :: ()", "xxx = ()", "data Xxx = XxxCon"] (Position 0 8)
-        [("xxx", CiFunction, True, False), ("XxxCon", CiConstructor, False, False)],
-    completionTest "type" ["bar :: Xx", "xxx = ()", "data Xxx = XxxCon"] (Position 0 9)
-        [("Xxx", CiStruct, False, False)],
-    completionTest "class" ["bar :: Xx", "xxx = ()", "class Xxx a"] (Position 0 9)
-        -- Xxx should have kind CiClass, but we don't have type information for local completions
-        [("Xxx", CiStruct, False, False)]
+    completionTest
+        "variable"
+        ["bar = xx", "-- | haddock", "xxx :: ()", "xxx = ()", "-- | haddock", "data Xxx = XxxCon"]
+        (Position 0 8)
+        [("xxx", CiFunction, True, True),
+         ("XxxCon", CiConstructor, False, True)
+        ],
+    completionTest
+        "constructor"
+        ["bar = xx", "-- | haddock", "xxx :: ()", "xxx = ()", "-- | haddock", "data Xxx = XxxCon"]
+        (Position 0 8)
+        [("xxx", CiFunction, True, True),
+         ("XxxCon", CiConstructor, False, True)
+        ],
+    completionTest
+        "class method"
+        ["bar = xx", "class Xxx a where", "-- | haddock", "xxx :: ()", "xxx = ()"]
+        (Position 0 8)
+        [("xxx", CiFunction, True, True)],
+    completionTest
+        "type"
+        ["bar :: Xx", "xxx = ()", "-- | haddock", "data Xxx = XxxCon"]
+        (Position 0 9)
+        [("Xxx", CiStruct, False, True)],
+    completionTest
+        "class"
+        ["bar :: Xx", "xxx = ()", "-- | haddock", "class Xxx a"]
+        (Position 0 9)
+        [("Xxx", CiClass, False, True)]
     ]
 
 nonLocalCompletionTests :: [TestTree]

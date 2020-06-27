@@ -310,7 +310,7 @@ cacheDataProducer packageState tm deps = do
 
 -- | Produces completions from the top level declarations of a module.
 localCompletionsForParsedModule :: ParsedModule -> CachedCompletions
-localCompletionsForParsedModule ParsedModule{pm_parsed_source = L _ HsModule{hsmodDecls}} =
+localCompletionsForParsedModule pm@ParsedModule{pm_parsed_source = L _ HsModule{hsmodDecls}} =
     CC { allModNamesAsNS = mempty
        , unqualCompls = compls
        , qualCompls = mempty
@@ -327,28 +327,36 @@ localCompletionsForParsedModule ParsedModule{pm_parsed_source = L _ HsModule{hsm
     compls = concat
         [ case decl of
             SigD (TypeSig ids typ) ->
-                [mkComp (ppr id) CiFunction (Just $ ppr typ) | L _ id <- ids]
+                [mkComp id CiFunction (Just $ ppr typ) | id <- ids]
             ValD FunBind{fun_id} ->
-                [ mkComp (ppr fun_id) CiFunction Nothing
+                [ mkComp fun_id CiFunction Nothing
                 | not (hasTypeSig fun_id)
                 ]
             ValD PatBind{pat_lhs} ->
-                [mkComp (ppr id) CiVariable Nothing
+                [mkComp id CiVariable Nothing
                 | VarPat id <- listify (\(_ :: Pat GhcPs) -> True) pat_lhs]
+            TyClD ClassDecl{tcdLName, tcdSigs} ->
+                mkComp tcdLName CiClass Nothing :
+                [ mkComp id CiFunction (Just $ ppr typ)
+                | L _ (TypeSig ids typ) <- tcdSigs
+                , id <- ids]
             TyClD x ->
-                [mkComp (ppr id) cl Nothing
-                | id <- listify (\(_ :: IdP GhcPs) -> True) x
-                , let cl = occNameToComKind Nothing (rdrNameOcc id)]
+                [mkComp id cl Nothing
+                | id <- listify (\(_ :: Located(IdP GhcPs)) -> True) x
+                , let cl = occNameToComKind Nothing (rdrNameOcc $ unLoc id)]
             ForD ForeignImport{fd_name,fd_sig_ty} ->
-                [mkComp (ppr fd_name) CiVariable (Just $ ppr fd_sig_ty)]
+                [mkComp fd_name CiVariable (Just $ ppr fd_sig_ty)]
             ForD ForeignExport{fd_name,fd_sig_ty} ->
-                [mkComp (ppr fd_name) CiVariable (Just $ ppr fd_sig_ty)]
+                [mkComp fd_name CiVariable (Just $ ppr fd_sig_ty)]
             _ -> []
             | L _ decl <- hsmodDecls
         ]
 
-    mkComp pn ctyp ty =
-        CI ctyp pn "this module" ty pn Nothing emptySpanDoc (ctyp `elem` [CiStruct, CiClass])
+    mkComp n ctyp ty =
+        CI ctyp pn "this module" ty pn Nothing doc (ctyp `elem` [CiStruct, CiClass])
+      where
+        pn = ppr n
+        doc = SpanDocText $ getDocumentation [pm] n
 
     ppr :: Outputable a => a -> T.Text
     ppr = T.pack . prettyPrint
