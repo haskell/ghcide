@@ -124,6 +124,7 @@ main = shakeArgs shakeOptions {shakeChange = ChangeModtimeAndDigest} $ do
            ]
 
   build -/- "*/commitid" %> \out -> do
+      alwaysRerun
 
       let [_,ver,_] = splitDirectories out
       mbEntry <- find ((== T.pack ver) . humanName) <$> readVersions
