@@ -2,7 +2,10 @@
 -- SPDX-License-Identifier: Apache-2.0
 
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE PatternSynonyms #-}
+{-# OPTIONS -Wno-dodgy-imports #-}
 #include "ghc-api-version.h"
 
 -- | Attempt at hiding the GHC version differences we can.
@@ -43,6 +46,9 @@ module Development.IDE.GHC.Compat(
     pattern ModLocation,
     getConArgs,
 
+    HasSrcSpan,
+    getLoc,
+
     module GHC
     ) where
 
@@ -66,7 +72,9 @@ import GHC hiding (
       SigD,
       TypeSig,
       VarPat,
-      ModLocation
+      ModLocation,
+      HasSrcSpan,
+      getLoc
 #if MIN_GHC_API_VERSION(8,6,0)
     , getConArgs
 #endif
@@ -104,7 +112,7 @@ import System.IO.Error
 import Binary
 import Control.Exception (catch)
 import Data.ByteString (ByteString)
-import GhcPlugins hiding (ModLocation)
+import GhcPlugins (Hsc, srcErrorMessages)
 import NameCache
 import TcRnTypes
 import System.IO
@@ -325,7 +333,20 @@ getHeaderImports
        )
 #if MIN_GHC_API_VERSION(8,8,0)
 getHeaderImports = Hdr.getImports
+
+type HasSrcSpan = GHC.HasSrcSpan
+getLoc :: HasSrcSpan a => a -> SrcSpan
+getLoc = GHC.getLoc
+
 #else
+
+class HasSrcSpan a where
+    getLoc :: a -> SrcSpan
+instance HasSrcSpan Name where
+    getLoc = nameSrcSpan
+instance HasSrcSpan (GenLocated SrcSpan a) where
+    getLoc = GHC.getLoc
+
 getHeaderImports a b c d =
     catch (Right <$> Hdr.getImports a b c d)
           (return . Left . srcErrorMessages)

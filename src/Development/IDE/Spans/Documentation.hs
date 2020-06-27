@@ -18,7 +18,7 @@ import           Development.IDE.GHC.Compat
 import           Development.IDE.GHC.Error
 import           Development.IDE.Spans.Common
 import           FastString
-import SrcLoc
+import           SrcLoc (RealLocated)
 
 
 getDocumentationTryGhc
