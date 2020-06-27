@@ -328,17 +328,21 @@ localCompletionsForParsedModule ParsedModule{pm_parsed_source = L _ HsModule{hsm
         [ case decl of
             SigD (TypeSig ids typ) ->
                 [mkComp (ppr id) CiFunction (Just $ ppr typ) | L _ id <- ids]
-            ValD (FunBind{fun_id}) ->
+            ValD FunBind{fun_id} ->
                 [ mkComp (ppr fun_id) CiFunction Nothing
                 | not (hasTypeSig fun_id)
                 ]
-            ValD (PatBind{pat_lhs}) ->
+            ValD PatBind{pat_lhs} ->
                 [mkComp (ppr id) CiVariable Nothing
                 | VarPat id <- listify (\(_ :: Pat GhcPs) -> True) pat_lhs]
             TyClD x ->
                 [mkComp (ppr id) cl Nothing
                 | id <- listify (\(_ :: IdP GhcPs) -> True) x
                 , let cl = occNameToComKind Nothing (rdrNameOcc id)]
+            ForD ForeignImport{fd_name,fd_sig_ty} ->
+                [mkComp (ppr fd_name) CiVariable (Just $ ppr fd_sig_ty)]
+            ForD ForeignExport{fd_name,fd_sig_ty} ->
+                [mkComp (ppr fd_name) CiVariable (Just $ ppr fd_sig_ty)]
             _ -> []
             | L _ decl <- hsmodDecls
         ]
