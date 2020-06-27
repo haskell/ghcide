@@ -60,6 +60,16 @@ produceCompletions = do
         -- in the ModSummary, which preserves all the imports
         ms <- fmap fst <$> useWithStale GetModSummary file
         sess <- fmap fst <$> useWithStale GhcSessionDeps file
+
+-- When possible, rely on the haddocks embedded in our interface files
+-- This creates problems on ghc-lib, see comment on 'getDocumentationTryGhc'
+#if MIN_GHC_API_VERSION(8,6,0) && !defined(GHC_LIB)
+        let parsedDeps = []
+#else
+        deps <- maybe (TransitiveDependencies [] [] []) fst <$> useWithStale GetDependencies file
+        parsedDeps <- mapMaybe (fmap fst) <$> usesWithStale GetParsedModule (transitiveModuleDeps deps)
+#endif
+
         case (ms, sess) of
             (Just ms, Just sess) -> do
                 -- After parsing the module remove all package imports referring to
@@ -81,7 +91,7 @@ produceCompletions = do
                         tm <- liftIO $ typecheckModule (IdeDefer True) env pm
                         case tm of
                             (_, Just (_,TcModuleResult{..})) -> do
-                                cdata <- liftIO $ cacheDataProducer env tmrModule []
+                                cdata <- liftIO $ cacheDataProducer env tmrModule parsedDeps
                                 return ([], Just cdata)
                             (_diag, _) ->
                                 return ([], Nothing)
