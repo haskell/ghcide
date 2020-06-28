@@ -704,7 +704,9 @@ getModIfaceRule = defineEarlyCutoff $ \GetModIface f -> do
             return (fp, ([], hiFile))
 #else
     tm <- use TypeCheck f
-    return ([], tmr_hiFileResult <$> tm)
+    let !hiFile = extractHiFileResult tm
+    let fp = hiFileFingerPrint <$> hiFile
+    return (fp, ([], tmr_hiFileResult <$> tm))
 #endif
 
 regenerateHiFile :: HscEnvEq -> NormalizedFilePath -> Action ([FileDiagnostic], Maybe HiFileResult)
