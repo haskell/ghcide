@@ -51,7 +51,6 @@ import Test.Tasty.ExpectedFailure
 import Test.Tasty.Ingredients.Rerun
 import Test.Tasty.HUnit
 import Test.Tasty.QuickCheck
-import qualified Data.Text.IO as T
 
 main :: IO ()
 main = do
@@ -2253,7 +2252,7 @@ ifaceTHTest = testCase "iface-th-test" $ withoutStackEnv $ runWithExtraFiles "TH
     cdoc <- createDoc cPath "haskell" cSource
 
     -- Change [TH]a from () to Bool
-    liftIO $ T.writeFile aPath (T.unlines $ init (T.lines aSource) ++ ["th_a = [d| a = False|]"])
+    liftIO $ writeFileUTF8 aPath (unlines $ init (lines $ T.unpack aSource) ++ ["th_a = [d| a = False|]"])
 
     -- Check that the change propogates to C
     changeDoc cdoc [TextDocumentContentChangeEvent Nothing Nothing cSource]

@@ -651,7 +651,7 @@ isHiFileStableRule = define $ \IsHiFileStable f -> do
                 then pure SourceModified
                 else do
                     (fileImports, _) <- use_ GetLocatedImports f
-                    let imports = (fmap artifactFilePath) . snd <$> fileImports
+                    let imports = fmap artifactFilePath . snd <$> fileImports
                     deps <- uses_ IsHiFileStable (catMaybes imports)
                     pure $ if all (== SourceUnmodifiedAndStable) deps
                         then SourceUnmodifiedAndStable
