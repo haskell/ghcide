@@ -631,8 +631,8 @@ getModIfaceFromDiskRule = defineEarlyCutoff $ \GetModIfaceFromDisk f -> do
         r <- loadInterface (hscEnv session) ms sourceModified (regenerateHiFile session f)
         case r of
             (diags, Just x) -> do
-                let fp = fingerprintToBS (getModuleHash (hirModIface x))
-                return (Just fp, (diags <> diags_session, Just x))
+                let fp = Just (hiFileFingerPrint x)
+                return (fp, (diags <> diags_session, Just x))
             (diags, Nothing) -> return (Nothing, (diags ++ diags_session, Nothing))
 
 isHiFileStableRule :: Rules ()
@@ -688,21 +688,23 @@ getModSummaryRule = defineEarlyCutoff $ \GetModSummary f -> do
             in BS.pack (show fp)
 
 getModIfaceRule :: Rules ()
-getModIfaceRule = define $ \GetModIface f -> do
+getModIfaceRule = defineEarlyCutoff $ \GetModIface f -> do
 #if MIN_GHC_API_VERSION(8,6,0) && !defined(GHC_LIB)
     fileOfInterest <- use_ IsFileOfInterest f
     if fileOfInterest
         then do
             -- Never load from disk for files of interest
             tmr <- use TypeCheck f
-            return ([], extractHiFileResult tmr)
-        else
-            ([],) <$> use GetModIfaceFromDisk f
+            let !hiFile = extractHiFileResult tmr
+            let fp = hiFileFingerPrint <$> hiFile
+            return (fp, ([], hiFile))
+        else do
+            hiFile <- use GetModIfaceFromDisk f
+            let fp = hiFileFingerPrint <$> hiFile
+            return (fp, ([], hiFile))
 #else
     tm <- use TypeCheck f
-    let modIface = hm_iface . tmrModInfo <$> tm
-        modSummary = tmrModSummary <$> tm
-    return ([], HiFileResult <$> modSummary <*> modIface)
+    return ([], tmr_hiFileResult <$> tm)
 #endif
 
 regenerateHiFile :: HscEnvEq -> NormalizedFilePath -> Action ([FileDiagnostic], Maybe HiFileResult)
@@ -735,7 +737,7 @@ extractHiFileResult :: Maybe TcModuleResult -> Maybe HiFileResult
 extractHiFileResult Nothing = Nothing
 extractHiFileResult (Just tmr) =
     -- Bang patterns are important to force the inner fields
-    Just $! HiFileResult (tmrModSummary tmr) (hm_iface $ tmrModInfo tmr)
+    Just $! tmr_hiFileResult tmr
 
 isFileOfInterestRule :: Rules ()
 isFileOfInterestRule = defineEarlyCutoff $ \IsFileOfInterest f -> do
