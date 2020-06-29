@@ -191,7 +191,11 @@ setFileModified state nfp = do
     VFSHandle{..} <- getIdeGlobalState state
     when (isJust setVirtualFileContents) $
         fail "setSomethingModified can't be called on this type of VFSHandle"
-    let da = mkDelayedAction "FileStoreTC" L.Info (void $ use GetSpanInfo nfp)
+    let da = mkDelayedAction "FileStoreTC" L.Info $ do
+          ShakeExtras{progressUpdate} <- getShakeExtras
+          liftIO $ progressUpdate KickStarted
+          void $ use GetSpanInfo nfp
+          liftIO $ progressUpdate KickCompleted
     shakeRestart state [da]
 
 -- | Note that some buffer somewhere has been modified, but don't say what.
