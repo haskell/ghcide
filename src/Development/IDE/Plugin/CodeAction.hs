@@ -40,7 +40,6 @@ import Language.Haskell.LSP.VFS
 import Language.Haskell.LSP.Messages
 import qualified Data.Rope.UTF16 as Rope
 import Data.Aeson.Types (toJSON, fromJSON, Value(..), Result(..))
-import Control.Monad.Trans.Maybe
 import Data.Char
 import Data.Maybe
 import Data.List.Extra
@@ -99,8 +98,7 @@ codeLens _lsp ideState CodeLensParams{_textDocument=TextDocumentIdentifier uri} 
     commandId <- makeLspCommandId "typesignature.add"
     fmap (Right . List) $ case uriToFilePath' uri of
       Just (toNormalizedFilePath' -> filePath) -> do
-        -- Needs to be delayed action
-        _ <- runIdeAction "codeLens" (shakeExtras ideState) (runMaybeT $ useE TypeCheck filePath)
+        _ <- runAction "codeLens" ideState (use TypeCheck filePath)
         diag <- getDiagnostics ideState
         hDiag <- getHiddenDiagnostics ideState
         pure
