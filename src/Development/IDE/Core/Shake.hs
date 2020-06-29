@@ -731,20 +731,15 @@ useWithStaleFast' key file = do
   s@ShakeExtras{state} <- askShake
   r <- liftIO $ getValues state key file
   liftIO $ case r of
+    -- block for the result if we haven't computed before
     Nothing -> do
-      IdeTesting testing <- optTesting <$> getIdeOptionsIO s
-      if testing
-      then do
-        -- If testing, block for the result if we haven't computed before
-        a <- wait
-        r <- getValues state key file
-        case r of
-          Nothing -> return $ FastResult Nothing (pure a)
-          Just v -> do
-            res <- lastValueIO s file v
-            pure $ FastResult res (pure a)
-      -- Perhaps we should do this while not testing too
-      else return $ FastResult Nothing wait
+      a <- wait
+      r <- getValues state key file
+      case r of
+        Nothing -> return $ FastResult Nothing (pure a)
+        Just v -> do
+          res <- lastValueIO s file v
+          pure $ FastResult res (pure a)
     -- Otherwise, use the computed value even if it's out of date.
     Just v -> do
       res <- lastValueIO s file v
