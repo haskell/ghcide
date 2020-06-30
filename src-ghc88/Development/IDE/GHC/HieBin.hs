@@ -1,6 +1,7 @@
 {-
 Binary serialization for .hie files.
 -}
+{- HLINT ignore -}
 {-# LANGUAGE ScopedTypeVariables #-}
 module Development.IDE.GHC.HieBin ( readHieFile, readHieFileWithVersion, HieHeader, writeHieFile, HieName(..), toHieName, HieFileResult(..), hieMagic,NameCacheUpdater(..)) where
 
