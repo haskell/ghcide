@@ -1,3 +1,4 @@
+{-# LANGUAGE RankNTypes #-}
 -- Copyright (c) 2019 The DAML Authors. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -7,6 +8,7 @@
 module Development.IDE.Spans.Documentation (
     getDocumentation
   , getDocumentationTryGhc
+  , getDocumentationsTryGhc
   ) where
 
 import           Control.Monad
@@ -16,28 +18,31 @@ import           Data.Maybe
 import qualified Data.Text as T
 import           Development.IDE.GHC.Compat
 import           Development.IDE.GHC.Error
+import           Development.IDE.GHC.Util
 import           Development.IDE.Spans.Common
 import           FastString
 import           SrcLoc (RealLocated)
 
+getDocumentationTryGhc :: GhcMonad m => [ParsedModule] -> Name -> m SpanDoc
+getDocumentationTryGhc deps n = head <$> getDocumentationsTryGhc deps [n]
 
-getDocumentationTryGhc
-  :: GhcMonad m
-  => [ParsedModule]
-  -> Name
-  -> m SpanDoc
+getDocumentationsTryGhc :: GhcMonad m => [ParsedModule] -> [Name] -> m [SpanDoc]
 -- getDocs goes through the GHCi codepaths which cause problems on ghc-lib.
 -- See https://github.com/digital-asset/daml/issues/4152 for more details.
 #if MIN_GHC_API_VERSION(8,6,0) && !defined(GHC_LIB)
-getDocumentationTryGhc sources name = do
-  res <- catchSrcErrors "docs" $ getDocs name
+getDocumentationsTryGhc sources names = do
+  res <- catchSrcErrors "docs" $ getDocsBatch names
   case res of
-    Right (Right (Just docs, _)) -> return $ SpanDocString docs
-    _ -> return $ SpanDocText $ getDocumentation sources name
+      Left _ -> return $ map (SpanDocText . getDocumentation sources) names
+      Right res -> return $ zipWith unwrap res names
 #else
-getDocumentationTryGhc sources name = do
-  return $ SpanDocText $ getDocumentation sources name
+getDocumentationsTryGhc sources names = do
+  return $ map (SpanDocText . getDocumentation sources) name
 #endif
+  where
+    unwrap (Right (Just docs, _))  _= SpanDocString docs
+    unwrap _ n = SpanDocText $ getDocumentation sources n
+
 
 getDocumentation
  :: HasSrcSpan name

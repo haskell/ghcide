@@ -38,6 +38,8 @@ import qualified Development.IDE.GHC.Compat as Compat
 import Development.IDE.GHC.Util
 import Development.IDE.Spans.Common
 import Development.IDE.Spans.Documentation
+import Data.List.Extra (nubOrd)
+import qualified Data.Map.Strict as Map
 
 -- A lot of things gained an extra X argument in GHC 8.6, which we mostly ignore
 -- this U ignores that arg in 8.6, but is hidden in 8.4
@@ -77,23 +79,31 @@ getSpanInfo mods tcm@TypecheckedModule{..} parsedDeps =
      forM_ (modInfoIface tm_checked_module_info) $ \modIface ->
        modifySession (loadModuleHome $ HomeModInfo modIface (snd tm_internals_) Nothing)
 
-     bts <- mapM (getTypeLHsBind allModules funBinds) bs   -- binds
-     ets <- mapM (getTypeLHsExpr allModules) es -- expressions
-     pts <- mapM (getTypeLPat allModules)    ps -- patterns
-     tts <- mapM (getLHsType allModules)     ts -- types
+     bts <- mapM (getTypeLHsBind funBinds) bs   -- binds
+     ets <- mapM getTypeLHsExpr es -- expressions
+     pts <- mapM getTypeLPat  ps -- patterns
+     tts <- mapM getLHsType     ts -- types
      let imports = importInfo mods
      let exports = getExports tcm
      let exprs = addEmptyInfo exports ++ addEmptyInfo imports ++ concat bts ++ concat tts ++ catMaybes (ets ++ pts)
      let constraints = map constraintToInfo (concatMap getConstraintsLHsBind bs)
-     return $ SpansInfo (mapMaybe toSpanInfo (sortBy cmp exprs))
-                        (mapMaybe toSpanInfo (sortBy cmp constraints))
-  where cmp (_,a,_,_) (_,b,_,_)
+         sortedExprs = sortBy cmp exprs
+         sortedConstraints = sortBy cmp constraints
+         names = nubOrd [ s | (Named s,_,_) <- sortedExprs ++ sortedConstraints]
+     docs <- Map.fromList . zip names <$> getDocumentationsTryGhc allModules names
+     let withDocs (Named n, x, y) = (Named n, x, y, Map.findWithDefault emptySpanDoc n docs)
+         withDocs (other, x, y) = (other, x, y, emptySpanDoc)
+
+
+     return $ SpansInfo (mapMaybe (toSpanInfo . withDocs) sortedExprs)
+                        (mapMaybe (toSpanInfo . withDocs) sortedConstraints)
+  where cmp (_,a,_) (_,b,_)
           | a `isSubspanOf` b = LT
           | b `isSubspanOf` a = GT
           | otherwise         = compare (srcSpanStart a) (srcSpanStart b)
 
-        addEmptyInfo = map (\(a,b) -> (a,b,Nothing,emptySpanDoc))
-        constraintToInfo (sp, ty) = (SpanS sp, sp, Just ty, emptySpanDoc)
+        addEmptyInfo = map (\(a,b) -> (a,b,Nothing))
+        constraintToInfo (sp, ty) = (SpanS sp, sp, Just ty)
 
 -- | The locations in the typechecked module are slightly messed up in some cases (e.g. HsMatchContext always
 -- points to the first match) whereas the parsed module has the correct locations.
@@ -123,21 +133,18 @@ ieLNames _ = []
 
 -- | Get the name and type of a binding.
 getTypeLHsBind :: (GhcMonad m)
-               => [ParsedModule]
-               -> OccEnv (HsBind GhcPs)
+               => OccEnv (HsBind GhcPs)
                -> LHsBind GhcTc
-               -> m [(SpanSource, SrcSpan, Maybe Type, SpanDoc)]
-getTypeLHsBind deps funBinds (L _spn FunBind{fun_id = pid})
+               -> m [(SpanSource, SrcSpan, Maybe Type)]
+getTypeLHsBind funBinds (L _spn FunBind{fun_id = pid})
   | Just FunBind {fun_matches = MG{mg_alts=L _ matches}} <- lookupOccEnv funBinds (occName $ unLoc pid) = do
   let name = getName (unLoc pid)
-  docs <- getDocumentationTryGhc deps name
-  return [(Named name, getLoc mc_fun, Just (varType (unLoc pid)), docs) | match <- matches, FunRhs{mc_fun = mc_fun} <- [m_ctxt $ unLoc match] ]
+  return [(Named name, getLoc mc_fun, Just (varType (unLoc pid))) | match <- matches, FunRhs{mc_fun = mc_fun} <- [m_ctxt $ unLoc match] ]
 -- In theory this shouldn’t ever fail but if it does, we can at least show the first clause.
-getTypeLHsBind deps _ (L _spn FunBind{fun_id = pid,fun_matches = MG{}}) = do
+getTypeLHsBind _ (L _spn FunBind{fun_id = pid,fun_matches = MG{}}) = do
   let name = getName (unLoc pid)
-  docs <- getDocumentationTryGhc deps name
-  return [(Named name, getLoc pid, Just (varType (unLoc pid)), docs)]
-getTypeLHsBind _ _ _ = return []
+  return [(Named name, getLoc pid, Just (varType (unLoc pid)))]
+getTypeLHsBind _ _ = return []
 
 -- | Get information about constraints
 getConstraintsLHsBind :: LHsBind GhcTc
@@ -148,19 +155,15 @@ getConstraintsLHsBind _ = []
 
 -- | Get the name and type of an expression.
 getTypeLHsExpr :: (GhcMonad m)
-               => [ParsedModule]
-               -> LHsExpr GhcTc
-               -> m (Maybe (SpanSource, SrcSpan, Maybe Type, SpanDoc))
-getTypeLHsExpr deps e = do
+               => LHsExpr GhcTc
+               -> m (Maybe (SpanSource, SrcSpan, Maybe Type))
+getTypeLHsExpr e = do
   hs_env <- getSession
   (_, mbe) <- liftIO (deSugarExpr hs_env e)
   case mbe of
     Just expr -> do
       let ss = getSpanSource (unLoc e)
-      docs <- case ss of
-                Named n -> getDocumentationTryGhc deps n
-                _       -> return emptySpanDoc
-      return $ Just (ss, getLoc e, Just (CoreUtils.exprType expr), docs)
+      return $ Just (ss, getLoc e, Just (CoreUtils.exprType expr))
     Nothing -> return Nothing
   where
     getSpanSource :: HsExpr GhcTc -> SpanSource
@@ -204,15 +207,11 @@ getTypeLHsExpr deps e = do
 
 -- | Get the name and type of a pattern.
 getTypeLPat :: (GhcMonad m)
-            => [ParsedModule]
-            -> Pat GhcTc
-            -> m (Maybe (SpanSource, SrcSpan, Maybe Type, SpanDoc))
-getTypeLPat deps pat = do
+            => Pat GhcTc
+            -> m (Maybe (SpanSource, SrcSpan, Maybe Type))
+getTypeLPat pat = do
   let (src, spn) = getSpanSource pat
-  docs <- case src of
-            Named n -> getDocumentationTryGhc deps n
-            _       -> return emptySpanDoc
-  return $ Just (src, spn, Just (hsPatType pat), docs)
+  return $ Just (src, spn, Just (hsPatType pat))
   where
     getSpanSource :: Pat GhcTc -> (SpanSource, SrcSpan)
     getSpanSource (VarPat U (L spn vid)) = (Named (getName vid), spn)
@@ -222,12 +221,10 @@ getTypeLPat deps pat = do
 
 getLHsType
     :: GhcMonad m
-    => [ParsedModule]
-    -> LHsType GhcRn
-    -> m [(SpanSource, SrcSpan, Maybe Type, SpanDoc)]
-getLHsType deps (L spn (HsTyVar U _ v)) = do
+    => LHsType GhcRn
+    -> m [(SpanSource, SrcSpan, Maybe Type)]
+getLHsType (L spn (HsTyVar U _ v)) = do
   let n = unLoc v
-  docs <- getDocumentationTryGhc deps n
 #ifdef GHC_LIB
   let ty = Right Nothing
 #else
@@ -238,8 +235,8 @@ getLHsType deps (L spn (HsTyVar U _ v)) = do
   let ty' = case ty of
               Right (Just x) -> Just x
               _ -> Nothing
-  pure [(Named n, spn, ty', docs)]
-getLHsType _ _ = pure []
+  pure [(Named n, spn, ty')]
+getLHsType _ = pure []
 
 importInfo :: [(Located ModuleName, Maybe NormalizedFilePath)]
            -> [(SpanSource, SrcSpan)]

@@ -27,10 +27,13 @@ module Development.IDE.GHC.Util(
     readFileUtf8,
     hDuplicateTo',
     setHieDir,
-    dontWriteHieFiles
+    dontWriteHieFiles,
+    -- * Missing upstream
+    getDocsBatch
     ) where
 
 import Control.Concurrent
+import Control.Monad
 import Data.List.Extra
 import Data.ByteString.Internal (ByteString(..))
 import Data.Maybe
@@ -50,8 +53,10 @@ import GHC.IO.Encoding
 import GHC.IO.Exception
 import GHC.IO.Handle.Types
 import GHC.IO.Handle.Internals
+import Data.Map.Strict (Map)
 import Data.Unique
 import Development.Shake.Classes
+import qualified Data.Map.Strict as Map
 import qualified Data.Text                as T
 import qualified Data.Text.Encoding       as T
 import qualified Data.Text.Encoding.Error as T
@@ -59,7 +64,7 @@ import qualified Data.ByteString          as BS
 import Lexer
 import StringBuffer
 import System.FilePath
-import HscTypes (cg_binds, md_types, cg_module, ModDetails, CgGuts, ic_dflags, hsc_IC, HscEnv(hsc_dflags))
+import HscTypes (runInteractiveHsc, cg_binds, md_types, cg_module, ModDetails, CgGuts, ic_dflags, hsc_IC, HscEnv(hsc_dflags))
 import PackageConfig (PackageConfig)
 import Outputable (showSDocUnsafe, ppr, showSDoc, Outputable)
 import Packages (getPackageConfigMap, lookupPackage')
@@ -69,6 +74,9 @@ import DynFlags (emptyFilesToClean, unsafeGlobalDynFlags)
 import Module (moduleNameSlashes, InstalledUnitId)
 import OccName (parenSymOcc)
 import RdrName (nameRdrName, rdrNameOcc)
+import HscMain (getHscEnv, ioMsgMaybe)
+import GhcPlugins (nameSrcLoc, nameModule_maybe)
+import LoadIface (loadModuleInterface)
 
 import Development.IDE.GHC.Compat as GHC
 import Development.IDE.Types.Location
@@ -299,3 +307,30 @@ ioe_dupHandlesNotCompatible :: Handle -> IO a
 ioe_dupHandlesNotCompatible h =
    ioException (IOError (Just h) IllegalOperation "hDuplicateTo"
                 "handles are incompatible" Nothing Nothing)
+
+-- Batch version of 'InteractiveEval.getDocs'
+-- TODO port upstream
+getDocsBatch :: GhcMonad m
+        => [Name]
+        -> m [Either GetDocsFailure (Maybe HsDocString, Map Int HsDocString)]
+getDocsBatch names = withSession $ \hsc_env -> liftIO $ do
+    runInteractiveHsc hsc_env $  do
+        hsc_env <- getHscEnv
+        ioMsgMaybe $ runTcInteractive hsc_env $ forM names $ \name ->
+          case nameModule_maybe name of
+            Nothing -> return (Left $ NameHasNoModule name)
+            Just mod -> do
+             ModIface { mi_doc_hdr = mb_doc_hdr
+                      , mi_decl_docs = DeclDocMap dmap
+                      , mi_arg_docs = ArgDocMap amap
+                      } <- loadModuleInterface "getModuleInterface" mod
+             if isNothing mb_doc_hdr && Map.null dmap && Map.null amap
+               then pure (Left (NoDocsInIface mod $ compiled name))
+               else pure (Right ( Map.lookup name dmap
+                                , Map.findWithDefault Map.empty name amap))
+  where
+    compiled n =
+      -- TODO: Find a more direct indicator.
+      case nameSrcLoc n of
+        RealSrcLoc {} -> False
+        UnhelpfulLoc {} -> True
