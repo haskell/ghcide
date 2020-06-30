@@ -82,18 +82,29 @@ getSpanInfo mods tcm@TypecheckedModule{..} parsedDeps =
      bts <- mapM (getTypeLHsBind funBinds) bs   -- binds
      ets <- mapM getTypeLHsExpr es -- expressions
      pts <- mapM getTypeLPat  ps -- patterns
-     tts <- mapM getLHsType     ts -- types
+     tts <- concat <$> mapM getLHsType ts -- types
+
+     -- Batch extraction of kinds
+     let typeNames = nubOrd [ n | (Named n, _) <- tts]
+     kinds <- Map.fromList . zip typeNames <$> mapM lookupKind typeNames
+     let withKind (Named n, x) =
+            (Named n, x, join $ Map.lookup n kinds)
+         withKind (other, x) =
+            (other, x, Nothing)
+     tts <- pure $ map withKind tts
+
      let imports = importInfo mods
      let exports = getExports tcm
-     let exprs = addEmptyInfo exports ++ addEmptyInfo imports ++ concat bts ++ concat tts ++ catMaybes (ets ++ pts)
+     let exprs = addEmptyInfo exports ++ addEmptyInfo imports ++ concat bts ++ tts ++ catMaybes (ets ++ pts)
      let constraints = map constraintToInfo (concatMap getConstraintsLHsBind bs)
          sortedExprs = sortBy cmp exprs
          sortedConstraints = sortBy cmp constraints
-         names = nubOrd [ s | (Named s,_,_) <- sortedExprs ++ sortedConstraints]
+
+    -- Batch extraction of Haddocks
+     let names = nubOrd [ s | (Named s,_,_) <- sortedExprs ++ sortedConstraints]
      docs <- Map.fromList . zip names <$> getDocumentationsTryGhc allModules names
      let withDocs (Named n, x, y) = (Named n, x, y, Map.findWithDefault emptySpanDoc n docs)
          withDocs (other, x, y) = (other, x, y, emptySpanDoc)
-
 
      return $ SpansInfo (mapMaybe (toSpanInfo . withDocs) sortedExprs)
                         (mapMaybe (toSpanInfo . withDocs) sortedConstraints)
@@ -104,6 +115,16 @@ getSpanInfo mods tcm@TypecheckedModule{..} parsedDeps =
 
         addEmptyInfo = map (\(a,b) -> (a,b,Nothing))
         constraintToInfo (sp, ty) = (SpanS sp, sp, Just ty)
+
+lookupKind :: GhcMonad m => Name -> m (Maybe Type)
+lookupKind =
+-- lookupName goes through the GHCi codepaths which cause problems on ghc-lib.
+-- See https://github.com/digital-asset/daml/issues/4152 for more details.
+#ifdef GHC_LIB
+    pure Nothing
+#else
+    fmap (either (const Nothing) (safeTyThingType =<<)) . catchSrcErrors "span" . lookupName
+#endif
 
 -- | The locations in the typechecked module are slightly messed up in some cases (e.g. HsMatchContext always
 -- points to the first match) whereas the parsed module has the correct locations.
@@ -222,20 +243,10 @@ getTypeLPat pat = do
 getLHsType
     :: GhcMonad m
     => LHsType GhcRn
-    -> m [(SpanSource, SrcSpan, Maybe Type)]
+    -> m [(SpanSource, SrcSpan)]
 getLHsType (L spn (HsTyVar U _ v)) = do
   let n = unLoc v
-#ifdef GHC_LIB
-  let ty = Right Nothing
-#else
-  ty <- catchSrcErrors "completion" $ do
-          name' <- lookupName n
-          return $ name' >>= safeTyThingType
-#endif
-  let ty' = case ty of
-              Right (Just x) -> Just x
-              _ -> Nothing
-  pure [(Named n, spn, ty')]
+  pure [(Named n, spn)]
 getLHsType _ = pure []
 
 importInfo :: [(Located ModuleName, Maybe NormalizedFilePath)]
