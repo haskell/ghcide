@@ -501,7 +501,7 @@ mkDelayedAction :: String -> Logger.Priority -> Action a -> DelayedAction a
 mkDelayedAction = DelayedAction
 
 data DelayedAction a = DelayedAction
-  { actionName :: String -- ^ Name we show to the user
+  { actionName :: String -- ^ Name we use for debugging
   , actionPriority :: Logger.Priority -- ^ Priority with which to log the action
   , getAction :: Action a -- ^ The payload
   }
@@ -713,7 +713,7 @@ data FastResult a = FastResult { stale :: Maybe (a,PositionMapping), uptoDate ::
 
 -- | Lookup value in the database and return with the stale value immediately
 -- Will queue an action to refresh the value.
--- Never blocks.
+-- Might block the first time the rule runs, but never blocks after that.
 useWithStaleFast :: IdeRule k v => k -> NormalizedFilePath -> IdeAction (Maybe (v, PositionMapping))
 useWithStaleFast key file = stale <$> useWithStaleFast' key file
 
