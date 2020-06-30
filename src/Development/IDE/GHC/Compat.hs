@@ -15,7 +15,6 @@ module Development.IDE.GHC.Compat(
     HieFile(..),
     NameCacheUpdater(..),
     hieExportNames,
-    hie_module,
     mkHieFile,
     writeHieFile,
     readHieFile,
@@ -94,16 +93,11 @@ import Avail
 import ErrUtils (ErrorMessages)
 import FastString (FastString)
 
-#if MIN_GHC_API_VERSION(8,10,0)
-import HscTypes (mi_mod_hash)
-#endif
-
 #if MIN_GHC_API_VERSION(8,8,0)
 import Development.IDE.GHC.HieAst (mkHieFile)
 import Development.IDE.GHC.HieBin
 import HieUtils
 import HieTypes
-import IfaceEnv
 
 supportsHieFiles :: Bool
 supportsHieFiles = True
@@ -113,10 +107,9 @@ hieExportNames = nameListFromAvails . hie_exports
 
 #else
 
+import IfaceEnv
 #if MIN_GHC_API_VERSION(8,6,0)
 import BinIface
-import Data.IORef
-import IfaceEnv
 #else
 import System.IO.Error
 #endif
@@ -125,7 +118,6 @@ import Binary
 import Control.Exception (catch)
 import Data.ByteString (ByteString)
 import GhcPlugins (Hsc, srcErrorMessages)
-import NameCache
 import TcRnTypes
 import System.IO
 import Foreign.ForeignPtr

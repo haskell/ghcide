@@ -60,7 +60,6 @@ import           GhcPlugins                     as GHC hiding (fst3, (<>))
 import qualified HeaderInfo                     as Hdr
 import           HscMain                        (hscInteractive, hscSimplify)
 import           MkIface
-import           NameCache
 import           StringBuffer                   as SB
 import           TcRnMonad (initIfaceLoad, tcg_th_coreplugins)
 import           TcIface                        (typecheckIface)

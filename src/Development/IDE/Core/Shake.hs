@@ -77,7 +77,6 @@ import Data.Tuple.Extra
 import Data.Unique
 import Development.IDE.Core.Debouncer
 import Development.IDE.GHC.Compat ( NameCacheUpdater(..), upNameCache )
-import Development.IDE.Core.RuleTypes
 import Development.IDE.Core.PositionMapping
 import Development.IDE.Types.Logger hiding (Priority)
 import qualified Development.IDE.Types.Logger as Logger
