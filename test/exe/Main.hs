@@ -56,7 +56,7 @@ main :: IO ()
 main = do
   -- We mess with env vars so run single-threaded.
   setEnv "TASTY_NUM_THREADS" "1" True
-  defaultMainWithRerun $ testGroup "GHCIDE"
+  defaultMainWithRerun $ testGroup "ghcide"
     [ testSession "open close" $ do
         doc <- createDoc "Testing.hs" "haskell" ""
         void (skipManyTill anyMessage message :: Session WorkDoneProgressCreateRequest)
