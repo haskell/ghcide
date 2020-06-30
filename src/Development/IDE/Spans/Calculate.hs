@@ -153,7 +153,7 @@ ieLNames (IEThingWith U n _ ns _) = ieLWrappedName n : map ieLWrappedName ns
 ieLNames _ = []
 
 -- | Get the name and type of a binding.
-getTypeLHsBind :: (GhcMonad m)
+getTypeLHsBind :: (Monad m)
                => OccEnv (HsBind GhcPs)
                -> LHsBind GhcTc
                -> m [(SpanSource, SrcSpan, Maybe Type)]
@@ -227,7 +227,7 @@ getTypeLHsExpr e = do
     isLitChild e = isLit e
 
 -- | Get the name and type of a pattern.
-getTypeLPat :: (GhcMonad m)
+getTypeLPat :: (Monad m)
             => Pat GhcTc
             -> m (Maybe (SpanSource, SrcSpan, Maybe Type))
 getTypeLPat pat = do
@@ -241,7 +241,7 @@ getTypeLPat pat = do
     getSpanSource _ = (NoSource, noSrcSpan)
 
 getLHsType
-    :: GhcMonad m
+    :: Monad m
     => LHsType GhcRn
     -> m [(SpanSource, SrcSpan)]
 getLHsType (L spn (HsTyVar U _ v)) = do
