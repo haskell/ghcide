@@ -310,7 +310,7 @@ cacheDataProducer packageState tm deps = do
 
 -- | Produces completions from the top level declarations of a module.
 localCompletionsForParsedModule :: ParsedModule -> CachedCompletions
-localCompletionsForParsedModule pm@ParsedModule{pm_parsed_source = L _ HsModule{hsmodDecls}} =
+localCompletionsForParsedModule pm@ParsedModule{pm_parsed_source = L _ HsModule{hsmodDecls, hsmodName}} =
     CC { allModNamesAsNS = mempty
        , unqualCompls = compls
        , qualCompls = mempty
@@ -353,10 +353,12 @@ localCompletionsForParsedModule pm@ParsedModule{pm_parsed_source = L _ HsModule{
         ]
 
     mkComp n ctyp ty =
-        CI ctyp pn "this module" ty pn Nothing doc (ctyp `elem` [CiStruct, CiClass])
+        CI ctyp pn thisModName ty pn Nothing doc (ctyp `elem` [CiStruct, CiClass])
       where
         pn = ppr n
         doc = SpanDocText $ getDocumentation [pm] n
+
+    thisModName = ppr hsmodName
 
     ppr :: Outputable a => a -> T.Text
     ppr = T.pack . prettyPrint

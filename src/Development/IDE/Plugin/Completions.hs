@@ -80,7 +80,7 @@ produceCompletions = do
                     dflags = hsc_dflags env
                 pm <- liftIO $ evalGhcEnv env $ runExceptT $ parseHeader dflags f buf
                 case pm of
-                    Right hsMod -> do
+                    Right (_diags, hsMod) -> do
                         let hsModNoExports = hsMod <&> \x -> x{hsmodExports = Nothing}
                             pm = ParsedModule
                                     { pm_mod_summary = ms
@@ -92,6 +92,8 @@ produceCompletions = do
                         case tm of
                             (_, Just (_,TcModuleResult{..})) -> do
                                 cdata <- liftIO $ cacheDataProducer env tmrModule parsedDeps
+                                -- Do not return diags from parsing as they would duplicate
+                                -- the diagnostics from typechecking
                                 return ([], Just cdata)
                             (_diag, _) ->
                                 return ([], Nothing)
