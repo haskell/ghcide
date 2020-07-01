@@ -28,12 +28,9 @@ module Development.IDE.GHC.Util(
     hDuplicateTo',
     setHieDir,
     dontWriteHieFiles,
-    -- * Missing upstream
-    getDocsBatch
     ) where
 
 import Control.Concurrent
-import Control.Monad
 import Data.List.Extra
 import Data.ByteString.Internal (ByteString(..))
 import Data.Maybe
@@ -53,10 +50,8 @@ import GHC.IO.Encoding
 import GHC.IO.Exception
 import GHC.IO.Handle.Types
 import GHC.IO.Handle.Internals
-import Data.Map.Strict (Map)
 import Data.Unique
 import Development.Shake.Classes
-import qualified Data.Map.Strict as Map
 import qualified Data.Text                as T
 import qualified Data.Text.Encoding       as T
 import qualified Data.Text.Encoding.Error as T
@@ -64,20 +59,16 @@ import qualified Data.ByteString          as BS
 import Lexer
 import StringBuffer
 import System.FilePath
-import HscTypes (runInteractiveHsc, cg_binds, md_types, cg_module, ModDetails, CgGuts, ic_dflags, hsc_IC, HscEnv(hsc_dflags))
+import HscTypes (cg_binds, md_types, cg_module, ModDetails, CgGuts, ic_dflags, hsc_IC, HscEnv(hsc_dflags))
 import PackageConfig (PackageConfig)
 import Outputable (showSDocUnsafe, ppr, showSDoc, Outputable)
 import Packages (getPackageConfigMap, lookupPackage')
 import SrcLoc (mkRealSrcLoc)
-import FastString (fsLit, mkFastString)
+import FastString (mkFastString)
 import DynFlags (emptyFilesToClean, unsafeGlobalDynFlags)
 import Module (moduleNameSlashes, InstalledUnitId)
 import OccName (parenSymOcc)
 import RdrName (nameRdrName, rdrNameOcc)
-import HscMain (getHscEnv, ioMsgMaybe)
-import GhcPlugins (HscSource(HsSrcFile), nameSrcLoc, nameModule_maybe, realSrcLocSpan, throwErrors)
-import LoadIface (loadModuleInterface)
-import TcRnMonad (initTc)
 
 import Development.IDE.GHC.Compat as GHC
 import Development.IDE.Types.Location
@@ -308,33 +299,3 @@ ioe_dupHandlesNotCompatible :: Handle -> IO a
 ioe_dupHandlesNotCompatible h =
    ioException (IOError (Just h) IllegalOperation "hDuplicateTo"
                 "handles are incompatible" Nothing Nothing)
-
--- Non-interactive, batch version of 'InteractiveEval.getDocs'
-getDocsBatch :: GhcMonad m
-        => Module  -- ^ current module
-        -> [Name]
-        -> m [Either GetDocsFailure (Maybe HsDocString, Map Int HsDocString)]
-getDocsBatch mod names = withSession $ \hsc_env -> liftIO $ do
-    ((_warns,errs), res) <- initTc hsc_env HsSrcFile False mod fakeSpan $ forM names $ \name ->
-        case nameModule_maybe name of
-            Nothing -> return (Left $ NameHasNoModule name)
-            Just mod -> do
-             ModIface { mi_doc_hdr = mb_doc_hdr
-                      , mi_decl_docs = DeclDocMap dmap
-                      , mi_arg_docs = ArgDocMap amap
-                      } <- loadModuleInterface "getModuleInterface" mod
-             if isNothing mb_doc_hdr && Map.null dmap && Map.null amap
-               then pure (Left (NoDocsInIface mod $ compiled name))
-               else pure (Right ( Map.lookup name dmap
-                                , Map.findWithDefault Map.empty name amap))
-    case res of
-        Just x -> return x
-        Nothing -> throwErrors errs
-  where
-    compiled n =
-      -- TODO: Find a more direct indicator.
-      case nameSrcLoc n of
-        RealSrcLoc {} -> False
-        UnhelpfulLoc {} -> True
-
-    fakeSpan = realSrcLocSpan $ mkRealSrcLoc (fsLit "<interactive>") 1 1

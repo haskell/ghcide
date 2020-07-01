@@ -18,7 +18,6 @@ import           Data.List
 import           Data.Maybe
 import           DataCon
 import           Desugar
-import           GHC
 import           GhcMonad
 import           HscTypes
 import           FastString (mkFastString)
@@ -35,6 +34,7 @@ import           TcHsSyn
 import           Var
 import Development.IDE.Core.Compile
 import qualified Development.IDE.GHC.Compat as Compat
+import Development.IDE.GHC.Compat
 import Development.IDE.GHC.Util
 import Development.IDE.Spans.Common
 import Development.IDE.Spans.Documentation
@@ -87,7 +87,7 @@ getSpanInfo mods TcModuleResult{tmrModInfo, tmrModule = tcm@TypecheckedModule{..
 
      -- Batch extraction of kinds
      let typeNames = nubOrd [ n | (Named n, _) <- tts]
-     kinds <- Map.fromList . zip typeNames <$> mapM lookupKind typeNames
+     kinds <- Map.fromList . zip typeNames  <$> mapM (lookupKind thisMod) typeNames
      let withKind (Named n, x) =
             (Named n, x, join $ Map.lookup n kinds)
          withKind (other, x) =
@@ -117,16 +117,9 @@ getSpanInfo mods TcModuleResult{tmrModInfo, tmrModule = tcm@TypecheckedModule{..
         addEmptyInfo = map (\(a,b) -> (a,b,Nothing))
         constraintToInfo (sp, ty) = (SpanS sp, sp, Just ty)
 
-lookupKind :: GhcMonad m => Name -> m (Maybe Type)
-lookupKind =
--- lookupName goes through the GHCi codepaths which cause problems on ghc-lib.
--- See https://github.com/digital-asset/daml/issues/4152 for more details.
-#ifdef GHC_LIB
-    pure Nothing
-#else
-    fmap (either (const Nothing) (safeTyThingType =<<)) . catchSrcErrors "span" . lookupName
-#endif
-
+lookupKind :: GhcMonad m => Module -> Name -> m (Maybe Type)
+lookupKind mod =
+    fmap (either (const Nothing) (safeTyThingType =<<)) . catchSrcErrors "span" . lookupName mod
 -- | The locations in the typechecked module are slightly messed up in some cases (e.g. HsMatchContext always
 -- points to the first match) whereas the parsed module has the correct locations.
 -- Therefore we build up a map from OccName to the corresponding definition in the parsed module
@@ -149,8 +142,8 @@ getExports _ = []
 ieLNames :: IE pass -> [Located (IdP pass)]
 ieLNames (IEVar       U n   )     = [ieLWrappedName n]
 ieLNames (IEThingAbs  U n   )     = [ieLWrappedName n]
-ieLNames (IEThingAll  U n   )     = [ieLWrappedName n]
-ieLNames (IEThingWith U n _ ns _) = ieLWrappedName n : map ieLWrappedName ns
+ieLNames (IEThingAll    n   )     = [ieLWrappedName n]
+ieLNames (IEThingWith   n _ ns _) = ieLWrappedName n : map ieLWrappedName ns
 ieLNames _ = []
 
 -- | Get the name and type of a binding.
@@ -236,7 +229,7 @@ getTypeLPat pat = do
   return $ Just (src, spn, Just (hsPatType pat))
   where
     getSpanSource :: Pat GhcTc -> (SpanSource, SrcSpan)
-    getSpanSource (VarPat U (L spn vid)) = (Named (getName vid), spn)
+    getSpanSource (VarPat (L spn vid)) = (Named (getName vid), spn)
     getSpanSource (ConPatOut (L spn (RealDataCon dc)) _ _ _ _ _ _) =
       (Named (dataConName dc), spn)
     getSpanSource _ = (NoSource, noSrcSpan)

@@ -16,9 +16,9 @@ import           Data.List.Extra
 import qualified Data.Map as M
 import           Data.Maybe
 import qualified Data.Text as T
+import           Development.IDE.Core.Compile
 import           Development.IDE.GHC.Compat
 import           Development.IDE.GHC.Error
-import           Development.IDE.GHC.Util
 import           Development.IDE.Spans.Common
 import           FastString
 import           SrcLoc (RealLocated)
