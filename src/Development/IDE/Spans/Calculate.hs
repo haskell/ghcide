@@ -74,6 +74,7 @@ getSpanInfo mods TcModuleResult{tmrModInfo, tmrModule = tcm@TypecheckedModule{..
          ts  = listifyAllSpans tm_renamed_source :: [LHsType GhcRn]
          allModules = tm_parsed_module : parsedDeps
          funBinds = funBindMap tm_parsed_module
+         thisMod = ms_mod $ pm_mod_summary tm_parsed_module
          modIface = hm_iface tmrModInfo
 
      -- Load this module in HPT to make its interface documentation available
@@ -102,7 +103,7 @@ getSpanInfo mods TcModuleResult{tmrModInfo, tmrModule = tcm@TypecheckedModule{..
 
     -- Batch extraction of Haddocks
      let names = nubOrd [ s | (Named s,_,_) <- sortedExprs ++ sortedConstraints]
-     docs <- Map.fromList . zip names <$> getDocumentationsTryGhc allModules names
+     docs <- Map.fromList . zip names <$> getDocumentationsTryGhc thisMod allModules names
      let withDocs (Named n, x, y) = (Named n, x, y, Map.findWithDefault emptySpanDoc n docs)
          withDocs (other, x, y) = (other, x, y, emptySpanDoc)
 

@@ -69,14 +69,15 @@ import PackageConfig (PackageConfig)
 import Outputable (showSDocUnsafe, ppr, showSDoc, Outputable)
 import Packages (getPackageConfigMap, lookupPackage')
 import SrcLoc (mkRealSrcLoc)
-import FastString (mkFastString)
+import FastString (fsLit, mkFastString)
 import DynFlags (emptyFilesToClean, unsafeGlobalDynFlags)
 import Module (moduleNameSlashes, InstalledUnitId)
 import OccName (parenSymOcc)
 import RdrName (nameRdrName, rdrNameOcc)
 import HscMain (getHscEnv, ioMsgMaybe)
-import GhcPlugins (nameSrcLoc, nameModule_maybe)
+import GhcPlugins (HscSource(HsSrcFile), nameSrcLoc, nameModule_maybe, realSrcLocSpan, throwErrors)
 import LoadIface (loadModuleInterface)
+import TcRnMonad (initTc)
 
 import Development.IDE.GHC.Compat as GHC
 import Development.IDE.Types.Location
@@ -308,16 +309,14 @@ ioe_dupHandlesNotCompatible h =
    ioException (IOError (Just h) IllegalOperation "hDuplicateTo"
                 "handles are incompatible" Nothing Nothing)
 
--- Batch version of 'InteractiveEval.getDocs'
--- TODO port upstream
+-- Non-interactive, batch version of 'InteractiveEval.getDocs'
 getDocsBatch :: GhcMonad m
-        => [Name]
+        => Module  -- ^ current module
+        -> [Name]
         -> m [Either GetDocsFailure (Maybe HsDocString, Map Int HsDocString)]
-getDocsBatch names = withSession $ \hsc_env -> liftIO $ do
-    runInteractiveHsc hsc_env $  do
-        hsc_env <- getHscEnv
-        ioMsgMaybe $ runTcInteractive hsc_env $ forM names $ \name ->
-          case nameModule_maybe name of
+getDocsBatch mod names = withSession $ \hsc_env -> liftIO $ do
+    ((_warns,errs), res) <- initTc hsc_env HsSrcFile False mod fakeSpan $ forM names $ \name ->
+        case nameModule_maybe name of
             Nothing -> return (Left $ NameHasNoModule name)
             Just mod -> do
              ModIface { mi_doc_hdr = mb_doc_hdr
@@ -328,9 +327,14 @@ getDocsBatch names = withSession $ \hsc_env -> liftIO $ do
                then pure (Left (NoDocsInIface mod $ compiled name))
                else pure (Right ( Map.lookup name dmap
                                 , Map.findWithDefault Map.empty name amap))
+    case res of
+        Just x -> return x
+        Nothing -> throwErrors errs
   where
     compiled n =
       -- TODO: Find a more direct indicator.
       case nameSrcLoc n of
         RealSrcLoc {} -> False
         UnhelpfulLoc {} -> True
+
+    fakeSpan = realSrcLocSpan $ mkRealSrcLoc (fsLit "<interactive>") 1 1

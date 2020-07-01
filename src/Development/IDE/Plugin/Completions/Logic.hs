@@ -230,7 +230,8 @@ cacheDataProducer :: HscEnv -> TypecheckedModule -> [ParsedModule] -> IO CachedC
 cacheDataProducer packageState tm deps = do
   let parsedMod = tm_parsed_module tm
       dflags = hsc_dflags packageState
-      curMod = moduleName $ ms_mod $ pm_mod_summary parsedMod
+      curMod = ms_mod $ pm_mod_summary parsedMod
+      curModName = moduleName curMod
       Just (_,limports,_,_) = tm_renamed_source tm
 
       iDeclToModName :: ImportDecl name -> ModuleName
@@ -263,8 +264,8 @@ cacheDataProducer packageState tm deps = do
         case lookupTypeEnv typeEnv n of
           Just tt -> case safeTyThingId tt of
             Just var -> (\x -> ([x],mempty)) <$> varToCompl var
-            Nothing -> (\x -> ([x],mempty)) <$> toCompItem curMod n
-          Nothing -> (\x -> ([x],mempty)) <$> toCompItem curMod n
+            Nothing -> (\x -> ([x],mempty)) <$> toCompItem curModName n
+          Nothing -> (\x -> ([x],mempty)) <$> toCompItem curModName n
       getComplsForOne (GRE n _ False prov) =
         flip foldMapM (map is_decl prov) $ \spec -> do
           compItem <- toCompItem (is_mod spec) n
@@ -282,12 +283,13 @@ cacheDataProducer packageState tm deps = do
       varToCompl var = do
         let typ = Just $ varType var
             name = Var.varName var
-        docs <- evalGhcEnv packageState $ getDocumentationTryGhc (tm_parsed_module tm : deps) name
+            label = T.pack $ showGhc name
+        docs <- evalGhcEnv packageState $ getDocumentationTryGhc curMod (tm_parsed_module tm : deps) name
         return $ mkNameCompItem name curMod typ Nothing docs
 
       toCompItem :: ModuleName -> Name -> IO CompItem
       toCompItem mn n = do
-        docs <- evalGhcEnv packageState $ getDocumentationTryGhc (tm_parsed_module tm : deps) n
+        docs <- evalGhcEnv packageState $ getDocumentationTryGhc curMod (tm_parsed_module tm : deps) n
 -- lookupName uses runInteractiveHsc, i.e., GHCi stuff which does not work with GHCi
 -- and leads to fun errors like "Cannot continue after interface file error".
 #ifdef GHC_LIB

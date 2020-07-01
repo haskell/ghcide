@@ -23,15 +23,16 @@ import           Development.IDE.Spans.Common
 import           FastString
 import           SrcLoc (RealLocated)
 
-getDocumentationTryGhc :: GhcMonad m => [ParsedModule] -> Name -> m SpanDoc
-getDocumentationTryGhc deps n = head <$> getDocumentationsTryGhc deps [n]
+getDocumentationTryGhc :: GhcMonad m => Module -> [ParsedModule] -> Name -> m SpanDoc
+getDocumentationTryGhc mod deps n = head <$> getDocumentationsTryGhc mod deps [n]
 
-getDocumentationsTryGhc :: GhcMonad m => [ParsedModule] -> [Name] -> m [SpanDoc]
--- getDocs goes through the GHCi codepaths which cause problems on ghc-lib.
--- See https://github.com/digital-asset/daml/issues/4152 for more details.
-#if MIN_GHC_API_VERSION(8,6,0) && !defined(GHC_LIB)
-getDocumentationsTryGhc sources names = do
-  res <- catchSrcErrors "docs" $ getDocsBatch names
+getDocumentationsTryGhc :: GhcMonad m => Module -> [ParsedModule] -> [Name] -> m [SpanDoc]
+
+-- Interfaces are only generated for GHC >= 8.6
+-- In older versions, we cannot retrieve Haddocks using the ghc-api
+#if MIN_GHC_API_VERSION(8,6,0)
+getDocumentationsTryGhc mod sources names = do
+  res <- catchSrcErrors "docs" $ getDocsBatch mod names
   case res of
       Left _ -> return $ map (SpanDocText . getDocumentation sources) names
       Right res -> return $ zipWith unwrap res names
