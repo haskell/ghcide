@@ -1210,9 +1210,7 @@ deleteUnusedDefinitionTests = testGroup "delete unused definition action"
       liftIO $ contentAfterAction @?= expectedResult
 
     extractCodeAction docId actionPrefix = do
-      Just (CACodeAction action@CodeAction { _title = actionTitle })
-                  <- find (\(CACodeAction CodeAction{_title=x}) -> actionPrefix `T.isPrefixOf` x)
-                     <$> getCodeActions docId (R 0 0 0 0)
+      [action@CodeAction { _title = actionTitle }]  <- findCodeActionsByPrefix docId (R 0 0 0 0) [actionPrefix]
       return (action, actionTitle)
 
 addTypeAnnotationsToLiteralsTest :: TestTree
