@@ -245,8 +245,8 @@ suggestAddTypeAnnotationToSatisfyContraints sourceOpt Diagnostic{_range=_range,.
 --       In the expression: seq "test" seq "test" (traceShow "test")
 --       In an equation for ‘f’:
 --          f = seq "test" seq "test" (traceShow "test")
-    | Just [ty, lit] <- (matchRegex _message (pat False False True))
-                        <|> (matchRegex _message (pat False False False))
+    | Just [ty, lit] <- matchRegex _message (pat False False True)
+                        <|> matchRegex _message (pat False False False)
             = codeEdit ty lit (makeAnnotatedLit ty lit)
     | Just source <- sourceOpt
     , Just [ty, lit] <- matchRegex _message (pat True True False)
