@@ -24,11 +24,7 @@ import           FastString (mkFastString)
 import           OccName
 import           Development.IDE.Types.Location
 import           Development.IDE.Spans.Type
-#ifdef GHC_LIB
-import           Development.IDE.GHC.Error (zeroSpan)
-#else
 import           Development.IDE.GHC.Error (zeroSpan, catchSrcErrors)
-#endif
 import           Prelude hiding (mod)
 import           TcHsSyn
 import           Var

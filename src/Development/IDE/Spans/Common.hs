@@ -6,9 +6,7 @@ module Development.IDE.Spans.Common (
 , listifyAllSpans
 , listifyAllSpans'
 , safeTyThingId
-#ifndef GHC_LIB
 , safeTyThingType
-#endif
 , SpanDoc(..)
 , emptySpanDoc
 , spanDocToMarkdown
@@ -25,9 +23,7 @@ import Outputable
 import DynFlags
 import ConLike
 import DataCon
-#ifndef GHC_LIB
 import Var
-#endif
 
 import qualified Documentation.Haddock.Parser as H
 import qualified Documentation.Haddock.Types as H
