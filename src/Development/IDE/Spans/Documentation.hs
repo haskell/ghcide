@@ -16,7 +16,9 @@ import           Data.List.Extra
 import qualified Data.Map as M
 import           Data.Maybe
 import qualified Data.Text as T
+#if MIN_GHC_API_VERSION(8,6,0)
 import           Development.IDE.Core.Compile
+#endif
 import           Development.IDE.GHC.Compat
 import           Development.IDE.GHC.Error
 import           Development.IDE.Spans.Common
@@ -28,21 +30,21 @@ getDocumentationTryGhc mod deps n = head <$> getDocumentationsTryGhc mod deps [n
 
 getDocumentationsTryGhc :: GhcMonad m => Module -> [ParsedModule] -> [Name] -> m [SpanDoc]
 
--- Interfaces are only generated for GHC >= 8.6
--- In older versions, we cannot retrieve Haddocks using the ghc-api
+-- Interfaces are only generated for GHC >= 8.6.
+-- In older versions, interface files do not embed Haddocks anyway
 #if MIN_GHC_API_VERSION(8,6,0)
 getDocumentationsTryGhc mod sources names = do
   res <- catchSrcErrors "docs" $ getDocsBatch mod names
   case res of
       Left _ -> return $ map (SpanDocText . getDocumentation sources) names
       Right res -> return $ zipWith unwrap res names
-#else
-getDocumentationsTryGhc sources names = do
-  return $ map (SpanDocText . getDocumentation sources) name
-#endif
   where
     unwrap (Right (Just docs, _))  _= SpanDocString docs
     unwrap _ n = SpanDocText $ getDocumentation sources n
+#else
+getDocumentationsTryGhc _ sources names = do
+  return $ map (SpanDocText . getDocumentation sources) names
+#endif
 
 
 getDocumentation

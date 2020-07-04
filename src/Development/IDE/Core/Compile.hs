@@ -43,10 +43,10 @@ import Development.IDE.Types.Options
 import Development.IDE.Types.Location
 
 #if MIN_GHC_API_VERSION(8,6,0)
-import           DynamicLoading (initializePlugins)
+import DynamicLoading (initializePlugins)
+import LoadIface (loadModuleInterface)
 #endif
 
-import           GHC hiding (parseModule, typecheckModule, lookupName)
 import qualified Parser
 import           Lexer
 #if MIN_GHC_API_VERSION(8,10,0)
@@ -55,6 +55,7 @@ import ErrUtils
 #endif
 
 import           Finder
+import           Development.IDE.GHC.Compat hiding (parseModule, typecheckModule)
 import qualified Development.IDE.GHC.Compat     as GHC
 import qualified Development.IDE.GHC.Compat     as Compat
 import           GhcMonad
@@ -83,7 +84,6 @@ import           System.IO.Extra
 import Control.DeepSeq (rnf)
 import Control.Exception (evaluate)
 import Exception (ExceptionMonad)
-import LoadIface (loadModuleInterface)
 import TcEnv (tcLookup)
 
 
@@ -632,9 +632,11 @@ loadInterface session ms sourceMod regen = do
 getDocsBatch :: GhcMonad m
         => Module  -- ^ a moudle where the names are in scope
         -> [Name]
-        -> m [Either GetDocsFailure (Maybe HsDocString, Map.Map Int HsDocString)]
-getDocsBatch mod names = withSession $ \hsc_env -> liftIO $ do
-    ((_warns,errs), res) <- initTc hsc_env HsSrcFile False mod fakeSpan $ forM names $ \name ->
+        -> m [Either String (Maybe HsDocString, Map.Map Int HsDocString)]
+getDocsBatch _mod _names =
+#if MIN_GHC_API_VERSION(8,6,0)
+  withSession $ \hsc_env -> liftIO $ do
+    ((_warns,errs), res) <- initTc hsc_env HsSrcFile False _mod fakeSpan $ forM _names $ \name ->
         case nameModule_maybe name of
             Nothing -> return (Left $ NameHasNoModule name)
             Just mod -> do
@@ -647,14 +649,18 @@ getDocsBatch mod names = withSession $ \hsc_env -> liftIO $ do
                else pure (Right ( Map.lookup name dmap
                                 , Map.findWithDefault Map.empty name amap))
     case res of
-        Just x -> return x
+        Just x -> return $ map (first prettyPrint) x
         Nothing -> throwErrors errs
   where
+    throwErrors = liftIO . throwIO . mkSrcErr
     compiled n =
       -- TODO: Find a more direct indicator.
       case nameSrcLoc n of
         RealSrcLoc {} -> False
         UnhelpfulLoc {} -> True
+#else
+    return []
+#endif
 
 fakeSpan :: RealSrcSpan
 fakeSpan = realSrcLocSpan $ mkRealSrcLoc (fsLit "<ghcide>") 1 1
