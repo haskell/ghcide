@@ -147,6 +147,7 @@ suggestAction dflags packageExports ideOptions parsedModule text diag = concat
     , suggestReplaceIdentifier text diag
     , suggestSignature True diag
     , suggestConstraint text diag
+    , removeRedundantConstraints text diag
     , suggestAddTypeAnnotationToSatisfyContraints text diag
     ] ++ concat
     [  suggestNewDefinition ideOptions pm text diag
@@ -585,6 +586,78 @@ suggestFunctionConstraint contents Diagnostic{..} missingConstraint
       actionTitle :: T.Text -> T.Text -> T.Text
       actionTitle constraint typeSignatureName = "Add `" <> constraint
         <> "` to the context of the type signature for `" <> typeSignatureName <> "`"
+
+-- | Suggests the removal of a redundant constraint for a type signature.
+removeRedundantConstraints :: Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
+removeRedundantConstraints mContents Diagnostic{..}
+-- • Redundant constraint: Eq a
+-- • In the type signature for:
+--      foo :: forall a. Eq a => a -> a
+-- • Redundant constraints: (Monoid a, Show a)
+-- • In the type signature for:
+--      foo :: forall a. (Num a, Monoid a, Eq a, Show a) => a -> Bool
+  | Just contents <- mContents
+  -- Account for both "Redundant constraint" and "Redundant constraints".
+  , True <- "Redundant constraint" `T.isInfixOf` _message
+  , Just typeSignatureName <- findTypeSignatureName _message
+  , Just redundantConstraintList <- findRedundantConstraints _message
+  = let constraints = findConstraints contents typeSignatureName
+        constraintList = parseConstraints constraints
+        newConstraints = buildNewConstraints constraintList redundantConstraintList
+        typeSignatureLine = findTypeSignatureLine contents typeSignatureName
+        typeSignatureFirstChar = T.length $ typeSignatureName <> " :: "
+        startOfConstraint = Position typeSignatureLine typeSignatureFirstChar
+        endOfConstraint = Position typeSignatureLine $
+          typeSignatureFirstChar + T.length (constraints <> " => ")
+        range = Range startOfConstraint endOfConstraint
+     in [(actionTitle redundantConstraintList typeSignatureName, [TextEdit range newConstraints])]
+  | otherwise = []
+    where
+      parseConstraints :: T.Text -> [T.Text]
+      parseConstraints = stripConstraintsParens >>> T.splitOn ", "
+
+      stripConstraintsParens :: T.Text -> T.Text
+      stripConstraintsParens constraints =
+        if "(" `T.isPrefixOf` constraints
+           then constraints & T.drop 1 & T.dropEnd 1 & T.strip
+           else constraints
+
+      findRedundantConstraints :: T.Text -> Maybe [T.Text]
+      findRedundantConstraints t = t
+        & T.lines
+        & head
+        & T.strip
+        & (`matchRegex` "Redundant constraints?: (.+)")
+        <&> (head >>> parseConstraints)
+
+      findConstraints :: T.Text -> T.Text -> T.Text
+      findConstraints contents typeSignatureName = contents
+        & T.splitOn (typeSignatureName <> " ::")
+        & last
+        & T.splitOn "=>"
+        & head
+        & T.strip
+
+      formatConstraints :: [T.Text] -> T.Text
+      formatConstraints [] = ""
+      formatConstraints [constraint] = constraint
+      formatConstraints constraintList = constraintList
+        & T.intercalate ", "
+        & \cs -> "(" <> cs <> ")"
+
+      formatConstraintsWithArrow :: [T.Text] -> T.Text
+      formatConstraintsWithArrow [] = ""
+      formatConstraintsWithArrow cs = cs & formatConstraints & (<> " => ")
+
+      buildNewConstraints :: [T.Text] -> [T.Text] -> T.Text
+      buildNewConstraints constraintList redundantConstraintList =
+        formatConstraintsWithArrow $ constraintList \\ redundantConstraintList
+
+      actionTitle :: [T.Text] -> T.Text -> T.Text
+      actionTitle constraintList typeSignatureName =
+        "Remove redundant constraint" <> (if length constraintList == 1 then "" else "s") <> " `"
+        <> formatConstraints constraintList
+        <> "` from the context of the type signature for `" <> typeSignatureName <> "`"
 
 -------------------------------------------------------------------------------------------------
 
