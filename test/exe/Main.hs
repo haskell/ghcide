@@ -1175,8 +1175,8 @@ deleteUnusedDefinitionTests = testGroup "delete unused definition action"
         , "module A (some) where"
         , ""
         , "some = ()"
-        ])
-
+        ]
+    )
   , testSession "delete unused top level binding defined in infix form" $
     testFor
     (T.unlines [ "{-# OPTIONS_GHC -Wunused-top-binds #-}"
@@ -1186,7 +1186,8 @@ deleteUnusedDefinitionTests = testGroup "delete unused definition action"
                , "a `myPlus` b = a + b"
                , ""
                , "some = ()"
-               ])
+               ]
+    )
     (4, 2)
     "Delete ‘myPlus’"
     (T.unlines [
@@ -1194,7 +1195,50 @@ deleteUnusedDefinitionTests = testGroup "delete unused definition action"
         , "module A (some) where"
         , ""
         , "some = ()"
-      ])
+        ])
+  , testSession "delete unused top level binding and newlines afterwards up until first non-empty line" $
+    testFor
+    (T.unlines [ "{-# OPTIONS_GHC -Wunused-top-binds #-}"
+               , "module A (documented) where"
+               , ""
+               , "some :: Int -> Int -> Int"
+               , "some a b = a + b"
+               , ""
+               , "-- | This should not be deleted"
+               , "documented = ()"
+               ]
+    )
+    (4, 0)
+    "Delete ‘some’"
+    (T.unlines [
+        "{-# OPTIONS_GHC -Wunused-top-binds #-}"
+        , "module A (documented) where"
+        , ""
+        , "-- | This should not be deleted"
+        , "documented = ()"
+        ]
+    )
+  , testSession "delete unused top level binding together with comments before it" $
+    testFor
+    (T.unlines [ "{-# OPTIONS_GHC -Wunused-top-binds #-}"
+               , "module A (some) where"
+               , ""
+               , "-- | This should be deleted"
+               , "-- and this"
+               , "documented :: Int -> Int -> Int"
+               , "documented a b = a + b"
+               , ""
+               , "some = ()"
+               ])
+    (6, 0)
+    "Delete ‘documented’"
+    (T.unlines [
+        "{-# OPTIONS_GHC -Wunused-top-binds #-}"
+        , "module A (some) where"
+        , ""
+        , "some = ()"
+        ]
+    )
   ]
   where
     testFor source pos expectedTitle expectedResult = do

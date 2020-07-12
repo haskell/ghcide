@@ -150,7 +150,7 @@ suggestAction dflags packageExports ideOptions parsedModule text diag = concat
     [  suggestNewDefinition ideOptions pm text diag
     ++ suggestRemoveRedundantImport pm text diag
     ++ suggestNewImport packageExports pm diag
-    ++ suggestDeleteTopBinding pm diag
+    ++ suggestDeleteTopBinding text pm diag
     | Just pm <- [parsedModule]]
 
 
@@ -173,27 +173,33 @@ suggestRemoveRedundantImport ParsedModule{pm_parsed_source = L _  HsModule{hsmod
         = [("Remove import", [TextEdit (extendToWholeLineIfPossible contents _range) ""])]
     | otherwise = []
 
-suggestDeleteTopBinding :: ParsedModule -> Diagnostic -> [(T.Text, [TextEdit])]
-suggestDeleteTopBinding ParsedModule{pm_parsed_source = L _ HsModule{hsmodDecls}} Diagnostic{_range=_range,..}
+suggestDeleteTopBinding :: Maybe T.Text -> ParsedModule -> Diagnostic -> [(T.Text, [TextEdit])]
+suggestDeleteTopBinding sourceOpt ParsedModule{pm_parsed_source = L _ HsModule{hsmodDecls}} Diagnostic{_range=_range,..}
 -- Foo.hs:4:1: warning: [-Wunused-top-binds] Defined but not used: ‘f’
     | Just [name] <- matchRegex _message ".*Defined but not used: ‘([^ ]+)’"
-    , let allTopLevel = filter (isTopLevel . fst)
+    , let allTopLevel = filter ((== 0) . (_character . _start) . fst)
                         . map (\(L l b) -> (srcSpanToRange l, b))
                         . sortLocated
                         $ hsmodDecls
           sameName = filter (matchesBindingName (T.unpack name) . snd) allTopLevel
     , not (null sameName)
-            = [("Delete ‘" <> name <> "’", flip TextEdit "" . toNextBinding allTopLevel . fst <$> sameName )]
+            = [("Delete ‘" <> name <> "’", flip TextEdit T.empty . toNextNonEmptyLine allTopLevel . fst <$> sameName )]
     | otherwise = []
     where
-      isTopLevel l = (_character . _start) l == 0
+      expandForward lines r@Range {_end = end@Position {_line = l} } =
+        r { _end = end {_line = l + lines, _character = 0} }
+      expandBackward lines r@Range {_start = start@Position {_line = l} } =
+        r { _start = start {_line = l - lines, _character = 0} }
 
-      forwardLines lines r = r {_end = (_end r) {_line = (_line . _end $ r) + lines, _character = 0}}
-
-      toNextBinding bindings r@Range { _end = Position {_line = l} }
+      toNextNonEmptyLine bindings r@Range {_start = start, _end = end@Position {_line = l} }
         | Just (Range { _start = Position {_line = l'}}, _) <- find ((> l) . _line . _start . fst) bindings
-        = forwardLines (l' - l) r
-      toNextBinding _ r  = r
+        , Just source <- sourceOpt
+        = let textBefore = textInRange (Range {_start = Position {_line = 0, _character = 0}, _end = start}) source
+              commentLines = length . takeWhile (T.isPrefixOf "--") . reverse $ T.lines textBefore
+              inBetween = expandForward (l' - l) $ Range { _start = end, _end = end}
+              emptyLinesCount = length . takeWhile (T.null . T.strip) . T.lines $ textInRange inBetween source
+          in expandBackward commentLines $ expandForward emptyLinesCount r
+      toNextNonEmptyLine _ r = r
 
       matchesBindingName :: String -> HsDecl GhcPs -> Bool
       matchesBindingName b (ValD FunBind {fun_id=L _ x}) = showSDocUnsafe (ppr x) == b
