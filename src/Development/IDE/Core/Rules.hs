@@ -57,6 +57,7 @@ import qualified Data.IntMap.Strict as IntMap
 import Data.IntMap.Strict (IntMap)
 import Data.List
 import qualified Data.Set                                 as Set
+import qualified Data.HashSet                             as HS
 import qualified Data.Text                                as T
 import           Development.IDE.GHC.Error
 import           Development.Shake                        hiding (Diagnostic)
@@ -87,6 +88,7 @@ import Control.Monad.State
 import FastString (FastString(uniq))
 import qualified HeaderInfo as Hdr
 import Data.Time (UTCTime(..))
+import Data.Hashable
 
 -- | This is useful for rules to convert rules that can only produce errors or
 -- a result into the more general IdeResult type that supports producing
@@ -500,6 +502,25 @@ typeCheckRule = define $ \TypeCheck file -> do
     -- for files of interest on every keystroke
     typeCheckRuleDefinition hsc pm SkipGenerationOfInterfaceFiles
 
+data GetKnownFiles = GetKnownFiles
+  deriving (Show, Generic, Eq, Ord)
+instance Hashable GetKnownFiles
+instance NFData   GetKnownFiles
+instance Binary   GetKnownFiles
+type instance RuleResult GetKnownFiles = HS.HashSet NormalizedFilePath
+
+knownFilesRule :: Rules ()
+knownFilesRule = defineEarlyCutOffNoFile $ \GetKnownFiles -> do
+  alwaysRerun
+  fs <- knownFiles
+  pure (BS.pack (show $ hash fs), unhashed fs)
+
+getModuleGraphRule :: Rules ()
+getModuleGraphRule = defineNoFile $ \GetModuleGraph -> do
+  fs <- useNoFile_ GetKnownFiles
+  rawDepInfo <- rawDependencyInformation (HS.toList fs)
+  pure $ processDependencyInformation rawDepInfo
+
 data GenerateInterfaceFiles
     = DoGenerateInterfaceFiles
     | SkipGenerationOfInterfaceFiles
@@ -521,9 +542,14 @@ typeCheckRuleDefinition hsc pm generateArtifacts = do
   addUsageDependencies $ liftIO $ do
     res <- typecheckModule defer hsc pm
     case res of
-      (diags, Just (hsc,tcm)) | DoGenerateInterfaceFiles <- generateArtifacts -> do
+      (diags, Just (hsc,tcm))
+        | DoGenerateInterfaceFiles <- generateArtifacts
+        -- Don't save interface files for modules that compiled due to defering
+        -- type errors, as we won't get proper diagnostics if we load these from
+        -- disk
+        , not $ tmrDeferedError tcm -> do
         diagsHie <- generateAndWriteHieFile hsc (tmrModule tcm)
-        diagsHi  <- generateAndWriteHiFile hsc tcm
+        diagsHi  <- writeHiFile hsc tcm
         return (diags <> diagsHi <> diagsHie, Just tcm)
       (diags, res) ->
         return (diags, snd <$> res)
@@ -802,6 +828,8 @@ mainRule = do
     isFileOfInterestRule
     getModSummaryRule
     isHiFileStableRule
+    getModuleGraphRule
+    knownFilesRule
 
 -- | Given the path to a module src file, this rule returns True if the
 -- corresponding `.hi` file is stable, that is, if it is newer
