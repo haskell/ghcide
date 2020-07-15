@@ -1,16 +1,13 @@
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
 
 {-|
 The logic for setting up a ghcide session by tapping into hie-bios.
 -}
 module Development.IDE.Session (loadSession) where
+
+-- Unfortunately, we cannot use loadSession with ghc-lib since hie-bios uses
+-- the real GHC library and the types are incompatible. Furthermore, when
+-- building with ghc-lib we need to make this Haskell agnostic, so no hie-bios!
 
 import Control.Concurrent.Async
 import Control.Concurrent.Extra
@@ -36,16 +33,13 @@ import Data.Version
 import Development.IDE.Core.OfInterest
 import Development.IDE.Core.Shake
 import Development.IDE.GHC.Util
+import Development.IDE.Session.VersionCheck
 import Development.IDE.Types.Diagnostics
 import Development.IDE.Types.Location
 import Development.IDE.Types.Logger
 import Development.IDE.Types.Options
 import Development.Shake (Action)
 import GHC.Check
--- Only use this for checking against the compile time GHC libDir!
--- Use getRuntimeGhcLibDir from hie-bios instead for everything else
--- otherwise binaries will not be distributable since paths will be baked into them
-import qualified GHC.Paths
 import HIE.Bios
 import HIE.Bios.Environment hiding (getCacheDir)
 import HIE.Bios.Types
@@ -53,7 +47,6 @@ import Language.Haskell.LSP.Core
 import Language.Haskell.LSP.Messages
 import Language.Haskell.LSP.Types
 import System.Directory
-import System.Environment
 import System.FilePath
 import System.Info
 import System.IO
@@ -66,10 +59,11 @@ import Module
 import NameCache
 import Packages
 
--- | Given a directory, return a Shake 'Action' which setups an 'IdeGhcSession'.
+-- | Given a root directory, return a Shake 'Action' which setups an
+-- 'IdeGhcSession' given a file.
 -- Some of the many things this does:
 --
--- * Find the cradle for the directory
+-- * Find the cradle for the file
 -- * Get the session options,
 -- * Get the GHC lib directory
 -- * Make sure the GHC compiletime and runtime versions match
@@ -452,13 +446,13 @@ data ComponentInfo = ComponentInfo
   -- | Internal units, such as local libraries, that this component
   -- is loaded with. These have been extracted from the original
   -- ComponentOptions.
-  , componentInternalUnits :: [InstalledUnitId]
+  , _componentInternalUnits :: [InstalledUnitId]
   -- | All targets of this components.
   , componentTargets :: [Target]
   -- | Filepath which caused the creation of this component
   , componentFP :: NormalizedFilePath
   -- | Component Options used to load the component.
-  , componentCOptions :: ComponentOptions
+  , _componentCOptions :: ComponentOptions
   -- | Maps cradle dependencies, such as `stack.yaml`, or `.cabal` file
   -- to last modification time. See Note [Multi Cradle Dependency Info]
   , componentDependencyInfo :: DependencyInfo
@@ -589,12 +583,7 @@ notifyCradleLoaded fp =
 cradleLoadedMethod :: T.Text
 cradleLoadedMethod = "ghcide/cradle/loaded"
 
-
-
 ----------------------------------------------------------------------------------------------------
-
-ghcVersionChecker :: GhcVersionChecker
-ghcVersionChecker = $$(makeGhcVersionChecker (fromMaybe GHC.Paths.libdir <$> lookupEnv "NIX_GHC_LIBDIR"))
 
 data PackageSetupException
     = PackageSetupException
