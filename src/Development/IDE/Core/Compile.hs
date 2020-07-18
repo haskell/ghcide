@@ -84,8 +84,6 @@ import           System.IO.Extra
 import Control.DeepSeq (rnf)
 import Control.Exception (evaluate)
 import Exception (ExceptionMonad)
-import Data.Time (getCurrentTime)
-import System.IO.Error (isDoesNotExistError)
 import TcEnv (tcLookup)
 
 
@@ -460,10 +458,6 @@ getModSummaryFromImports
   -> Maybe SB.StringBuffer
   -> ExceptT [FileDiagnostic] m ModSummary
 getModSummaryFromImports fp contents = do
-    fileModTime <- liftIO $ getModificationTime fp `catch` \e ->
-        if isDoesNotExistError e
-            then getCurrentTime -- Virtual file case
-            else throwIO e
     (contents, dflags) <- preprocessor fp contents
     (srcImports, textualImports, L _ moduleName) <-
         ExceptT $ liftIO $ first (diagFromErrMsgs "parser" dflags) <$> GHC.getHeaderImports dflags contents fp fp
@@ -482,7 +476,7 @@ getModSummaryFromImports fp contents = do
 #if MIN_GHC_API_VERSION(8,8,0)
                 , ms_hie_date     = Nothing
 #endif
-                , ms_hs_date      = fileModTime
+                , ms_hs_date      = error "use GetModSummary instead of GetModSummaryWithoutTimestamps"
                 , ms_hsc_src      = sourceType
                 -- The contents are used by the GetModSummary rule
                 , ms_hspp_buf     = Just contents

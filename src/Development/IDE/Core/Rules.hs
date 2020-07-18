@@ -86,6 +86,7 @@ import Control.Exception
 import Control.Monad.State
 import FastString (FastString(uniq))
 import qualified HeaderInfo as Hdr
+import Data.Time (getCurrentTime, UTCTime(..))
 
 -- | This is useful for rules to convert rules that can only produce errors or
 -- a result into the more general IdeResult type that supports producing
@@ -165,7 +166,7 @@ getHieFile ide file mod = do
 
 getHomeHieFile :: NormalizedFilePath -> MaybeT IdeAction HieFile
 getHomeHieFile f = do
-  ms <- fst <$> useE GetModSummary f
+  ms <- fst <$> useE GetModSummaryWithoutTimestamps f
   let normal_hie_f = toNormalizedFilePath' hie_f
       hie_f = ml_hie_file $ ms_location ms
 
@@ -293,7 +294,7 @@ getParsedModuleDefinition packageState opt comp_pkgs file contents = do
 getLocatedImportsRule :: Rules ()
 getLocatedImportsRule =
     define $ \GetLocatedImports file -> do
-        ms <- use_ GetModSummary file
+        ms <- use_ GetModSummaryWithoutTimestamps file
         let imports = [(False, imp) | imp <- ms_textual_imps ms] ++ [(True, imp) | imp <- ms_srcimps ms]
         env_eq <- use_ GhcSession file
         let env = hscEnv env_eq
@@ -339,7 +340,7 @@ rawDependencyInformation fs = do
       -- If we have, just return its Id but don't update any of the state.
       -- Otherwise, we need to process its imports.
       checkAlreadyProcessed f $ do
-          al <- lift $ modSummaryToArtifactsLocation f <$> use_ GetModSummary f
+          al <- lift $ modSummaryToArtifactsLocation f <$> use_ GetModSummaryWithoutTimestamps f
           -- Get a fresh FilePathId for the new file
           fId <- getFreshFid al
           -- Adding an edge to the bootmap so we can make sure to
@@ -450,7 +451,7 @@ reportImportCyclesRule =
             where loc = srcSpanToLocation (getLoc imp)
                   fp = toNormalizedFilePath' $ srcSpanToFilename (getLoc imp)
           getModuleName file = do
-           ms <- use_ GetModSummary file
+           ms <- use_ GetModSummaryWithoutTimestamps file
            pure (moduleNameString . moduleName . ms_mod $ ms)
           showCycle mods  = T.intercalate ", " (map T.pack mods)
 
@@ -608,6 +609,8 @@ loadGhcSession = do
 ghcSessionDepsDefinition :: NormalizedFilePath -> Action (IdeResult HscEnvEq)
 ghcSessionDepsDefinition file = do
         hsc <- hscEnv <$> use_ GhcSession file
+        -- We do want the timestamps in the ModSummary for the interactive evaluation functions
+        -- (e.g. in the Eval plugin)
         (ms,_) <- useWithStale_ GetModSummary file
         (deps,_) <- useWithStale_ GetDependencies file
         let tdeps = transitiveModuleDeps deps
@@ -642,7 +645,7 @@ ghcSessionDepsDefinition file = do
 
 getModIfaceFromDiskRule :: Rules ()
 getModIfaceFromDiskRule = defineEarlyCutoff $ \GetModIfaceFromDisk f -> do
-  ms <- use_ GetModSummary f
+  ms <- use_ GetModSummaryWithoutTimestamps f
   (diags_session, mb_session) <- ghcSessionDepsDefinition f
   case mb_session of
       Nothing -> return (Nothing, (diags_session, Nothing))
@@ -657,7 +660,7 @@ getModIfaceFromDiskRule = defineEarlyCutoff $ \GetModIfaceFromDisk f -> do
 
 isHiFileStableRule :: Rules ()
 isHiFileStableRule = define $ \IsHiFileStable f -> do
-    ms <- use_ GetModSummary f
+    ms <- use_ GetModSummaryWithoutTimestamps f
     let hiFile = toNormalizedFilePath'
                 $ case ms_hsc_src ms of
                     HsBootFile -> addBootSuffix (ml_hi_file $ ms_location ms)
@@ -679,15 +682,41 @@ isHiFileStableRule = define $ \IsHiFileStable f -> do
     return ([], Just sourceModified)
 
 getModSummaryRule :: Rules ()
-getModSummaryRule = defineEarlyCutoff $ \GetModSummary f -> do
-    dflags <- hsc_dflags . hscEnv <$> use_ GhcSession f
-    (_, mFileContent) <- getFileContents f
-    modS <- liftIO $ evalWithDynFlags dflags $ runExceptT $
-        getModSummaryFromImports (fromNormalizedFilePath f) (textToStringBuffer <$> mFileContent)
-    case modS of
-        Right ms -> do
-            return ( Just (computeFingerprint f dflags ms), ([], Just ms))
-        Left diags -> return (Nothing, (diags, Nothing))
+getModSummaryRule = do
+    defineEarlyCutoff $ \GetModSummaryWithoutTimestamps f -> do
+        dflags <- hsc_dflags . hscEnv <$> use_ GhcSession f
+        (_, mFileContent) <- getFileContents f
+        let fp = fromNormalizedFilePath f
+        modS <- liftIO $ evalWithDynFlags dflags $ runExceptT $
+                getModSummaryFromImports fp (textToStringBuffer <$> mFileContent)
+        case modS of
+            Right ms -> do
+                let fingerPrint = hash (computeFingerprint f dflags ms)
+                return ( Just (BS.pack $ show fingerPrint) , ([], Just ms))
+            Left diags -> return (Nothing, (diags, Nothing))
+
+    defineEarlyCutoff $ \GetModSummary f -> do
+        ms <- use GetModSummaryWithoutTimestamps f
+        case ms of
+            Just msWithoutTimestamps -> do
+                isFileOfInterest <- use_ IsFileOfInterest f
+                let fp = fromNormalizedFilePath f
+                -- Get the modification time from the file system instead of Shake
+                --   * For non vfs this is correct, the 'FileVersion' times stored by Shake are opaque anyway
+                --   * For vfs the modification time is assumed to be the current time
+                fileModTime <- liftIO $ if isFileOfInterest
+                    then getCurrentTime
+                    else getModificationTime fp
+                let ms = msWithoutTimestamps
+                        { ms_hie_date = Nothing
+                        , ms_hs_date = fileModTime
+                        , ms_iface_date = Nothing
+                        }
+                dflags <- hsc_dflags . hscEnv <$> use_ GhcSession f
+                -- include the mod time in the fingerprint
+                let fp = BS.pack $ show $ hash (computeFingerprint f dflags ms, hashUTC fileModTime)
+                return (Just fp, ([], Just ms))
+            Nothing -> return (Nothing, ([], Nothing))
     where
         -- Compute a fingerprint from the contents of `ModSummary`,
         -- eliding the timestamps and other non relevant fields.
@@ -702,8 +731,9 @@ getModSummaryRule = defineEarlyCutoff $ \GetModSummary f -> do
                     )
                 fingerPrintImports = map (fmap uniq *** (moduleNameString . unLoc))
                 opts = Hdr.getOptions dflags (fromJust ms_hspp_buf) (fromNormalizedFilePath f)
-                fp = hash fingerPrint
-            in BS.pack (show fp)
+            in fingerPrint
+
+        hashUTC UTCTime{..} = (fromEnum utctDay, fromEnum utctDayTime)
 
 getModIfaceRule :: Rules ()
 getModIfaceRule = defineEarlyCutoff $ \GetModIface f -> do
