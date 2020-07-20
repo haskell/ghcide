@@ -86,7 +86,7 @@ import Control.Exception
 import Control.Monad.State
 import FastString (FastString(uniq))
 import qualified HeaderInfo as Hdr
-import Data.Time (getCurrentTime, UTCTime(..))
+import Data.Time (UTCTime(..))
 
 -- | This is useful for rules to convert rules that can only produce errors or
 -- a result into the more general IdeResult type that supports producing
@@ -239,8 +239,7 @@ getParsedModuleRule = defineEarlyCutoff $ \GetParsedModule file -> do
         -- parsed module
         comp_pkgs = mapMaybe (fmap fst . mkImportDirs (hsc_dflags hsc)) (deps sess)
     opt <- getIdeOptions
-    (fv, contents) <- getFileContents file
-    modTime <- maybe (liftIO getCurrentTime) return $ modificationTime fv
+    (modTime, contents) <- getFileContents file
 
     let dflags    = hsc_dflags hsc
         mainParse = getParsedModuleDefinition hsc opt comp_pkgs file modTime contents
@@ -688,8 +687,7 @@ getModSummaryRule :: Rules ()
 getModSummaryRule = do
     defineEarlyCutoff $ \GetModSummary f -> do
         dflags <- hsc_dflags . hscEnv <$> use_ GhcSession f
-        (fv, mFileContent) <- getFileContents f
-        modTime <- maybe (liftIO getCurrentTime) return $ modificationTime fv
+        (modTime, mFileContent) <- getFileContents f
         let fp = fromNormalizedFilePath f
         modS <- liftIO $ evalWithDynFlags dflags $ runExceptT $
                 getModSummaryFromImports fp modTime (textToStringBuffer <$> mFileContent)
@@ -756,9 +754,9 @@ regenerateHiFile sess f = do
         -- these packages as we have already dealt with what they map to.
         comp_pkgs = mapMaybe (fmap fst . mkImportDirs (hsc_dflags hsc)) (deps sess)
     opt <- getIdeOptions
-    (fv, contents) <- getFileContents f
-    modTime <- maybe (liftIO getCurrentTime) return $ modificationTime fv
-    -- Embed --haddocks in the interface file
+    (modTime, contents) <- getFileContents f
+
+    -- Embed haddocks in the interface file
     (_, (diags, mb_pm)) <- liftIO $ getParsedModuleDefinition (withOptHaddock hsc) opt comp_pkgs f modTime contents
     (diags, mb_pm) <- case mb_pm of
         Just _ -> return (diags, mb_pm)

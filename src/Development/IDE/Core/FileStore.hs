@@ -175,9 +175,13 @@ ideTryIOException fp act =
       (\(e :: IOException) -> ideErrorText fp $ T.pack $ show e)
       <$> try act
 
-
-getFileContents :: NormalizedFilePath -> Action (FileVersion, Maybe T.Text)
-getFileContents = use_ GetFileContents
+-- | Returns the modification time and the contents.
+--   For VFS paths, the modification time is the current time.
+getFileContents :: NormalizedFilePath -> Action (UTCTime, Maybe T.Text)
+getFileContents f = do
+    (fv, txt) <- use_ GetFileContents f
+    modTime <- maybe (liftIO getCurrentTime) return $ modificationTime fv
+    return (modTime, txt)
 
 fileStoreRules :: VFSHandle -> Rules ()
 fileStoreRules vfs = do
