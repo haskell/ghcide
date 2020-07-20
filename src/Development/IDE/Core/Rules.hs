@@ -645,8 +645,6 @@ ghcSessionDepsDefinition file = do
 
 getModIfaceFromDiskRule :: Rules ()
 getModIfaceFromDiskRule = defineEarlyCutoff $ \GetModIfaceFromDisk f -> do
-    -- We do want the timestamps in the ModSummary for the interactive evaluation functions
-    -- (e.g. in the Eval plugin)
   ms <- use_ GetModSummary f
   (diags_session, mb_session) <- ghcSessionDepsDefinition f
   case mb_session of
