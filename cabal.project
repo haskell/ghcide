@@ -6,7 +6,7 @@ allow-newer:
 	diagrams-core:base,
 	diagrams-lib:base,
 	diagrams-postscript:base,
-    diagrams-svg:base,
+  diagrams-svg:base,
 	dual-tree:base,
 	force-layout:base,
 	monoid-extras:base,
