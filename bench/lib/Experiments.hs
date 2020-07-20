@@ -31,7 +31,8 @@ import Language.Haskell.LSP.Types.Capabilities
 import Numeric.Natural
 import Options.Applicative
 import System.Directory
-import System.FilePath ((</>))
+import System.FilePath ((</>), (<.>))
+import System.Directory
 import System.Process
 import System.Time.Extra
 import Text.ParserCombinators.ReadP (readP_to_S)
@@ -146,6 +147,7 @@ data Config = Config
   { verbosity :: !Verbosity,
     -- For some reason, the Shake profile files are truncated and won't load
     shakeProfiling :: !(Maybe FilePath),
+    otProfiling :: !(Maybe FilePath),
     outputCSV :: !FilePath,
     buildTool :: !CabalStack,
     ghcideOptions :: ![String],
@@ -177,6 +179,7 @@ configP =
          <|> pure Normal
         )
     <*> optional (strOption (long "shake-profiling" <> metavar "PATH"))
+    <*> optional (strOption (long "ot-profiling" <> metavar "DIR" <> help "Enable OpenTelemetry and write eventlog for each benchmark in DIR"))
     <*> strOption (long "csv" <> metavar "PATH" <> value "results.csv" <> showDefault)
     <*> flag Cabal Stack (long "stack" <> help "Use stack (by default cabal is used)")
     <*> many (strOption (long "ghcide-options" <> help "additional options for ghcide"))
@@ -236,6 +239,10 @@ runBenchmarks allBenchmarks = do
   let benchmarks = [ b{samples = fromMaybe (samples b) (repetitions ?config) }
                    | b <- allBenchmarks
                    , select b ]
+
+  whenJust (otProfiling ?config) $ \eventlogDir ->
+      createDirectoryIfMissing True eventlogDir
+
   results <- forM benchmarks $ \b@Bench{name} ->
                 let run dir = runSessionWithConfig conf (cmd name dir) lspTestCaps dir
                 in (b,) <$> runBench run b
@@ -302,14 +309,18 @@ runBenchmarks allBenchmarks = do
           "--cwd",
           dir,
           "+RTS",
-          "-S" <> gcStats name,
-          "-RTS"
+          "-S" <> gcStats name
         ]
+          ++ case otProfiling ?config of
+            Just dir -> ["-l", "-ol" ++ (dir </> (map (\c -> if c == ' ' then '-' else c) name) <.> "eventlog")]
+            Nothing -> []
+          ++ [ "-RTS" ]
           ++ ghcideOptions ?config
           ++ concat
             [ ["--shake-profiling", path] | Just path <- [shakeProfiling ?config]
             ]
           ++ ["--verbose" | verbose ?config]
+          ++ if isJust (otProfiling ?config) then [ "--ot-profiling" ] else []
     lspTestCaps =
       fullCaps {_window = Just $ WindowClientCapabilities $ Just True}
     conf =
