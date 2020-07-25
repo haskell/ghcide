@@ -18,7 +18,7 @@ module Development.IDE.Plugin.CodeAction
     ) where
 
 import           Language.Haskell.LSP.Types
-import Control.Monad (join)
+import Control.Monad (join, guard)
 import Development.IDE.Plugin
 import Development.IDE.GHC.Compat
 import Development.IDE.Core.Rules
@@ -57,6 +57,7 @@ import Data.Function
 import Control.Arrow ((>>>))
 import Data.Functor
 import Control.Applicative ((<|>))
+import Safe (atMay)
 
 plugin :: Plugin c
 plugin = codeActionPluginWithRules rules codeAction <> Plugin mempty setHandlersCodeLens
@@ -601,8 +602,8 @@ removeRedundantConstraints mContents Diagnostic{..}
   , True <- "Redundant constraint" `T.isInfixOf` _message
   , Just typeSignatureName <- findTypeSignatureName _message
   , Just redundantConstraintList <- findRedundantConstraints _message
-  = let constraints = findConstraints contents typeSignatureName
-        constraintList = parseConstraints constraints
+  , Just constraints <- findConstraints contents typeSignatureName
+  = let constraintList = parseConstraints constraints
         newConstraints = buildNewConstraints constraintList redundantConstraintList
         typeSignatureLine = findTypeSignatureLine contents typeSignatureName
         typeSignatureFirstChar = T.length $ typeSignatureName <> " :: "
@@ -614,7 +615,9 @@ removeRedundantConstraints mContents Diagnostic{..}
   | otherwise = []
     where
       parseConstraints :: T.Text -> [T.Text]
-      parseConstraints = stripConstraintsParens >>> T.splitOn ", "
+      parseConstraints t = t
+        & (T.strip >>> stripConstraintsParens >>> T.splitOn ",")
+        <&> T.strip
 
       stripConstraintsParens :: T.Text -> T.Text
       stripConstraintsParens constraints =
@@ -630,13 +633,16 @@ removeRedundantConstraints mContents Diagnostic{..}
         & (`matchRegex` "Redundant constraints?: (.+)")
         <&> (head >>> parseConstraints)
 
-      findConstraints :: T.Text -> T.Text -> T.Text
-      findConstraints contents typeSignatureName = contents
-        & T.splitOn (typeSignatureName <> " ::")
-        & last
-        & T.splitOn "=>"
-        & head
-        & T.strip
+      -- If the type signature is not formatted as expected (arbitrary number of spaces,
+      -- line feeds...), just fail.
+      findConstraints :: T.Text -> T.Text -> Maybe T.Text
+      findConstraints contents typeSignatureName = do
+        constraints <- contents
+          & T.splitOn (typeSignatureName <> " :: ")
+          & (`atMay` 1)
+          >>= (T.splitOn " => " >>> (`atMay` 0))
+        guard $ not $ "\n" `T.isInfixOf` constraints || T.strip constraints /= constraints
+        return constraints
 
       formatConstraints :: [T.Text] -> T.Text
       formatConstraints [] = ""

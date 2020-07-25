@@ -1575,6 +1575,19 @@ removeRedundantConstraintsTests = let
         , "foo x = x == 1"
         ]
 
+  typeSignatureSpaces :: T.Text
+  typeSignatureSpaces = T.unlines $ header <>
+    [ "foo ::  (Num a, Eq a, Monoid a)  => a -> Bool"
+    , "foo x = x == 1"
+    ]
+
+  typeSignatureMultipleLines :: T.Text
+  typeSignatureMultipleLines = T.unlines $ header <>
+    [ "foo :: (Num a, Eq a, Monoid a)"
+    , "=> a -> Bool"
+    , "foo x = x == 1"
+    ]
+
   check :: T.Text -> T.Text -> T.Text -> TestTree
   check actionTitle originalCode expectedCode = testSession (T.unpack actionTitle) $ do
     doc <- createDoc "Testing.hs" "haskell" originalCode
@@ -1584,6 +1597,13 @@ removeRedundantConstraintsTests = let
     executeCodeAction chosenAction
     modifiedCode <- documentContents doc
     liftIO $ expectedCode @=? modifiedCode
+
+  checkPeculiarFormatting :: String -> T.Text -> TestTree
+  checkPeculiarFormatting title code = testSession title $ do
+    doc <- createDoc "Testing.hs" "haskell" code
+    _ <- waitForDiagnostics
+    actionsOrCommands <- getCodeActions doc (Range (Position 4 0) (Position 4 maxBound))
+    liftIO $ assertBool "Found some actions" (null actionsOrCommands)
 
   in testGroup "remove redundant function constraints"
   [ check
@@ -1598,6 +1618,12 @@ removeRedundantConstraintsTests = let
     "Remove redundant constraints `(Monoid a, Show a)` from the context of the type signature for `foo`"
     (redundantMixedConstraintsCode $ Just "Monoid a, Show a")
     (redundantMixedConstraintsCode Nothing)
+  , checkPeculiarFormatting
+    "should do nothing when constraints contain an arbitrary number of spaces"
+    typeSignatureSpaces
+  , checkPeculiarFormatting
+    "should do nothing when constraints contain line feeds"
+    typeSignatureMultipleLines
   ]
 
 addSigActionTests :: TestTree
