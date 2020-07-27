@@ -219,10 +219,10 @@ suggestExportUnusedTopBinding ParsedModule{pm_parsed_source = L _ HsModule{..}} 
                                 (\(L l b) -> if isTopLevel $ srcSpanToRange l
                                                 then exportsAs b else Nothing)
                             $ hsmodDecls
-  , Just pos <- _start . getLocatedRange <$> hsmodExports
+  , Just pos <- _end . getLocatedRange <$> hsmodExports
   , Just needComma <- not . null . unLoc <$> hsmodExports
-  , let exportName = printExport exportType name <> (if needComma then "," else "")
-        insertPos = pos {_character = succ $ _character pos}
+  , let exportName = (if needComma then "," else "") <> printExport exportType name 
+        insertPos = pos {_character = pred $ _character pos}
   = [("Export ‘" <> name <> "’", [TextEdit (Range insertPos insertPos) exportName])]
   | otherwise = []
   where

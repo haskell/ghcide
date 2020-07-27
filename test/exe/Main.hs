@@ -1626,13 +1626,15 @@ exportUnusedTests = testGroup "export unused actions"
     [ testSession "empty exports" $ template
         (T.unlines
               [ "{-# OPTIONS_GHC -Wunused-top-binds #-}"
-              , "module A () where"
+              , "module A ("
+              , ") where"
               , "foo = id"])
-        (R 2 0 2 3)
+        (R 3 0 3 3)
         "Export ‘foo’"
         (Just $ T.unlines
               [ "{-# OPTIONS_GHC -Wunused-top-binds #-}" 
-              , "module A (foo) where"
+              , "module A ("
+              , "foo) where"
               , "foo = id"])
     , testSession "single line explicit exports" $ template
         (T.unlines
@@ -1644,7 +1646,7 @@ exportUnusedTests = testGroup "export unused actions"
         "Export ‘bar’"
         (Just $ T.unlines
               [ "{-# OPTIONS_GHC -Wunused-top-binds #-}" 
-              , "module A (bar,foo) where"
+              , "module A (foo,bar) where"
               , "foo = id"
               , "bar = foo"])
     , testSession "multi line explicit exports" $ template
@@ -1660,8 +1662,8 @@ exportUnusedTests = testGroup "export unused actions"
         (Just $ T.unlines
               [ "{-# OPTIONS_GHC -Wunused-top-binds #-}" 
               , "module A"
-              , "  (bar,"
-              , "    foo) where"
+              , "  ("
+              , "    foo,bar) where"
               , "foo = id"
               , "bar = foo"])
     , testSession "unused pattern synonym" $ template
