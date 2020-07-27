@@ -486,6 +486,7 @@ codeActionTests = testGroup "code actions"
   , deleteUnusedDefinitionTests
   , addInstanceConstraintTests
   , addFunctionConstraintTests
+  , removeRedundantConstraintsTests
   , addTypeAnnotationsToLiteralsTest
   , exportUnusedTests
   ]
@@ -1554,6 +1555,81 @@ addFunctionConstraintTests = let
     (incompleteConstraintSourceCode2 $ Just "Eq c")
   ]
 
+removeRedundantConstraintsTests :: TestTree
+removeRedundantConstraintsTests = let
+  header =
+    [ "{-# OPTIONS_GHC -Wredundant-constraints #-}"
+    , "module Testing where"
+    , ""
+    ]
+
+  redundantConstraintsCode :: Maybe T.Text -> T.Text
+  redundantConstraintsCode mConstraint =
+    let constraint = maybe "" (\c -> "" <> c <> " => ") mConstraint
+      in T.unlines $ header <>
+        [ "foo :: " <> constraint <> "a -> a"
+        , "foo = id"
+        ]
+
+  redundantMixedConstraintsCode :: Maybe T.Text -> T.Text
+  redundantMixedConstraintsCode mConstraint =
+    let constraint = maybe "(Num a, Eq a)" (\c -> "(Num a, Eq a, " <> c <> ")") mConstraint
+      in T.unlines $ header <>
+        [ "foo :: " <> constraint <> " => a -> Bool"
+        , "foo x = x == 1"
+        ]
+
+  typeSignatureSpaces :: T.Text
+  typeSignatureSpaces = T.unlines $ header <>
+    [ "foo ::  (Num a, Eq a, Monoid a)  => a -> Bool"
+    , "foo x = x == 1"
+    ]
+
+  typeSignatureMultipleLines :: T.Text
+  typeSignatureMultipleLines = T.unlines $ header <>
+    [ "foo :: (Num a, Eq a, Monoid a)"
+    , "=> a -> Bool"
+    , "foo x = x == 1"
+    ]
+
+  check :: T.Text -> T.Text -> T.Text -> TestTree
+  check actionTitle originalCode expectedCode = testSession (T.unpack actionTitle) $ do
+    doc <- createDoc "Testing.hs" "haskell" originalCode
+    _ <- waitForDiagnostics
+    actionsOrCommands <- getCodeActions doc (Range (Position 4 0) (Position 4 maxBound))
+    chosenAction <- liftIO $ pickActionWithTitle actionTitle actionsOrCommands
+    executeCodeAction chosenAction
+    modifiedCode <- documentContents doc
+    liftIO $ expectedCode @=? modifiedCode
+
+  checkPeculiarFormatting :: String -> T.Text -> TestTree
+  checkPeculiarFormatting title code = testSession title $ do
+    doc <- createDoc "Testing.hs" "haskell" code
+    _ <- waitForDiagnostics
+    actionsOrCommands <- getCodeActions doc (Range (Position 4 0) (Position 4 maxBound))
+    liftIO $ assertBool "Found some actions" (null actionsOrCommands)
+
+  in testGroup "remove redundant function constraints"
+  [ check
+    "Remove redundant constraint `Eq a` from the context of the type signature for `foo`"
+    (redundantConstraintsCode $ Just "Eq a")
+    (redundantConstraintsCode Nothing)
+  , check
+    "Remove redundant constraints `(Eq a, Monoid a)` from the context of the type signature for `foo`"
+    (redundantConstraintsCode $ Just "(Eq a, Monoid a)")
+    (redundantConstraintsCode Nothing)
+  , check
+    "Remove redundant constraints `(Monoid a, Show a)` from the context of the type signature for `foo`"
+    (redundantMixedConstraintsCode $ Just "Monoid a, Show a")
+    (redundantMixedConstraintsCode Nothing)
+  , checkPeculiarFormatting
+    "should do nothing when constraints contain an arbitrary number of spaces"
+    typeSignatureSpaces
+  , checkPeculiarFormatting
+    "should do nothing when constraints contain line feeds"
+    typeSignatureMultipleLines
+  ]
+
 addSigActionTests :: TestTree
 addSigActionTests = let
   header = "{-# OPTIONS_GHC -Wmissing-signatures -Wmissing-pattern-synonym-signatures #-}"
@@ -1939,6 +2015,7 @@ findDefinitionAndHoverTests = let
   lstL43 = Position 47 12  ;  litL   = [ExpectHoverText ["[8391 :: Int, 6268]"]]
   outL45 = Position 49  3  ;  outSig = [ExpectHoverText ["outer", "Bool"], mkR 46 0 46 5]
   innL48 = Position 52  5  ;  innSig = [ExpectHoverText ["inner", "Char"], mkR 49 2 49 7]
+  cccL17 = Position 17 11  ;  docLink = [ExpectHoverText ["[Documentation](file://"]]
 #if MIN_GHC_API_VERSION(8,6,0)
   imported = Position 56 13 ; importedSig = getDocUri "Foo.hs" >>= \foo -> return [ExpectHoverText ["foo", "Foo", "Haddock"], mkL foo 5 0 5 3]
   reexported = Position 55 14 ; reexportedSig = getDocUri "Bar.hs" >>= \bar -> return [ExpectHoverText ["Bar", "Bar", "Haddock"], mkL bar 3 0 3 14]
@@ -1948,7 +2025,7 @@ findDefinitionAndHoverTests = let
 #endif
   in
   mkFindTests
-  --     def    hover  look       expect
+  --      def    hover  look       expect
   [ test  yes    yes    fffL4      fff           "field in record definition"
   , test  broken broken fffL8      fff           "field in record construction     #71"
   , test  yes    yes    fffL14     fff           "field name used as accessor"          -- 120 in Calculate.hs
@@ -1984,6 +2061,7 @@ findDefinitionAndHoverTests = let
   , test  no     yes    docL41     constr        "type constraint in hover info   #283"
   , test  broken broken outL45     outSig        "top-level signature             #310"
   , test  broken broken innL48     innSig        "inner     signature             #310"
+  , test  no     yes    cccL17     docLink       "Haddock html links"
   , testM yes    yes    imported   importedSig   "Imported symbol"
   , testM yes    yes    reexported reexportedSig "Imported symbol (reexported)"
   ]
