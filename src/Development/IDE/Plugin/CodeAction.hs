@@ -214,11 +214,10 @@ suggestExportUnusedTopBinding ParsedModule{pm_parsed_source = L _ HsModule{..}} 
   | Just [name] <- matchRegex _message ".*Defined but not used: ‘([^ ]+)’"
                    <|> matchRegex _message ".*Defined but not used: type constructor or class ‘([^ ]+)’"
                    <|> matchRegex _message ".*Defined but not used: data constructor ‘([^ ]+)’"
-  , Just (exportType, _) <- listToMaybe
-                            . filter (matchWithDiagnostic _range . snd)
-                            . catMaybes
-                            . map (\(L l b) -> if isTopLevel $ srcSpanToRange l
-                                                  then exportsAs b else Nothing)
+  , Just (exportType, _) <- find (matchWithDiagnostic _range . snd)
+                            . mapMaybe
+                                (\(L l b) -> if isTopLevel $ srcSpanToRange l
+                                                then exportsAs b else Nothing)
                             $ hsmodDecls
   , Just pos <- _start . getLocatedRange <$> hsmodExports
   , Just needComma <- not . null . unLoc <$> hsmodExports
@@ -244,12 +243,12 @@ suggestExportUnusedTopBinding ParsedModule{pm_parsed_source = L _ HsModule{..}} 
     isTopLevel l = (_character . _start) l == 0
 
     exportsAs :: HsDecl p -> Maybe (ExportsAs, Located (IdP p))
-    exportsAs (ValD FunBind {fun_id})          = Just $ (ExportName, fun_id)
-    exportsAs (ValD (PatSynBind PSB {psb_id})) = Just $ (ExportPattern, psb_id)
-    exportsAs (TyClD (SynDecl{tcdLName}))      = Just $ (ExportName, tcdLName)
-    exportsAs (TyClD (DataDecl{tcdLName}))     = Just $ (ExportAll, tcdLName)
-    exportsAs (TyClD (ClassDecl{tcdLName}))    = Just $ (ExportAll, tcdLName)
-    exportsAs (TyClD (FamDecl{tcdFam}))        = Just $ (ExportAll, fdLName tcdFam)
+    exportsAs (ValD FunBind {fun_id})          = Just (ExportName, fun_id)
+    exportsAs (ValD (PatSynBind PSB {psb_id})) = Just (ExportPattern, psb_id)
+    exportsAs (TyClD SynDecl{tcdLName})      = Just (ExportName, tcdLName)
+    exportsAs (TyClD DataDecl{tcdLName})     = Just (ExportAll, tcdLName)
+    exportsAs (TyClD ClassDecl{tcdLName})    = Just (ExportAll, tcdLName)
+    exportsAs (TyClD FamDecl{tcdFam})        = Just (ExportAll, fdLName tcdFam)
     exportsAs _                                = Nothing
 
 suggestAddTypeAnnotationToSatisfyContraints :: Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
