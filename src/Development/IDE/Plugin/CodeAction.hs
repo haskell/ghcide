@@ -41,7 +41,6 @@ import Language.Haskell.LSP.Types
 import qualified Data.Rope.UTF16 as Rope
 import Data.Aeson.Types (toJSON, fromJSON, Value(..), Result(..))
 import Data.Char
-import Data.Either (isLeft)
 import Data.Maybe
 import Data.List.Extra
 import qualified Data.Text as T
