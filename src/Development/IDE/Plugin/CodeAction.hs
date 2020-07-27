@@ -212,42 +212,37 @@ suggestExportUnusedTopBinding ParsedModule{pm_parsed_source = L _ HsModule{..}} 
 -- Foo.hs:4:1: warning: [-Wunused-top-binds] Defined but not used: ‘f’
 -- Foo.hs:5:1: warning: [-Wunused-top-binds] Defined but not used: type constructor or class ‘F’
 -- Foo.hs:6:1: warning: [-Wunused-top-binds] Defined but not used: data constructor ‘Bar’
-  | Just matched <- matchUnused
-  , let name = either id id matched
+  | Just [name] <- matchRegex _message ".*Defined but not used: ‘([^ ]+)’"
+                   <|> matchRegex _message ".*Defined but not used: type constructor or class ‘([^ ]+)’"
+                   <|> matchRegex _message ".*Defined but not used: data constructor ‘([^ ]+)’"
   , Just (exportType, _) <- listToMaybe
-                            . filter (matchesName name . snd)
+                            . filter (matchWithDiagnostic _range . snd)
                             . catMaybes
-                            . map (\(L l b) -> if isTopLevel l then exportsAs b else Nothing)
+                            . map (\(L l b) -> if isTopLevel $ srcSpanToRange l
+                                                  then exportsAs b else Nothing)
                             $ hsmodDecls
-  , isLeft matched || (exportType == ExportPattern) -- data constructor are only exported for patterns
-  , Just pos <- _start . srcSpanToRange . getLoc <$> hsmodExports
+  , Just pos <- _start . getLocatedRange <$> hsmodExports
   , Just needComma <- not . null . unLoc <$> hsmodExports
   , let exportName = printExport exportType name <> (if needComma then "," else "")
         insertPos = pos {_character = succ $ _character pos}
   = [("Export ‘" <> name <> "’", [TextEdit (Range insertPos insertPos) exportName])]
   | otherwise = []
   where
-    -- The either is used to identify unused data constructors (needed for patterns)
-    matchUnused :: Maybe (Either T.Text T.Text)
-    matchUnused
-      | Just [name] <-
-          matchRegex _message ".*Defined but not used: ‘([^ ]+)’" = Just $ Left name
-      | Just [name] <-
-          matchRegex _message ".*Defined but not used: type constructor or class ‘([^ ]+)’" = Just $ Left name
-      | Just [dataCtor] <-
-          matchRegex _message ".*Defined but not used: data constructor ‘([^ ]+)’" = Just $ Right dataCtor 
-      | otherwise = Nothing
+    getLocatedRange :: Located a -> Range
+    getLocatedRange = srcSpanToRange . getLoc
+
+    matchWithDiagnostic :: Range -> Located (IdP GhcPs) -> Bool
+    matchWithDiagnostic Range{_start=l,_end=r} x =
+      let loc = _start . getLocatedRange $ x
+       in loc >= l && loc <= r
 
     printExport :: ExportsAs -> T.Text -> T.Text
     printExport ExportName x = x
     printExport ExportPattern x = "pattern " <> x
     printExport ExportAll x = x <> "(..)"
 
-    isTopLevel :: SrcSpan -> Bool
-    isTopLevel l = (_character . _start . srcSpanToRange) l == 0
-
-    matchesName :: T.Text -> Located (IdP GhcPs) -> Bool
-    matchesName b (L _ x) = b == (T.pack . showSDocUnsafe . ppr $ x)
+    isTopLevel :: Range -> Bool
+    isTopLevel l = (_character . _start) l == 0
 
     exportsAs :: HsDecl p -> Maybe (ExportsAs, Located (IdP p))
     exportsAs (ValD FunBind {fun_id})          = Just $ (ExportName, fun_id)
