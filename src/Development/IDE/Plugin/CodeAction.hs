@@ -155,7 +155,7 @@ suggestAction dflags packageExports ideOptions parsedModule text diag = concat
     ++ suggestRemoveRedundantImport pm text diag
     ++ suggestNewImport packageExports pm diag
     ++ suggestDeleteTopBinding pm diag
-    ++ suggestExportUnusedTopBinding pm diag
+    ++ suggestExportUnusedTopBinding text pm diag
     | Just pm <- [parsedModule]]
 
 
@@ -208,12 +208,13 @@ suggestDeleteTopBinding ParsedModule{pm_parsed_source = L _ HsModule{hsmodDecls}
 data ExportsAs = ExportName | ExportPattern | ExportAll
   deriving (Eq)
 
-suggestExportUnusedTopBinding :: ParsedModule -> Diagnostic -> [(T.Text, [TextEdit])]
-suggestExportUnusedTopBinding ParsedModule{pm_parsed_source = L _ HsModule{..}} Diagnostic{..}
+suggestExportUnusedTopBinding :: Maybe T.Text -> ParsedModule -> Diagnostic -> [(T.Text, [TextEdit])]
+suggestExportUnusedTopBinding srcOpt ParsedModule{pm_parsed_source = L _ HsModule{..}} Diagnostic{..}
 -- Foo.hs:4:1: warning: [-Wunused-top-binds] Defined but not used: ‘f’
 -- Foo.hs:5:1: warning: [-Wunused-top-binds] Defined but not used: type constructor or class ‘F’
 -- Foo.hs:6:1: warning: [-Wunused-top-binds] Defined but not used: data constructor ‘Bar’
-  | Just [name] <- matchRegex _message ".*Defined but not used: ‘([^ ]+)’"
+  | Just source <- srcOpt
+  , Just [name] <- matchRegex _message ".*Defined but not used: ‘([^ ]+)’"
                    <|> matchRegex _message ".*Defined but not used: type constructor or class ‘([^ ]+)’"
                    <|> matchRegex _message ".*Defined but not used: data constructor ‘([^ ]+)’"
   , Just (exportType, _) <- find (matchWithDiagnostic _range . snd)
@@ -222,12 +223,20 @@ suggestExportUnusedTopBinding ParsedModule{pm_parsed_source = L _ HsModule{..}} 
                                                 then exportsAs b else Nothing)
                             $ hsmodDecls
   , Just pos <- _end . getLocatedRange <$> hsmodExports
-  , Just needComma <- not . null . unLoc <$> hsmodExports
+  , Just needComma <- needsComma source <$> hsmodExports
   , let exportName = (if needComma then "," else "") <> printExport exportType name 
         insertPos = pos {_character = pred $ _character pos}
   = [("Export ‘" <> name <> "’", [TextEdit (Range insertPos insertPos) exportName])]
   | otherwise = []
   where
+    -- we get the last export and the closing bracket and check for comma in that range
+    needsComma :: T.Text -> Located [LIE GhcPs] -> Bool
+    needsComma _ (L _ []) = False
+    needsComma source x@(L _ exports) =
+      let closeParan = _end $ getLocatedRange x
+          lastExport = _end . getLocatedRange $ last exports
+      in not $ T.isInfixOf "," $ textInRange (Range lastExport closeParan) source
+
     getLocatedRange :: Located a -> Range
     getLocatedRange = srcSpanToRange . getLoc
 

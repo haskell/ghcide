@@ -1742,6 +1742,23 @@ exportUnusedTests = testGroup "export unused actions"
               , "    foo,bar) where"
               , "foo = id"
               , "bar = foo"])
+    , testSession "export list ends in comma" $ template
+        (T.unlines
+              [ "{-# OPTIONS_GHC -Wunused-top-binds #-}" 
+              , "module A"
+              , "  (foo,"
+              , "  ) where"
+              , "foo = id"
+              , "bar = foo"])
+        (R 4 0 4 3)
+        "Export ‘bar’"
+        (Just $ T.unlines
+              [ "{-# OPTIONS_GHC -Wunused-top-binds #-}" 
+              , "module A"
+              , "  (foo,"
+              , "  bar) where"
+              , "foo = id"
+              , "bar = foo"])
     , testSession "unused pattern synonym" $ template
         (T.unlines
               [ "{-# OPTIONS_GHC -Wunused-top-binds #-}" 
