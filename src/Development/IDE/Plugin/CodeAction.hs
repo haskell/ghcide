@@ -17,7 +17,6 @@ module Development.IDE.Plugin.CodeAction
     , executeAddSignatureCommand
     ) where
 
-import           Language.Haskell.LSP.Types
 import Control.Monad (join)
 import Development.IDE.Plugin
 import Development.IDE.GHC.Compat
@@ -38,9 +37,11 @@ import qualified Data.HashMap.Strict as Map
 import qualified Language.Haskell.LSP.Core as LSP
 import Language.Haskell.LSP.VFS
 import Language.Haskell.LSP.Messages
+import Language.Haskell.LSP.Types
 import qualified Data.Rope.UTF16 as Rope
 import Data.Aeson.Types (toJSON, fromJSON, Value(..), Result(..))
 import Data.Char
+import Data.Either (isLeft)
 import Data.Maybe
 import Data.List.Extra
 import qualified Data.Text as T
@@ -153,6 +154,7 @@ suggestAction dflags packageExports ideOptions parsedModule text diag = concat
     ++ suggestRemoveRedundantImport pm text diag
     ++ suggestNewImport packageExports pm diag
     ++ suggestDeleteTopBinding pm diag
+    ++ suggestExportUnusedTopBinding pm diag
     | Just pm <- [parsedModule]]
 
 
@@ -202,6 +204,59 @@ suggestDeleteTopBinding ParsedModule{pm_parsed_source = L _ HsModule{hsmodDecls}
       matchesBindingName b (SigD (TypeSig (L _ x:_) _)) = showSDocUnsafe (ppr x) == b
       matchesBindingName _ _ = False
 
+data ExportsAs = ExportName | ExportPattern | ExportAll
+  deriving (Eq)
+
+suggestExportUnusedTopBinding :: ParsedModule -> Diagnostic -> [(T.Text, [TextEdit])]
+suggestExportUnusedTopBinding ParsedModule{pm_parsed_source = L _ HsModule{..}} Diagnostic{..}
+-- Foo.hs:4:1: warning: [-Wunused-top-binds] Defined but not used: ‘f’
+-- Foo.hs:5:1: warning: [-Wunused-top-binds] Defined but not used: type constructor or class ‘F’
+-- Foo.hs:6:1: warning: [-Wunused-top-binds] Defined but not used: data constructor ‘Bar’
+  | Just matched <- matchUnused
+  , let name = either id id matched
+  , Just (exportType, _) <- listToMaybe
+                            . filter (matchesName name . snd)
+                            . catMaybes
+                            . map (\(L l b) -> if isTopLevel l then exportsAs b else Nothing)
+                            $ hsmodDecls
+  , isLeft matched || (exportType == ExportPattern) -- data constructor are only exported for patterns
+  , Just pos <- _start . srcSpanToRange . getLoc <$> hsmodExports
+  , Just needComma <- not . null . unLoc <$> hsmodExports
+  , let exportName = printExport exportType name <> (if needComma then "," else "")
+        insertPos = pos {_character = succ $ _character pos}
+  = [("Export ‘" <> name <> "’", [TextEdit (Range insertPos insertPos) exportName])]
+  | otherwise = []
+  where
+    -- The either is used to identify unused data constructors (needed for patterns)
+    matchUnused :: Maybe (Either T.Text T.Text)
+    matchUnused
+      | Just [name] <-
+          matchRegex _message ".*Defined but not used: ‘([^ ]+)’" = Just $ Left name
+      | Just [name] <-
+          matchRegex _message ".*Defined but not used: type constructor or class ‘([^ ]+)’" = Just $ Left name
+      | Just [dataCtor] <-
+          matchRegex _message ".*Defined but not used: data constructor ‘([^ ]+)’" = Just $ Right dataCtor 
+      | otherwise = Nothing
+
+    printExport :: ExportsAs -> T.Text -> T.Text
+    printExport ExportName x = x
+    printExport ExportPattern x = "pattern " <> x
+    printExport ExportAll x = x <> "(..)"
+
+    isTopLevel :: SrcSpan -> Bool
+    isTopLevel l = (_character . _start . srcSpanToRange) l == 0
+
+    matchesName :: T.Text -> Located (IdP GhcPs) -> Bool
+    matchesName b (L _ x) = b == (T.pack . showSDocUnsafe . ppr $ x)
+
+    exportsAs :: HsDecl p -> Maybe (ExportsAs, Located (IdP p))
+    exportsAs (ValD FunBind {fun_id})          = Just $ (ExportName, fun_id)
+    exportsAs (ValD (PatSynBind PSB {psb_id})) = Just $ (ExportPattern, psb_id)
+    exportsAs (TyClD (SynDecl{tcdLName}))      = Just $ (ExportName, tcdLName)
+    exportsAs (TyClD (DataDecl{tcdLName}))     = Just $ (ExportAll, tcdLName)
+    exportsAs (TyClD (ClassDecl{tcdLName}))    = Just $ (ExportAll, tcdLName)
+    exportsAs (TyClD (FamDecl{tcdFam}))        = Just $ (ExportAll, fdLName tcdFam)
+    exportsAs _                                = Nothing
 
 suggestAddTypeAnnotationToSatisfyContraints :: Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
 suggestAddTypeAnnotationToSatisfyContraints sourceOpt Diagnostic{_range=_range,..}
