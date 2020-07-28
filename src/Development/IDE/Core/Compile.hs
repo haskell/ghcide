@@ -292,10 +292,7 @@ generateAndWriteHieFile hscEnv tcm =
     dflags       = hsc_dflags hscEnv
     mod_summary  = pm_mod_summary $ tm_parsed_module tcm
     mod_location = ms_location mod_summary
-    targetPath   = withBootSuffix $ Compat.ml_hie_file mod_location
-    withBootSuffix = case ms_hsc_src mod_summary of
-      HsBootFile -> addBootSuffix
-      _ -> id
+    targetPath   = Compat.ml_hie_file mod_location
 
 generateAndWriteHiFile :: HscEnv -> TcModuleResult -> IO [FileDiagnostic]
 generateAndWriteHiFile hscEnv tc =
@@ -304,11 +301,7 @@ generateAndWriteHiFile hscEnv tc =
       writeIfaceFile dflags fp modIface
   where
     modIface = hm_iface $ tmrModInfo tc
-    modSummary = tmrModSummary tc
-    targetPath = withBootSuffix $ ml_hi_file $ ms_location $ tmrModSummary tc
-    withBootSuffix = case ms_hsc_src modSummary of
-                HsBootFile -> addBootSuffix
-                _ -> id
+    targetPath = ml_hi_file $ ms_location $ tmrModSummary tc
     dflags = hsc_dflags hscEnv
 
 handleGenerationErrors :: DynFlags -> T.Text -> IO () -> IO [FileDiagnostic]
@@ -410,6 +403,10 @@ getImportsParsed dflags (L loc parsed) = do
     , GHC.moduleNameString (GHC.unLoc $ ideclName i) /= "GHC.Prim"
     ])
 
+withBootSuffix :: HscSource -> ModLocation -> ModLocation
+withBootSuffix HsBootFile = addBootSuffixLocnOut
+withBootSuffix _ = id
+
 -- | Produce a module summary from a StringBuffer.
 getModSummaryFromBuffer
     :: GhcMonad m
@@ -426,7 +423,7 @@ getModSummaryFromBuffer fp modTime dflags parsed contents = do
   let InstalledUnitId unitId = thisInstalledUnitId dflags
   return $ ModSummary
     { ms_mod          = mkModule (fsToUnitId unitId) modName
-    , ms_location     = modLoc
+    , ms_location     = withBootSuffix sourceType modLoc
     , ms_hs_date      = modTime
     , ms_textual_imps = [imp | (False, imp) <- imports]
     , ms_hspp_file    = fp
@@ -486,7 +483,7 @@ getModSummaryFromImports fp modTime contents = do
                 , ms_hspp_file    = fp
                 , ms_hspp_opts    = dflags
                 , ms_iface_date   = Nothing
-                , ms_location     = modLoc
+                , ms_location     = withBootSuffix sourceType modLoc
                 , ms_obj_date     = Nothing
                 , ms_parsed_mod   = Nothing
                 , ms_srcimps      = srcImports

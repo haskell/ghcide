@@ -168,9 +168,7 @@ getHomeHieFile :: NormalizedFilePath -> MaybeT IdeAction HieFile
 getHomeHieFile f = do
   ms <- fst <$> useE GetModSummaryWithoutTimestamps f
   let normal_hie_f = toNormalizedFilePath' hie_f
-      hie_f = case ms_hsc_src ms of
-        HsBootFile -> addBootSuffix (ml_hie_file $ ms_location ms)
-        _ -> ml_hie_file $ ms_location ms
+      hie_f = ml_hie_file $ ms_location ms
 
   mbHieTimestamp <- either (\(_ :: IOException) -> Nothing) Just <$> (liftIO $ try $ getModificationTime hie_f)
   srcTimestamp   <- MaybeT (either (\(_ :: IOException) -> Nothing) Just <$> (liftIO $ try $ getModificationTime $ fromNormalizedFilePath f))
@@ -664,9 +662,7 @@ isHiFileStableRule :: Rules ()
 isHiFileStableRule = define $ \IsHiFileStable f -> do
     ms <- use_ GetModSummaryWithoutTimestamps f
     let hiFile = toNormalizedFilePath'
-                $ case ms_hsc_src ms of
-                    HsBootFile -> addBootSuffix (ml_hi_file $ ms_location ms)
-                    _ -> ml_hi_file $ ms_location ms
+                $ ml_hi_file $ ms_location ms
     mbHiVersion <- use  GetModificationTime_{missingFileDiagnostics=False} hiFile
     modVersion  <- use_ GetModificationTime f
     sourceModified <- case mbHiVersion of
