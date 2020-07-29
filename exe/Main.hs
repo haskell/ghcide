@@ -121,6 +121,7 @@ main = do
         let ucradles = nubOrd cradles
         let n = length ucradles
         putStrLn $ "Found " ++ show n ++ " cradle" ++ ['s' | n /= 1]
+        when (n > 0) $ putStrLn $ "  (" ++ intercalate ", " (catMaybes ucradles) ++ ")"
         putStrLn "\nStep 3/4: Initializing the IDE"
         vfs <- makeVFSHandle
         debouncer <- newAsyncDebouncer
