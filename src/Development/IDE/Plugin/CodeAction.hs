@@ -163,7 +163,7 @@ suggestRemoveRedundantImport :: ParsedModule -> Maybe T.Text -> Diagnostic -> [(
 suggestRemoveRedundantImport ParsedModule{pm_parsed_source = L _  HsModule{hsmodImports}} contents Diagnostic{_range=_range,..}
 --     The qualified import of ‘many’ from module ‘Control.Applicative’ is redundant
     | Just [_, bindings] <- matchRegex _message "The( qualified)? import of ‘([^’]*)’ from module [^ ]* is redundant"
-    , Just (L _ impDecl) <- find (\(L l _) -> srcSpanToRange l == _range ) hsmodImports
+    , Just (L _ impDecl) <- find (\(L l _) -> srcSpanToRange l == Just _range ) hsmodImports
     , Just c <- contents
     , ranges <- map (rangesForBinding impDecl . T.unpack) (T.splitOn ", " bindings)
     , ranges' <- extendAllToIncludeCommaIfPossible (indexedByPosition $ T.unpack c) (concat ranges)
@@ -183,7 +183,7 @@ suggestDeleteTopBinding ParsedModule{pm_parsed_source = L _ HsModule{hsmodDecls}
 -- Foo.hs:4:1: warning: [-Wunused-top-binds] Defined but not used: ‘f’
     | Just [name] <- matchRegex _message ".*Defined but not used: ‘([^ ]+)’"
     , let allTopLevel = filter (isTopLevel . fst)
-                        . map (\(L l b) -> (srcSpanToRange l, b))
+                        . mapMaybe (\(L l b) -> (, b) <$> srcSpanToRange l)
                         . sortLocated
                         $ hsmodDecls
           sameName = filter (matchesBindingName (T.unpack name) . snd) allTopLevel
@@ -219,10 +219,10 @@ suggestExportUnusedTopBinding srcOpt ParsedModule{pm_parsed_source = L _ HsModul
                    <|> matchRegex _message ".*Defined but not used: data constructor ‘([^ ]+)’"
   , Just (exportType, _) <- find (matchWithDiagnostic _range . snd)
                             . mapMaybe
-                                (\(L l b) -> if isTopLevel $ srcSpanToRange l
+                                (\(L l b) -> if maybe False isTopLevel $ srcSpanToRange l
                                                 then exportsAs b else Nothing)
                             $ hsmodDecls
-  , Just pos <- _end . getLocatedRange <$> hsmodExports
+  , Just pos <- fmap _end . getLocatedRange =<< hsmodExports
   , Just needComma <- needsComma source <$> hsmodExports
   , let exportName = (if needComma then "," else "") <> printExport exportType name 
         insertPos = pos {_character = pred $ _character pos}
@@ -232,18 +232,21 @@ suggestExportUnusedTopBinding srcOpt ParsedModule{pm_parsed_source = L _ HsModul
     -- we get the last export and the closing bracket and check for comma in that range
     needsComma :: T.Text -> Located [LIE GhcPs] -> Bool
     needsComma _ (L _ []) = False
-    needsComma source x@(L _ exports) =
-      let closeParan = _end $ getLocatedRange x
-          lastExport = _end . getLocatedRange $ last exports
-      in not $ T.isInfixOf "," $ textInRange (Range lastExport closeParan) source
+    needsComma source (L (RealSrcSpan l) exports) =
+      let closeParan = _end $ realSrcSpanToRange l
+          lastExport = fmap _end . getLocatedRange $ last exports
+      in case lastExport of
+        Just lastExport -> not $ T.isInfixOf "," $ textInRange (Range lastExport closeParan) source
+        _ -> False
+    needsComma _ _ = False
 
-    getLocatedRange :: Located a -> Range
+    getLocatedRange :: Located a -> Maybe Range
     getLocatedRange = srcSpanToRange . getLoc
 
     matchWithDiagnostic :: Range -> Located (IdP GhcPs) -> Bool
     matchWithDiagnostic Range{_start=l,_end=r} x =
-      let loc = _start . getLocatedRange $ x
-       in loc >= l && loc <= r
+      let loc = fmap _start . getLocatedRange $ x
+       in loc >= Just l && loc <= Just r
 
     printExport :: ExportsAs -> T.Text -> T.Text
     printExport ExportName x = x
@@ -349,8 +352,8 @@ suggestNewDefinition ideOptions parsedModule contents Diagnostic{_message, _rang
 newDefinitionAction :: IdeOptions -> ParsedModule -> Range -> T.Text -> T.Text -> [(T.Text, [TextEdit])]
 newDefinitionAction IdeOptions{..} parsedModule Range{_start} name typ
     | Range _ lastLineP : _ <-
-      [ srcSpanToRange l
-      | (L l _) <- hsmodDecls
+      [ realSrcSpanToRange sp
+      | (L l@(RealSrcSpan sp) _) <- hsmodDecls
       , _start `isInsideSrcSpan` l]
     , nextLineP <- Position{ _line = _line lastLineP + 1, _character = 0}
     = [ ("Define " <> sig
@@ -464,7 +467,7 @@ suggestExtendImport (Just dflags) contents Diagnostic{_range=_range,..}
     , Just c <- contents
     , POk _ (L _ name) <- runParser dflags (T.unpack binding) parseIdentifier
     = let range = case [ x | (x,"") <- readSrcSpan (T.unpack srcspan)] of
-            [s] -> let x = srcSpanToRange s
+            [s] -> let x = realSrcSpanToRange s
                    in x{_end = (_end x){_character = succ (_character (_end x))}}
             _ -> error "bug in srcspan parser"
           importLine = textInRange range c
@@ -876,7 +879,7 @@ textInRange (Range (Position startRow startCol) (Position endRow endCol)) text =
 -- | Returns the ranges for a binding in an import declaration
 rangesForBinding :: ImportDecl GhcPs -> String -> [Range]
 rangesForBinding ImportDecl{ideclHiding = Just (False, L _ lies)} b =
-    concatMap (map srcSpanToRange . rangesForBinding' b') lies
+    concatMap (mapMaybe srcSpanToRange . rangesForBinding' b') lies
   where
     b' = wrapOperatorInParens (unqualify b)
 
