@@ -6,6 +6,8 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DerivingStrategies #-}
 
+{- HLINT ignore "Avoid restricted extensions" -}
+
 -- | Options
 module Development.IDE.Types.Options
   ( IdeOptions(..)
