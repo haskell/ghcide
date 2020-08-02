@@ -15,8 +15,10 @@ import qualified Language.Haskell.LSP.Types       as LSP
 
 import           Development.IDE.Core.IdeConfiguration
 import           Development.IDE.Core.Service
+import           Development.IDE.Core.Shake
 import           Development.IDE.Types.Location
 import           Development.IDE.Types.Logger
+import           Development.IDE.Types.Options
 
 import           Control.Monad.Extra
 import           Data.Foldable                    as F
@@ -45,12 +47,21 @@ setHandlersNotifications = PartialHandlers $ \WithMessage{..} x -> return x
     ,LSP.didChangeTextDocumentNotificationHandler = withNotification (LSP.didChangeTextDocumentNotificationHandler x) $
         \_ ide (DidChangeTextDocumentParams identifier@VersionedTextDocumentIdentifier{_uri} changes) -> do
             updatePositionMapping ide identifier changes
-            whenUriFile _uri $ \file -> setFileModified ide False file
+            IdeOptions{optCheckParents} <- getIdeOptionsIO $ shakeExtras ide
+            let checkParents = case optCheckParents of
+                  AlwaysCheck -> True
+                  _ -> False
+            whenUriFile _uri $ \file -> setFileModified ide checkParents file
             logInfo (ideLogger ide) $ "Modified text document: " <> getUri _uri
 
     ,LSP.didSaveTextDocumentNotificationHandler = withNotification (LSP.didSaveTextDocumentNotificationHandler x) $
         \_ ide (DidSaveTextDocumentParams TextDocumentIdentifier{_uri}) -> do
-            whenUriFile _uri $ \file -> setFileModified ide True file
+            IdeOptions{optCheckParents} <- getIdeOptionsIO $ shakeExtras ide
+            let checkParents = case optCheckParents of
+                  AlwaysCheck -> True
+                  CheckOnSave -> True
+                  _ -> False
+            whenUriFile _uri $ \file -> setFileModified ide checkParents file
             logInfo (ideLogger ide) $ "Saved text document: " <> getUri _uri
 
     ,LSP.didCloseTextDocumentNotificationHandler = withNotification (LSP.didCloseTextDocumentNotificationHandler x) $

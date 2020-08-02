@@ -103,7 +103,7 @@ loadSession dir = do
     ShakeExtras{logger, eventer, restartShakeSession, withIndefiniteProgress
                ,ideNc, knownFilesVar, session=ideSession} <- getShakeExtras
 
-    IdeOptions{optTesting = IdeTesting optTesting} <- getIdeOptions
+    IdeOptions{optTesting = IdeTesting optTesting, optCheckProject = CheckProject checkProject } <- getIdeOptions
 
     -- Create a new HscEnv from a hieYaml root and a set of options
     -- If the hieYaml file already has an HscEnv, the new component is
@@ -286,7 +286,8 @@ loadSession dir = do
           liftIO $ modifyVar_ knownFilesVar $ traverseHashed $ pure . HashSet.union (HashSet.fromList cfps')
           mmt <- uses GetModificationTime cfps'
           let cs_exist = catMaybes (zipWith (<$) cfps' mmt)
-          uses GetModIface cs_exist
+          when checkProject $
+            void $ uses GetModIface cs_exist
       pure opts
 
 -- | Run the specific cradle on a specific FilePath via hie-bios.
