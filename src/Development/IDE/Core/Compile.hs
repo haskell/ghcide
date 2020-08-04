@@ -205,15 +205,21 @@ generateByteCode hscEnv deps tmr guts =
           let linkable = LM (ms_hs_date summary) (ms_mod summary) [unlinked]
           pure (map snd warnings, linkable)
 
+-- | Set a 'WarningFlag' only if it is not already set as fatal.
+wopt_set_nonfatal :: DynFlags -> WarningFlag -> DynFlags
+wopt_set_nonfatal dflags w
+  | wopt_fatal w dflags = dflags
+  | otherwise = wopt_set dflags w
+
 demoteTypeErrorsToWarnings :: ParsedModule -> ParsedModule
 demoteTypeErrorsToWarnings =
   (update_pm_mod_summary . update_hspp_opts) demoteTEsToWarns where
 
   demoteTEsToWarns :: DynFlags -> DynFlags
   -- convert the errors into warnings, and also check the warnings are enabled
-  demoteTEsToWarns = (`wopt_set` Opt_WarnDeferredTypeErrors)
-                   . (`wopt_set` Opt_WarnTypedHoles)
-                   . (`wopt_set` Opt_WarnDeferredOutOfScopeVariables)
+  demoteTEsToWarns = (`wopt_set_nonfatal` Opt_WarnDeferredTypeErrors)
+                   . (`wopt_set_nonfatal` Opt_WarnTypedHoles)
+                   . (`wopt_set_nonfatal` Opt_WarnDeferredOutOfScopeVariables)
                    . (`gopt_set` Opt_DeferTypeErrors)
                    . (`gopt_set` Opt_DeferTypedHoles)
                    . (`gopt_set` Opt_DeferOutOfScopeVariables)
@@ -221,10 +227,10 @@ demoteTypeErrorsToWarnings =
 enableTopLevelWarnings :: ParsedModule -> ParsedModule
 enableTopLevelWarnings =
   (update_pm_mod_summary . update_hspp_opts)
-  ((`wopt_set` Opt_WarnMissingPatternSynonymSignatures) .
-   (`wopt_set` Opt_WarnMissingSignatures))
+  ((`wopt_set_nonfatal` Opt_WarnMissingPatternSynonymSignatures) .
+   (`wopt_set_nonfatal` Opt_WarnMissingSignatures))
   -- the line below would show also warnings for let bindings without signature
-  -- ((`wopt_set` Opt_WarnMissingSignatures) . (`wopt_set` Opt_WarnMissingLocalSignatures)))
+  -- ((`wopt_set_nonfatal` Opt_WarnMissingSignatures) . (`wopt_set_nonfatal` Opt_WarnMissingLocalSignatures)))
 
 update_hspp_opts :: (DynFlags -> DynFlags) -> ModSummary -> ModSummary
 update_hspp_opts up ms = ms{ms_hspp_opts = up $ ms_hspp_opts ms}
