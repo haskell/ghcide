@@ -66,8 +66,8 @@ getDocumentationsTryGhc _ sources names = mapM mkSpanDocText names
             src <- fmap (fmap T.pack) $ lookupSrcHtmlForModule df mod
             return (doc, src)
           Nothing -> pure (Nothing, Nothing)
-      let docUri = docFp >>= \fp -> pure $ "file://" <> fp <> "#" <> selector <> showName name
-          srcUri = srcFp >>= \fp -> pure $ "file://" <> fp <> "#" <> showName name
+      let docUri = docFp >>= \fp -> pure $ "file:///" <> fp <> "#" <> selector <> showName name
+          srcUri = srcFp >>= \fp -> pure $ "file:///" <> fp <> "#" <> showName name
           selector
             | isValName name = "v:"
             | otherwise = "t:"
