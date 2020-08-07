@@ -6,6 +6,7 @@ module Development.IDE.Core.IdeConfiguration
   , parseWorkspaceFolder
   , isWorkspaceFile
   , modifyWorkspaceFolders
+  , modifyClientSettings
   )
 where
 
@@ -13,6 +14,7 @@ import           Control.Concurrent.Extra
 import           Control.Monad
 import           Data.HashSet                   (HashSet, singleton)
 import           Data.Text                      (Text, isPrefixOf)
+import           Data.Aeson.Types               (Value)
 import           Development.IDE.Core.Shake
 import           Development.IDE.Types.Location
 import           Development.Shake
@@ -22,6 +24,7 @@ import           System.FilePath (isRelative)
 -- | Lsp client relevant configuration details
 data IdeConfiguration = IdeConfiguration
   { workspaceFolders :: HashSet NormalizedUri
+  , clientSettings :: Maybe Value
   }
   deriving (Show)
 
@@ -39,13 +42,14 @@ getIdeConfiguration =
 
 parseConfiguration :: InitializeParams -> IdeConfiguration
 parseConfiguration InitializeParams {..} =
-  IdeConfiguration { .. }
+  IdeConfiguration {..}
  where
   workspaceFolders =
     foldMap (singleton . toNormalizedUri) _rootUri
       <> (foldMap . foldMap)
            (singleton . parseWorkspaceFolder)
            _workspaceFolders
+  clientSettings = _initializationOptions
 
 parseWorkspaceFolder :: WorkspaceFolder -> NormalizedUri
 parseWorkspaceFolder =
@@ -53,10 +57,20 @@ parseWorkspaceFolder =
 
 modifyWorkspaceFolders
   :: IdeState -> (HashSet NormalizedUri -> HashSet NormalizedUri) -> IO ()
-modifyWorkspaceFolders ide f = do
+modifyWorkspaceFolders ide f = modifyIdeConfiguration ide f'
+  where f' (IdeConfiguration ws initOpts) = IdeConfiguration (f ws) initOpts
+
+modifyClientSettings
+  :: IdeState -> (Value -> Value) -> IO ()
+modifyClientSettings ide f = modifyIdeConfiguration ide f'
+  where f' (IdeConfiguration ws clientSettings) = IdeConfiguration ws (f <$> clientSettings)
+
+modifyIdeConfiguration
+  :: IdeState -> (IdeConfiguration -> IdeConfiguration) -> IO ()
+modifyIdeConfiguration ide f = do
   IdeConfigurationVar var <- getIdeGlobalState ide
-  IdeConfiguration    ws  <- readVar var
-  writeVar var (IdeConfiguration (f ws))
+  ideConfig <- readVar var
+  writeVar var (f ideConfig)
 
 isWorkspaceFile :: NormalizedFilePath -> Action Bool
 isWorkspaceFile file =
