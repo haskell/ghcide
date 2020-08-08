@@ -579,12 +579,12 @@ typeCheckRuleDefinition hsc pm generateArtifacts = do
     case res of
       (diags, Just (hsc,tcm))
         | DoGenerateInterfaceFiles <- generateArtifacts
+        -> do
         -- Don't save interface files for modules that compiled due to defering
         -- type errors, as we won't get proper diagnostics if we load these from
         -- disk
-        , not $ tmrDeferedError tcm -> do
         (diagsHie,hf) <- generateAndWriteHieFile hsc (tmrModule tcm)
-        diagsHi  <- writeHiFile hsc tcm
+        diagsHi  <- if not $ tmrDeferedError tcm then writeHiFile hsc tcm else pure mempty
         return (diags <> diagsHi <> diagsHie, Just tcm{tmrHieFile=hf})
       (diags, res) ->
         return (diags, snd <$> res)
