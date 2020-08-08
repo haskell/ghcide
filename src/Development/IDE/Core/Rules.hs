@@ -601,9 +601,9 @@ typeCheckRuleDefinition hsc pm isFoi source = do
         if not doGenerate
           then return (diags, Just tcm)
           else do
-            diagsHie <- generateAndWriteHieFile hsc (tmrModule tcm) (fromMaybe "" source)
+            (diagsHie,hf) <- generateAndWriteHieFile hsc (tmrModule tcm) (fromMaybe "" source)
             diagsHi  <- writeHiFile hsc tcm
-            return (diags <> diagsHi <> diagsHie, Just tcm)
+            return (diags <> diagsHi <> diagsHie, Just tcm{tmrHieFile=hf})
       (diags, res) ->
         return (diags, snd <$> res)
  where
