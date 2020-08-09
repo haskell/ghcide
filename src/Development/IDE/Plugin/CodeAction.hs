@@ -3,6 +3,7 @@
 
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE CPP #-}
+{-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
 #include "ghc-api-version.h"
 
 -- | Go to the definition of a variable.
@@ -46,7 +47,7 @@ import Data.List.Extra
 import qualified Data.Text as T
 import Data.Tuple.Extra ((&&&))
 import HscTypes
-import SrcLoc (sortLocated)
+import SrcLoc (srcSpanStart, SrcSpan)
 import Parser
 import Text.Regex.TDFA ((=~), (=~~))
 import Text.Regex.TDFA.Text()
@@ -58,6 +59,7 @@ import Control.Arrow ((>>>))
 import Data.Functor
 import Control.Applicative ((<|>))
 import Safe (atMay)
+import Bag (isEmptyBag)
 
 plugin :: Plugin c
 plugin = codeActionPluginWithRules rules codeAction <> Plugin mempty setHandlersCodeLens
@@ -154,7 +156,7 @@ suggestAction dflags packageExports ideOptions parsedModule text diag = concat
     [  suggestNewDefinition ideOptions pm text diag
     ++ suggestRemoveRedundantImport pm text diag
     ++ suggestNewImport packageExports pm diag
-    ++ suggestDeleteTopBinding pm diag
+    ++ suggestDeleteBinding pm diag
     ++ suggestExportUnusedTopBinding text pm diag
     | Just pm <- [parsedModule]]
 
@@ -178,32 +180,97 @@ suggestRemoveRedundantImport ParsedModule{pm_parsed_source = L _  HsModule{hsmod
         = [("Remove import", [TextEdit (extendToWholeLineIfPossible contents _range) ""])]
     | otherwise = []
 
-suggestDeleteTopBinding :: ParsedModule -> Diagnostic -> [(T.Text, [TextEdit])]
-suggestDeleteTopBinding ParsedModule{pm_parsed_source = L _ HsModule{hsmodDecls}} Diagnostic{_range=_range,..}
--- Foo.hs:4:1: warning: [-Wunused-top-binds] Defined but not used: ‘f’
+suggestDeleteBinding :: ParsedModule -> Diagnostic -> [(T.Text, [TextEdit])]
+suggestDeleteBinding 
+  ParsedModule{pm_parsed_source = L _ HsModule{hsmodDecls}} 
+  Diagnostic{_range=_range,..}
+-- Foo.hs:4:1: warning: [-Wunused-binds] Defined but not used: ‘f’
     | Just [name] <- matchRegex _message ".*Defined but not used: ‘([^ ]+)’"
-    , let allTopLevel = filter (isTopLevel . fst)
-                        . map (\(L l b) -> (srcSpanToRange l, b))
-                        . sortLocated
-                        $ hsmodDecls
-          sameName = filter (matchesBindingName (T.unpack name) . snd) allTopLevel
-    , not (null sameName)
-            = [("Delete ‘" <> name <> "’", flip TextEdit "" . toNextBinding allTopLevel . fst <$> sameName )]
+      = let edits = flip TextEdit "" . srcSpanToRange <$> relatedRanges (T.unpack name)
+        in if null edits then [] else [( "Delete ‘" <> name <> "’" , edits)]
     | otherwise = []
     where
-      isTopLevel l = (_character . _start) l == 0
+      relatedRanges name = concatMap (findRelatedSpans name) hsmodDecls
 
-      forwardLines lines r = r {_end = (_end r) {_line = (_line . _end $ r) + lines, _character = 0}}
+      findRelatedSpans :: String -> Located (HsDecl GhcPs) -> [SrcSpan]
+      findRelatedSpans name (L l (ValD (extractNameAndMatchesFromFunBind -> Just (lname, matches)))) =
+        case lname of
+          (L nLoc _name) | isTheBinding nLoc -> 
+            let findSig (L l (SigD sig)) = findRelatedSigSpan name l sig
+                findSig _ = []
+            in [l] ++ concatMap findSig hsmodDecls
+          _ -> concatMap (findRelatedSpanForMatch name) matches
+      findRelatedSpans _ _ = []
 
-      toNextBinding bindings r@Range { _end = Position {_line = l} }
-        | Just (Range { _start = Position {_line = l'}}, _) <- find ((> l) . _line . _start . fst) bindings
-        = forwardLines (l' - l) r
-      toNextBinding _ r  = r
+      extractNameAndMatchesFromFunBind 
+        :: HsBind GhcPs 
+        -> Maybe (Located (IdP GhcPs), [LMatch GhcPs (LHsExpr GhcPs)])
+      extractNameAndMatchesFromFunBind 
+        FunBind 
+          { fun_id=lname
+          , fun_matches=MG {mg_alts=L _ matches}
+          } = Just (lname, matches)
+      extractNameAndMatchesFromFunBind _ = Nothing
 
-      matchesBindingName :: String -> HsDecl GhcPs -> Bool
-      matchesBindingName b (ValD FunBind {fun_id=L _ x}) = showSDocUnsafe (ppr x) == b
-      matchesBindingName b (SigD (TypeSig (L _ x:_) _)) = showSDocUnsafe (ppr x) == b
-      matchesBindingName _ _ = False
+      findRelatedSigSpan :: String -> SrcSpan -> Sig GhcPs -> [SrcSpan]
+      findRelatedSigSpan name l sig =
+        let maybeSpan = findRelatedSigSpan1 name sig
+        in case maybeSpan of
+          Nothing -> []
+          Just (_span, True) -> pure l -- a :: Int
+          Just (span, False) -> pure span -- a, b :: Int, a is unused
+
+      -- Second of the tuple means there is only one match
+      findRelatedSigSpan1 :: String -> Sig GhcPs -> Maybe (SrcSpan, Bool)
+      findRelatedSigSpan1 name (TypeSig lnames _) = 
+        let maybeIdx = findIndex (\(L _ id) -> isSameName id name) lnames
+        in case maybeIdx of
+            Nothing -> Nothing
+            Just _ | length lnames == 1 -> Just (getSpan $ head lnames, True)
+            Just idx -> 
+              let targetLname = getSpan $ lnames !! idx
+                  startLoc = srcSpanStart targetLname
+                  endLoc = srcSpanEnd targetLname
+                  startLoc' = if idx == 0 
+                              then startLoc 
+                              else srcSpanEnd . getSpan $ lnames !! (idx - 1)
+                  endLoc' = if idx == 0 && idx < length lnames - 1
+                            then srcSpanStart . getSpan $ lnames !! (idx + 1)
+                            else endLoc
+              in Just (mkSrcSpan startLoc' endLoc', False)
+      findRelatedSigSpan1 _ _ = Nothing
+
+      -- for where clause
+      findRelatedSpanForMatch :: String -> LMatch GhcPs (LHsExpr GhcPs) -> [SrcSpan]
+      findRelatedSpanForMatch name (L _ Match{m_grhss=GRHSs{grhssLocalBinds}}) = do
+        case grhssLocalBinds of
+          (L _ (HsValBinds _ (ValBinds _ bag lsigs))) -> 
+            if isEmptyBag bag
+            then []
+            else concatMap (findRelatedSpanForHsBind name lsigs) bag
+          _ -> []
+      findRelatedSpanForMatch _ _ = []
+
+      findRelatedSpanForHsBind :: String -> [LSig GhcPs] -> LHsBind GhcPs -> [SrcSpan]
+      findRelatedSpanForHsBind 
+        name 
+        lsigs 
+        (L l (extractNameAndMatchesFromFunBind -> Just (lname, matches))) =
+        if isTheBinding (getSpan lname)
+        then
+          let findSig (L l sig) = findRelatedSigSpan name l sig
+          in [l] ++ concatMap findSig lsigs
+        else concatMap (findRelatedSpanForMatch name) matches
+      findRelatedSpanForHsBind _ _ _ = []
+
+      isTheBinding :: SrcSpan -> Bool
+      isTheBinding span = srcSpanToRange span == _range
+
+      getSpan :: Located p -> SrcSpan
+      getSpan (L l _) = l
+
+      isSameName :: IdP GhcPs -> String -> Bool
+      isSameName x name = showSDocUnsafe (ppr x) == name
 
 data ExportsAs = ExportName | ExportPattern | ExportAll
   deriving (Eq)
