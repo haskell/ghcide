@@ -156,7 +156,7 @@ suggestAction dflags packageExports ideOptions parsedModule text diag = concat
     [  suggestNewDefinition ideOptions pm text diag
     ++ suggestRemoveRedundantImport pm text diag
     ++ suggestNewImport packageExports pm diag
-    ++ suggestDeleteBinding pm diag
+    ++ suggestDeleteUnusedBinding pm text diag
     ++ suggestExportUnusedTopBinding text pm diag
     | Just pm <- [parsedModule]]
 
@@ -180,27 +180,37 @@ suggestRemoveRedundantImport ParsedModule{pm_parsed_source = L _  HsModule{hsmod
         = [("Remove import", [TextEdit (extendToWholeLineIfPossible contents _range) ""])]
     | otherwise = []
 
-suggestDeleteBinding :: ParsedModule -> Diagnostic -> [(T.Text, [TextEdit])]
-suggestDeleteBinding 
+suggestDeleteUnusedBinding :: ParsedModule -> Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
+suggestDeleteUnusedBinding
   ParsedModule{pm_parsed_source = L _ HsModule{hsmodDecls}} 
+  contents
   Diagnostic{_range=_range,..}
 -- Foo.hs:4:1: warning: [-Wunused-binds] Defined but not used: ‘f’
     | Just [name] <- matchRegex _message ".*Defined but not used: ‘([^ ]+)’"
-      = let edits = flip TextEdit "" . srcSpanToRange <$> relatedRanges (T.unpack name)
+    , Just indexedContent <- indexedByPosition . T.unpack <$> contents
+      = let edits = flip TextEdit "" <$> relatedRanges indexedContent (T.unpack name)
         in if null edits then [] else [( "Delete ‘" <> name <> "’" , edits)]
     | otherwise = []
     where
-      relatedRanges name = concatMap (findRelatedSpans name) hsmodDecls
+      relatedRanges indexedContent name =
+        concatMap (findRelatedSpans indexedContent name) hsmodDecls
+      toRange = srcSpanToRange
+      extendForSpaces = extendToIncludePreviousNewlineIfPossible
 
-      findRelatedSpans :: String -> Located (HsDecl GhcPs) -> [SrcSpan]
-      findRelatedSpans name (L l (ValD (extractNameAndMatchesFromFunBind -> Just (lname, matches)))) =
+      findRelatedSpans :: PositionIndexedString -> String -> Located (HsDecl GhcPs) -> [Range]
+      findRelatedSpans
+        indexedContent
+        name
+        (L l (ValD (extractNameAndMatchesFromFunBind -> Just (lname, matches)))) =
         case lname of
           (L nLoc _name) | isTheBinding nLoc -> 
-            let findSig (L l (SigD sig)) = findRelatedSigSpan name l sig
+            let findSig (L l (SigD sig)) = findRelatedSigSpan indexedContent name l sig
                 findSig _ = []
-            in [l] ++ concatMap findSig hsmodDecls
-          _ -> concatMap (findRelatedSpanForMatch name) matches
-      findRelatedSpans _ _ = []
+            in
+              [extendForSpaces indexedContent $ toRange l]
+              ++ concatMap findSig hsmodDecls
+          _ -> concatMap (findRelatedSpanForMatch indexedContent name) matches
+      findRelatedSpans _ _ _ = []
 
       extractNameAndMatchesFromFunBind 
         :: HsBind GhcPs 
@@ -212,13 +222,13 @@ suggestDeleteBinding
           } = Just (lname, matches)
       extractNameAndMatchesFromFunBind _ = Nothing
 
-      findRelatedSigSpan :: String -> SrcSpan -> Sig GhcPs -> [SrcSpan]
-      findRelatedSigSpan name l sig =
+      findRelatedSigSpan :: PositionIndexedString -> String -> SrcSpan -> Sig GhcPs -> [Range]
+      findRelatedSigSpan indexedContent name l sig =
         let maybeSpan = findRelatedSigSpan1 name sig
         in case maybeSpan of
           Nothing -> []
-          Just (_span, True) -> pure l -- a :: Int
-          Just (span, False) -> pure span -- a, b :: Int, a is unused
+          Just (_span, True) -> pure $ extendForSpaces indexedContent $ toRange l -- a :: Int
+          Just (span, False) -> pure $ toRange span -- a, b :: Int, a is unused
 
       -- Second of the tuple means there is only one match
       findRelatedSigSpan1 :: String -> Sig GhcPs -> Maybe (SrcSpan, Bool)
@@ -226,48 +236,58 @@ suggestDeleteBinding
         let maybeIdx = findIndex (\(L _ id) -> isSameName id name) lnames
         in case maybeIdx of
             Nothing -> Nothing
-            Just _ | length lnames == 1 -> Just (getSpan $ head lnames, True)
+            Just _ | length lnames == 1 -> Just (getLoc $ head lnames, True)
             Just idx -> 
-              let targetLname = getSpan $ lnames !! idx
+              let targetLname = getLoc $ lnames !! idx
                   startLoc = srcSpanStart targetLname
                   endLoc = srcSpanEnd targetLname
                   startLoc' = if idx == 0 
                               then startLoc 
-                              else srcSpanEnd . getSpan $ lnames !! (idx - 1)
+                              else srcSpanEnd . getLoc $ lnames !! (idx - 1)
                   endLoc' = if idx == 0 && idx < length lnames - 1
-                            then srcSpanStart . getSpan $ lnames !! (idx + 1)
+                            then srcSpanStart . getLoc $ lnames !! (idx + 1)
                             else endLoc
               in Just (mkSrcSpan startLoc' endLoc', False)
       findRelatedSigSpan1 _ _ = Nothing
 
       -- for where clause
-      findRelatedSpanForMatch :: String -> LMatch GhcPs (LHsExpr GhcPs) -> [SrcSpan]
-      findRelatedSpanForMatch name (L _ Match{m_grhss=GRHSs{grhssLocalBinds}}) = do
+      findRelatedSpanForMatch
+        :: PositionIndexedString
+        -> String
+        -> LMatch GhcPs (LHsExpr GhcPs)
+        -> [Range]
+      findRelatedSpanForMatch
+        indexedContent
+        name
+        (L _ Match{m_grhss=GRHSs{grhssLocalBinds}}) = do
         case grhssLocalBinds of
           (L _ (HsValBinds _ (ValBinds _ bag lsigs))) -> 
             if isEmptyBag bag
             then []
-            else concatMap (findRelatedSpanForHsBind name lsigs) bag
+            else concatMap (findRelatedSpanForHsBind indexedContent name lsigs) bag
           _ -> []
-      findRelatedSpanForMatch _ _ = []
+      findRelatedSpanForMatch _ _ _ = []
 
-      findRelatedSpanForHsBind :: String -> [LSig GhcPs] -> LHsBind GhcPs -> [SrcSpan]
+      findRelatedSpanForHsBind
+        :: PositionIndexedString
+        -> String
+        -> [LSig GhcPs]
+        -> LHsBind GhcPs
+        -> [Range]
       findRelatedSpanForHsBind 
+        indexedContent
         name 
         lsigs 
         (L l (extractNameAndMatchesFromFunBind -> Just (lname, matches))) =
-        if isTheBinding (getSpan lname)
+        if isTheBinding (getLoc lname)
         then
-          let findSig (L l sig) = findRelatedSigSpan name l sig
-          in [l] ++ concatMap findSig lsigs
-        else concatMap (findRelatedSpanForMatch name) matches
-      findRelatedSpanForHsBind _ _ _ = []
+          let findSig (L l sig) = findRelatedSigSpan indexedContent name l sig
+          in [extendForSpaces indexedContent $ toRange l] ++ concatMap findSig lsigs
+        else concatMap (findRelatedSpanForMatch indexedContent name) matches
+      findRelatedSpanForHsBind _ _ _ _ = []
 
       isTheBinding :: SrcSpan -> Bool
       isTheBinding span = srcSpanToRange span == _range
-
-      getSpan :: Located p -> SrcSpan
-      getSpan (L l _) = l
 
       isSameName :: IdP GhcPs -> String -> Bool
       isSameName x name = showSDocUnsafe (ppr x) == name
