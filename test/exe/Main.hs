@@ -1201,6 +1201,34 @@ deleteUnusedDefinitionTests = testGroup "delete unused definition action"
         , ""
         , "some = ()"
       ])
+  , testSession "delete unused binding in where clause" $
+    testFor
+    (T.unlines [ "{-# OPTIONS_GHC -Wunused-binds #-}"
+               , "module A (h, g) where"
+               , ""
+               , "h :: Int"
+               , "h = 3"
+               , ""
+               , "g :: Int"
+               , "g = 6"
+               , "  where"
+               , "    h :: Int"
+               , "    h = 4"
+               , ""
+               ])
+    (10, 4)
+    "Delete ‘h’"
+    (T.unlines [ "{-# OPTIONS_GHC -Wunused-binds #-}"
+               , "module A (h, g) where"
+               , ""
+               , "h :: Int"
+               , "h = 3"
+               , ""
+               , "g :: Int"
+               , "g = 6"
+               , "  where"
+               , ""
+               ])
   ]
   where
     testFor source pos expectedTitle expectedResult = do
