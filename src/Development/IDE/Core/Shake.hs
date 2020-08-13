@@ -584,9 +584,9 @@ newSession ShakeExtras{..} shakeDb acts = do
     let
         -- A daemon-like action used to inject additional work
         -- Runs actions from the work queue sequentially
-        pumpActionThread = forever $ do
+        pumpActionThread = do
             d <- liftIO $ atomically $ popQueue actionQueue
-            run d
+            void $ parallel [run d, pumpActionThread]
 
         run d  = do
             start <- liftIO offsetTime
