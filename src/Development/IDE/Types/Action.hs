@@ -54,7 +54,7 @@ pushQueue :: DelayedActionInternal -> ActionQueue -> STM ()
 pushQueue act ActionQueue{..} = writeTQueue newActions act
 
 -- | You must call 'doneQueue' to signal completion
-popQueue :: ActionQueue -> STM(DelayedActionInternal)
+popQueue :: ActionQueue -> STM DelayedActionInternal
 popQueue ActionQueue{..} = do
     x <- readTQueue newActions
     modifyTVar inProgress (Set.insert x)
