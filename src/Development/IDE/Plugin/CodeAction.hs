@@ -46,7 +46,6 @@ import Data.List.Extra
 import qualified Data.Text as T
 import Data.Tuple.Extra ((&&&))
 import HscTypes
-import SrcLoc (srcSpanStart, SrcSpan)
 import Parser
 import Text.Regex.TDFA ((=~), (=~~))
 import Text.Regex.TDFA.Text()
