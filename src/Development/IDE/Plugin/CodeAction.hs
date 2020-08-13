@@ -189,7 +189,7 @@ suggestDeleteUnusedBinding
     | Just [name] <- matchRegex _message ".*Defined but not used: ‘([^ ]+)’"
     , Just indexedContent <- indexedByPosition . T.unpack <$> contents
       = let edits = flip TextEdit "" <$> relatedRanges indexedContent (T.unpack name)
-        in if null edits then [] else [( "Delete ‘" <> name <> "’" , edits)]
+        in ([("Delete ‘" <> name <> "’", edits) | not (null edits)])
     | otherwise = []
     where
       relatedRanges indexedContent name =
