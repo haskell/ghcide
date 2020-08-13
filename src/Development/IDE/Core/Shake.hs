@@ -533,6 +533,7 @@ data DelayedAction a = DelayedAction
   , actionPriority :: Logger.Priority -- ^ Priority with which to log the action
   , getAction :: Action a -- ^ The payload
   }
+  deriving Functor
 
 type DelayedActionInternal = DelayedAction ()
 
@@ -549,9 +550,8 @@ delayedAction a = do
 
 -- | Restart the current 'ShakeSession' with the given system actions.
 --   Any computation running in the current session will be aborted,
---   but user actions (added via 'shakeEnqueue') will be requeued.
---   Progress is reported only on the system actions.
-shakeRestart :: IdeState -> [DelayedAction a] -> IO ()
+--   but actions added via 'shakeEnqueue' will be requeued.
+shakeRestart :: IdeState -> [DelayedAction ()] -> IO ()
 shakeRestart IdeState{..} systemActs =
     withMVar'
         shakeSession
