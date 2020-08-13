@@ -2427,6 +2427,7 @@ completionTests
 completionTest :: String -> [T.Text] -> Position -> [(T.Text, CompletionItemKind, Bool, Bool)] -> TestTree
 completionTest name src pos expected = testSessionWait name $ do
     docId <- createDoc "A.hs" "haskell" (T.unlines src)
+    _ <- waitForDiagnostics
     compls <- getCompletions docId pos
     let compls' = [ (_label, _kind) | CompletionItem{..} <- compls]
     liftIO $ do
