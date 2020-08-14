@@ -259,7 +259,7 @@ suggestDeleteUnusedBinding
         name
         (L _ Match{m_grhss=GRHSs{grhssLocalBinds}}) = do
         case grhssLocalBinds of
-          (L _ (HsValBinds _ (ValBinds _ bag lsigs))) -> 
+          (L _ (HsValBinds (ValBinds bag lsigs))) -> 
             if isEmptyBag bag
             then []
             else concatMap (findRelatedSpanForHsBind indexedContent name lsigs) bag
