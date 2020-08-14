@@ -264,7 +264,6 @@ suggestDeleteUnusedBinding
             then []
             else concatMap (findRelatedSpanForHsBind indexedContent name lsigs) bag
           _ -> []
-      findRelatedSpanForMatch _ _ _ = []
 
       findRelatedSpanForHsBind
         :: PositionIndexedString
