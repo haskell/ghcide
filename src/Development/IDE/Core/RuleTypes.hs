@@ -12,6 +12,7 @@ module Development.IDE.Core.RuleTypes(
     ) where
 
 import           Control.DeepSeq
+import Data.Aeson.Types (Value)
 import Data.Binary
 import           Development.IDE.Import.DependencyInformation
 import Development.IDE.GHC.Compat
@@ -253,3 +254,11 @@ data GetModSummary = GetModSummary
 instance Hashable GetModSummary
 instance NFData   GetModSummary
 instance Binary   GetModSummary
+
+data GetClientSettings = GetClientSettings
+    deriving (Eq, Show, Typeable, Generic)
+instance Hashable GetClientSettings
+instance NFData   GetClientSettings
+instance Binary   GetClientSettings
+
+type instance RuleResult GetClientSettings = Maybe Value
