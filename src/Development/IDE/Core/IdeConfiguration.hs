@@ -87,4 +87,4 @@ isWorkspaceFile file =
           workspaceFolders
 
 getClientSettings :: Action (Maybe Value)
-getClientSettings = clientSettings <$> getIdeConfiguration 
+getClientSettings = clientSettings <$> getIdeConfiguration
