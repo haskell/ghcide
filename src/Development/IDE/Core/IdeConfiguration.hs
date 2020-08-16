@@ -8,6 +8,7 @@ module Development.IDE.Core.IdeConfiguration
   , isWorkspaceFile
   , modifyWorkspaceFolders
   , modifyClientSettings
+  , getClientSettings
   )
 where
 
@@ -84,3 +85,6 @@ isWorkspaceFile file =
         any
           (\root -> toText root `isPrefixOf` toText (filePathToUri' file))
           workspaceFolders
+
+getClientSettings :: Action (Maybe Value)
+getClientSettings = clientSettings <$> getIdeConfiguration 
