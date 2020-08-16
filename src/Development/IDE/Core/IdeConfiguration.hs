@@ -2,6 +2,7 @@
 module Development.IDE.Core.IdeConfiguration
   ( IdeConfiguration(..)
   , registerIdeConfiguration
+  , getIdeConfiguration
   , parseConfiguration
   , parseWorkspaceFolder
   , isWorkspaceFile
@@ -61,9 +62,9 @@ modifyWorkspaceFolders ide f = modifyIdeConfiguration ide f'
   where f' (IdeConfiguration ws initOpts) = IdeConfiguration (f ws) initOpts
 
 modifyClientSettings
-  :: IdeState -> (Value -> Value) -> IO ()
+  :: IdeState -> (Maybe Value -> Maybe Value) -> IO ()
 modifyClientSettings ide f = modifyIdeConfiguration ide f'
-  where f' (IdeConfiguration ws clientSettings) = IdeConfiguration ws (f <$> clientSettings)
+  where f' (IdeConfiguration ws clientSettings) = IdeConfiguration ws (f clientSettings)
 
 modifyIdeConfiguration
   :: IdeState -> (IdeConfiguration -> IdeConfiguration) -> IO ()
