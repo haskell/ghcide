@@ -255,6 +255,7 @@ instance Hashable GetModSummary
 instance NFData   GetModSummary
 instance Binary   GetModSummary
 
+-- | Get the vscode client settings stored in the ide state
 data GetClientSettings = GetClientSettings
     deriving (Eq, Show, Typeable, Generic)
 instance Hashable GetClientSettings
