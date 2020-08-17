@@ -71,8 +71,7 @@ modifyIdeConfiguration
   :: IdeState -> (IdeConfiguration -> IdeConfiguration) -> IO ()
 modifyIdeConfiguration ide f = do
   IdeConfigurationVar var <- getIdeGlobalState ide
-  ideConfig <- readVar var
-  writeVar var (f ideConfig)
+  modifyVar_ var (pure . f)
 
 isWorkspaceFile :: NormalizedFilePath -> Action Bool
 isWorkspaceFile file =
