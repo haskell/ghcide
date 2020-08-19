@@ -58,6 +58,7 @@ import Linker
 import Module
 import NameCache
 import Packages
+import qualified Data.HashSet as Set
 
 -- | Given a root directory, return a Shake 'Action' which setups an
 -- 'IdeGhcSession' given a file.
@@ -330,12 +331,12 @@ newComponentCache logger hsc_env uids ci = do
     let hscEnv' = hsc_env { hsc_dflags = df
                           , hsc_IC = (hsc_IC hsc_env) { ic_dflags = df } }
 
-    henv <- newHscEnvEq hscEnv' uids
+    let is = importPaths df
+    ctargets <- concatMapM (targetToFile is  . targetId) (componentTargets ci)
+    henv <- newHscEnvEq hscEnv' uids (Set.fromList ctargets)
     let res = (([], Just henv), componentDependencyInfo ci)
     logDebug logger ("New Component Cache HscEnvEq: " <> T.pack (show res))
 
-    let is = importPaths df
-    ctargets <- concatMapM (targetToFile is  . targetId) (componentTargets ci)
     -- A special target for the file which caused this wonderful
     -- component to be created. In case the cradle doesn't list all the targets for
     -- the component, in which case things will be horribly broken anyway.

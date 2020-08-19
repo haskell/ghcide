@@ -237,7 +237,7 @@ getParsedModuleRule = defineEarlyCutoff $ \GetParsedModule file -> do
     let hsc = hscEnv sess
         -- These packages are used when removing PackageImports from a
         -- parsed module
-        comp_pkgs = mapMaybe (fmap fst . mkImportDirs (hsc_dflags hsc)) (deps sess)
+        comp_pkgs = mapMaybe (fmap fst . mkImportDirs (hsc_dflags hsc)) (envDeps sess)
     opt <- getIdeOptions
     (modTime, contents) <- getFileContents file
 
@@ -300,7 +300,7 @@ getLocatedImportsRule =
         let imports = [(False, imp) | imp <- ms_textual_imps ms] ++ [(True, imp) | imp <- ms_srcimps ms]
         env_eq <- use_ GhcSession file
         let env = hscEnv env_eq
-        let import_dirs = deps env_eq
+        let import_dirs = envDeps env_eq
         let dflags = addRelativeImport file (moduleName $ ms_mod ms) $ hsc_dflags env
         opt <- getIdeOptions
         (diags, imports') <- fmap unzip $ forM imports $ \(isSource, (mbPkgName, modName)) -> do
@@ -610,7 +610,8 @@ loadGhcSession = do
 
 ghcSessionDepsDefinition :: NormalizedFilePath -> Action (IdeResult HscEnvEq)
 ghcSessionDepsDefinition file = do
-        hsc <- hscEnv <$> use_ GhcSession file
+        hscEnvEq <- use_ GhcSession file
+        let hsc = hscEnv hscEnvEq
         (ms,_) <- useWithStale_ GetModSummaryWithoutTimestamps file
         (deps,_) <- useWithStale_ GetDependencies file
         let tdeps = transitiveModuleDeps deps
@@ -632,11 +633,11 @@ ghcSessionDepsDefinition file = do
         -- Long-term we might just want to change the order returned by GetDependencies
         let inLoadOrder = reverse (zipWith unpack ifaces bytecodes)
 
-        (session',_) <- liftIO $ runGhcEnv hsc $ do
+        (session',_) <- liftIO $ runGhcEnv (hscEnv hscEnvEq) $ do
             setupFinderCache (map hirModSummary ifaces)
             mapM_ (uncurry loadDepModule) inLoadOrder
 
-        res <- liftIO $ newHscEnvEq session' []
+        res <- liftIO $ newHscEnvEq session' (envDeps hscEnvEq) (envTargets hscEnvEq)
         return ([], Just res)
  where
   unpack HiFileResult{..} bc = (hirModIface, bc)
@@ -750,7 +751,7 @@ regenerateHiFile sess f = do
     let hsc = hscEnv sess
         -- After parsing the module remove all package imports referring to
         -- these packages as we have already dealt with what they map to.
-        comp_pkgs = mapMaybe (fmap fst . mkImportDirs (hsc_dflags hsc)) (deps sess)
+        comp_pkgs = mapMaybe (fmap fst . mkImportDirs (hsc_dflags hsc)) (envDeps sess)
     opt <- getIdeOptions
     (modTime, contents) <- getFileContents f
 
