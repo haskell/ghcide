@@ -14,6 +14,7 @@ where
 
 import           Control.Concurrent.Extra
 import           Control.Monad
+import           Data.Hashable                  (Hashed, hashed, unhashed)
 import           Data.HashSet                   (HashSet, singleton)
 import           Data.Text                      (Text, isPrefixOf)
 import           Data.Aeson.Types               (Value)
@@ -26,7 +27,7 @@ import           System.FilePath (isRelative)
 -- | Lsp client relevant configuration details
 data IdeConfiguration = IdeConfiguration
   { workspaceFolders :: HashSet NormalizedUri
-  , clientSettings :: Maybe Value
+  , clientSettings :: Hashed (Maybe Value)
   }
   deriving (Show)
 
@@ -51,7 +52,7 @@ parseConfiguration InitializeParams {..} =
       <> (foldMap . foldMap)
            (singleton . parseWorkspaceFolder)
            _workspaceFolders
-  clientSettings = _initializationOptions
+  clientSettings = hashed _initializationOptions
 
 parseWorkspaceFolder :: WorkspaceFolder -> NormalizedUri
 parseWorkspaceFolder =
@@ -65,7 +66,8 @@ modifyWorkspaceFolders ide f = modifyIdeConfiguration ide f'
 modifyClientSettings
   :: IdeState -> (Maybe Value -> Maybe Value) -> IO ()
 modifyClientSettings ide f = modifyIdeConfiguration ide f'
-  where f' (IdeConfiguration ws clientSettings) = IdeConfiguration ws (f clientSettings)
+  where f' (IdeConfiguration ws clientSettings) =
+            IdeConfiguration ws (hashed . f . unhashed $ clientSettings)
 
 modifyIdeConfiguration
   :: IdeState -> (IdeConfiguration -> IdeConfiguration) -> IO ()
@@ -86,4 +88,4 @@ isWorkspaceFile file =
           workspaceFolders
 
 getClientSettings :: Action (Maybe Value)
-getClientSettings = clientSettings <$> getIdeConfiguration
+getClientSettings = unhashed . clientSettings <$> getIdeConfiguration
