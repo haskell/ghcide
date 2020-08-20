@@ -13,8 +13,9 @@ module Development.IDE.Import.FindImports
   , mkImportDirs
   ) where
 
-import           Development.IDE.GHC.Error as ErrUtils
+import Development.IDE.GHC.Error as ErrUtils
 import Development.IDE.GHC.Orphans()
+import Development.IDE.GHC.Util
 import Development.IDE.Types.Diagnostics
 import Development.IDE.Types.Location
 import Development.IDE.GHC.Compat
@@ -32,6 +33,8 @@ import           Control.Monad.IO.Class
 import           System.FilePath
 import DriverPhases
 import Data.Maybe
+import Data.HashSet (HashSet)
+import qualified Data.HashSet as Set
 
 data Import
   = FileImport !ArtifactsLocation
@@ -65,15 +68,21 @@ modSummaryToArtifactsLocation nfp ms = ArtifactsLocation nfp (ms_location ms) (i
 -- | locate a module in the file system. Where we go from *daml to Haskell
 locateModuleFile :: MonadIO m
              => [[FilePath]]
+             -> HashSet NormalizedFilePath
              -> [String]
              -> (NormalizedFilePath -> m Bool)
              -> Bool
              -> ModuleName
              -> m (Maybe NormalizedFilePath)
-locateModuleFile import_dirss exts doesExist isSource modName = do
+locateModuleFile import_dirss targets exts doesExist isSource modName = do
   let candidates import_dirs =
-        [ toNormalizedFilePath' (prefix </> M.moduleNameSlashes modName <.> maybeBoot ext)
-           | prefix <- import_dirs , ext <- exts]
+        [ cand
+           | prefix <- import_dirs
+           , ext <- exts
+           , let cand = toNormalizedFilePath' (prefix </> M.moduleNameSlashes modName <.> maybeBoot ext)
+           , Set.null targets || cand `Set.member` targets
+        ]
+
   findM doesExist (concatMap candidates import_dirss)
   where
     maybeBoot ext
@@ -92,14 +101,14 @@ mkImportDirs df (i, DynFlags{importPaths}) = (, importPaths) <$> getPackageName 
 locateModule
     :: MonadIO m
     => DynFlags
-    -> [(M.InstalledUnitId, DynFlags)] -- Sets import directories to look in
+    -> HscEnvEq
     -> [String]
     -> (NormalizedFilePath -> m Bool)
     -> Located ModuleName
     -> Maybe FastString
     -> Bool
     -> m (Either [FileDiagnostic] Import)
-locateModule dflags comp_info exts doesExist modName mbPkgName isSource = do
+locateModule dflags env exts doesExist modName mbPkgName isSource = do
   case mbPkgName of
     -- "this" means that we should only look in the current package
     Just "this" -> do
@@ -115,18 +124,19 @@ locateModule dflags comp_info exts doesExist modName mbPkgName isSource = do
       -- Here the importPaths for the current modules are added to the front of the import paths from the other components.
       -- This is particularly important for Paths_* modules which get generated for every component but unless you use it in
       -- each component will end up being found in the wrong place and cause a multi-cradle match failure.
-      mbFile <- locateModuleFile (importPaths dflags : map snd import_paths) exts doesExist isSource $ unLoc modName
-      case mbFile of
-        Nothing -> lookupInPackageDB dflags
-        Just file -> toModLocation file
+      res <- lookupLocal (importPaths dflags : map snd import_paths)
+      case res of
+        Left{}-> lookupInPackageDB dflags
+        Right{} -> return res
   where
-    import_paths = mapMaybe (mkImportDirs dflags) comp_info
+    import_paths = mapMaybe (mkImportDirs dflags) (envDeps env)
     toModLocation file = liftIO $ do
         loc <- mkHomeModLocation dflags (unLoc modName) (fromNormalizedFilePath file)
         return $ Right $ FileImport $ ArtifactsLocation file loc (not isSource)
 
+    -- Given a set of include dirs, find the first match for the goal modName in the env targets
     lookupLocal dirs = do
-      mbFile <- locateModuleFile dirs exts doesExist isSource $ unLoc modName
+      mbFile <- locateModuleFile dirs (envTargets env) exts doesExist isSource $ unLoc modName
       case mbFile of
         Nothing -> return $ Left $ notFoundErr dflags modName $ LookupNotFound []
         Just file -> toModLocation file
