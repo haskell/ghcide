@@ -193,7 +193,7 @@ instance Eq HscEnvEq where
 
 instance NFData HscEnvEq where
   rnf (HscEnvEq a b c d) =
-      rnf (hashUnique a) `seq` b `seq` c `seq` rnf d `seq` ()
+      rnf (hashUnique a) `seq` b `seq` c `seq` rnf d
 
 instance Hashable HscEnvEq where
   hashWithSalt s = hashWithSalt s . envUnique
