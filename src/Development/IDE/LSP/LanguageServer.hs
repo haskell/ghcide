@@ -36,6 +36,7 @@ import Development.IDE.LSP.Notifications
 import Development.IDE.LSP.Outline
 import Development.IDE.Types.Logger
 import Development.IDE.Core.FileStore
+import Development.IDE.Core.Tracing
 import Language.Haskell.LSP.Core (LspFuncs(..))
 import Language.Haskell.LSP.Messages
 
@@ -79,14 +80,16 @@ runLanguageServer options userHandlers onInitialConfig onConfigChange getIdeStat
     -- The set of requests that have been cancelled and are also in pendingRequests
     cancelledRequests <- newTVarIO Set.empty
 
-    let withResponse wrap f = Just $ \r@RequestMessage{_id} -> do
+    let withResponse wrap f = Just $ \r@RequestMessage{_id, _method} -> otTracedHandler "Request" (show _method) $ do
             atomically $ modifyTVar pendingRequests (Set.insert _id)
             writeChan clientMsgChan $ Response r wrap f
-    let withNotification old f = Just $ \r -> writeChan clientMsgChan $ Notification r (\lsp ide x -> f lsp ide x >> whenJust old ($ r))
-    let withResponseAndRequest wrap wrapNewReq f = Just $ \r@RequestMessage{_id} -> do
+    let withNotification old f = Just $ \r@NotificationMessage{_method} -> otTracedHandler "Notification" (show _method) $
+            writeChan clientMsgChan $ Notification r (\lsp ide x -> f lsp ide x >> whenJust old ($ r))
+    let withResponseAndRequest wrap wrapNewReq f = Just $ \r@RequestMessage{_id, _method} -> otTracedHandler "Request" (show _method) $ do
             atomically $ modifyTVar pendingRequests (Set.insert _id)
             writeChan clientMsgChan $ ResponseAndRequest r wrap wrapNewReq f
-    let withInitialize f = Just $ \r -> writeChan clientMsgChan $ InitialParams r (\lsp ide x -> f lsp ide x)
+    let withInitialize f = Just $ \r -> otTracedHandler "Initialize" "" $
+            writeChan clientMsgChan $ InitialParams r (\lsp ide x -> f lsp ide x)
     let cancelRequest reqId = atomically $ do
             queued <- readTVar pendingRequests
             -- We want to avoid that the list of cancelled requests
