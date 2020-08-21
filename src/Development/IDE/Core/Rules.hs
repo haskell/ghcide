@@ -89,6 +89,7 @@ import FastString (FastString(uniq))
 import qualified HeaderInfo as Hdr
 import Data.Time (UTCTime(..))
 import Data.Hashable
+import qualified Data.HashSet as HashSet
 
 -- | This is useful for rules to convert rules that can only produce errors or
 -- a result into the more general IdeResult type that supports producing
@@ -299,14 +300,18 @@ getLocatedImportsRule :: Rules ()
 getLocatedImportsRule =
     define $ \GetLocatedImports file -> do
         ms <- use_ GetModSummaryWithoutTimestamps file
+        targets <- useNoFile_ GetKnownFiles
         let imports = [(False, imp) | imp <- ms_textual_imps ms] ++ [(True, imp) | imp <- ms_srcimps ms]
         env_eq <- use_ GhcSession file
-        let env = hscEnv env_eq
+        let env = hscEnvWithImportPaths env_eq
         let import_dirs = deps env_eq
         let dflags = addRelativeImport file (moduleName $ ms_mod ms) $ hsc_dflags env
         opt <- getIdeOptions
+        let getTargetExists nfp
+                | HashSet.null targets || nfp `HashSet.member` targets = getFileExists nfp
+                | otherwise = return False
         (diags, imports') <- fmap unzip $ forM imports $ \(isSource, (mbPkgName, modName)) -> do
-            diagOrImp <- locateModule dflags import_dirs (optExtensions opt) getFileExists modName mbPkgName isSource
+            diagOrImp <- locateModule dflags import_dirs (optExtensions opt) getTargetExists modName mbPkgName isSource
             case diagOrImp of
                 Left diags -> pure (diags, Left (modName, Nothing))
                 Right (FileImport path) -> pure ([], Left (modName, Just path))
