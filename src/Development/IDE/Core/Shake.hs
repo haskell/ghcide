@@ -632,7 +632,6 @@ instantiateDelayedAction queue (DelayedAction _ s p a) = do
         -- it can happen that a work item finished just as it was reenqueud
         -- in that case, skipping the work is fine
         alreadyDone <- liftIO $ isJust <$> waitBarrierMaybe b
-        liftIO $ putStrLn "skipping already done delayed action"
         unless alreadyDone $ do
           x <- actionCatch @SomeException (Right <$> a) (pure . Left)
           liftIO $ do
