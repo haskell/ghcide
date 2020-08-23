@@ -278,7 +278,7 @@ loadSession dir = do
         return (fmap snd as, wait as)
       unless (null cs) $
         -- Typecheck all files in the project on startup
-        void $ shakeEnqueueSession ideSession $ mkDelayedAction "InitialLoad" Info $ void $ do
+        void $ shakeEnqueueSession ideSession $ mkDelayedAction "InitialLoad" Debug $ void $ do
           cfps' <- liftIO $ filterM (IO.doesFileExist . fromNormalizedFilePath) cs
           -- populate the knownFilesVar with all the
           -- files in the project so that `knownFiles` can learn about them and
