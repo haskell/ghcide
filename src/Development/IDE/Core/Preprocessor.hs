@@ -20,7 +20,6 @@ import qualified HeaderInfo as Hdr
 import Development.IDE.Types.Diagnostics
 import Development.IDE.Types.Location
 import Development.IDE.GHC.Error
-import Development.IDE.GHC.Util
 import SysTools (Option (..), runUnlit, runPp)
 import Control.Monad.Trans.Except
 import qualified GHC.LanguageExtensions as LangExt

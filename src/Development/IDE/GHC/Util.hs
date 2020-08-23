@@ -66,7 +66,7 @@ import Outputable (showSDocUnsafe, ppr, showSDoc, Outputable)
 import Packages (getPackageConfigMap, lookupPackage')
 import SrcLoc (mkRealSrcLoc)
 import FastString (mkFastString)
-import DynFlags (wopt_unset_fatal, gopt_unset, emptyFilesToClean, unsafeGlobalDynFlags)
+import DynFlags (emptyFilesToClean, unsafeGlobalDynFlags)
 import Module (moduleNameSlashes, InstalledUnitId)
 import OccName (parenSymOcc)
 import RdrName (nameRdrName, rdrNameOcc)
@@ -300,8 +300,3 @@ ioe_dupHandlesNotCompatible :: Handle -> IO a
 ioe_dupHandlesNotCompatible h =
    ioException (IOError (Just h) IllegalOperation "hDuplicateTo"
                 "handles are incompatible" Nothing Nothing)
-
-
-disableWarningsAsErrors :: DynFlags -> DynFlags
-disableWarningsAsErrors df = flip gopt_unset Opt_WarnIsError
-                           $ foldl' wopt_unset_fatal df [toEnum 0 ..]

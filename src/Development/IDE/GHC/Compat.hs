@@ -46,11 +46,10 @@ module Development.IDE.GHC.Compat(
     Module.addBootSuffix,
     pattern ModLocation,
     getConArgs,
-
     HasSrcSpan,
     getLoc,
-
     upNameCache,
+    disableWarningsAsErrors,
 
     module GHC,
 #if MIN_GHC_API_VERSION(8,6,0)
@@ -100,6 +99,7 @@ import GHC hiding (
     )
 import qualified HeaderInfo as Hdr
 import Avail
+import Data.List (foldl')
 import ErrUtils (ErrorMessages)
 import FastString (FastString)
 
@@ -119,6 +119,7 @@ import System.FilePath ((-<.>))
 #endif
 
 #if !MIN_GHC_API_VERSION(8,8,0)
+import qualified EnumSet
 
 #if MIN_GHC_API_VERSION(8,6,0)
 import GhcPlugins (srcErrorMessages)
@@ -398,3 +399,13 @@ getConArgs = GHC.getConDetails
 
 getPackageName :: DynFlags -> Module.InstalledUnitId -> Maybe PackageName
 getPackageName dfs i = packageName <$> lookupPackage dfs (Module.DefiniteUnitId (Module.DefUnitId i))
+
+disableWarningsAsErrors :: DynFlags -> DynFlags
+disableWarningsAsErrors df =
+    flip gopt_unset Opt_WarnIsError $ foldl' wopt_unset_fatal df [toEnum 0 ..]
+
+#if !MIN_GHC_API_VERSION(8,8,0)
+wopt_unset_fatal :: DynFlags -> WarningFlag -> DynFlags
+wopt_unset_fatal dfs f
+    = dfs { fatalWarningFlags = EnumSet.delete f (fatalWarningFlags dfs) }
+#endif
