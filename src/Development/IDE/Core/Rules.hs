@@ -57,7 +57,6 @@ import qualified Data.IntMap.Strict as IntMap
 import Data.IntMap.Strict (IntMap)
 import Data.List
 import qualified Data.Set                                 as Set
-import qualified Data.HashSet                             as HS
 import qualified Data.Text                                as T
 import           Development.IDE.GHC.Error
 import           Development.Shake                        hiding (Diagnostic)
@@ -507,13 +506,6 @@ typeCheckRule = define $ \TypeCheck file -> do
     -- for files of interest on every keystroke
     typeCheckRuleDefinition hsc pm SkipGenerationOfInterfaceFiles
 
-data GetKnownFiles = GetKnownFiles
-  deriving (Show, Generic, Eq, Ord)
-instance Hashable GetKnownFiles
-instance NFData   GetKnownFiles
-instance Binary   GetKnownFiles
-type instance RuleResult GetKnownFiles = HS.HashSet NormalizedFilePath
-
 knownFilesRule :: Rules ()
 knownFilesRule = defineEarlyCutOffNoFile $ \GetKnownFiles -> do
   alwaysRerun
@@ -523,7 +515,7 @@ knownFilesRule = defineEarlyCutOffNoFile $ \GetKnownFiles -> do
 getModuleGraphRule :: Rules ()
 getModuleGraphRule = defineNoFile $ \GetModuleGraph -> do
   fs <- useNoFile_ GetKnownFiles
-  rawDepInfo <- rawDependencyInformation (HS.toList fs)
+  rawDepInfo <- rawDependencyInformation (HashSet.toList fs)
   pure $ processDependencyInformation rawDepInfo
 
 data GenerateInterfaceFiles
