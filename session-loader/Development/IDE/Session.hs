@@ -38,6 +38,7 @@ import Development.IDE.Core.RuleTypes
 import Development.IDE.GHC.Util
 import Development.IDE.Session.VersionCheck
 import Development.IDE.Types.Diagnostics
+import Development.IDE.Types.Exports
 import Development.IDE.Types.Location
 import Development.IDE.Types.Logger
 import Development.IDE.Types.Options
@@ -302,8 +303,12 @@ loadSession dir = do
           liftIO $ modifyVar_ knownFilesVar $ traverseHashed $ pure . HashSet.union (HashSet.fromList cfps')
           mmt <- uses GetModificationTime cfps'
           let cs_exist = catMaybes (zipWith (<$) cfps' mmt)
-          when checkProject $
-            void $ uses GetModIface cs_exist
+          when checkProject $ do
+            modIfaces <- uses GetModIface cs_exist
+            -- update xports map
+            extras <- getShakeExtras
+            let !exportsMap' = createExportsMap $ mapMaybe (fmap hirModIface) modIfaces
+            liftIO $ modifyVar_ (exportsMap extras) $ return . (exportsMap' <>)
       pure opts
 
 -- | Run the specific cradle on a specific FilePath via hie-bios.
