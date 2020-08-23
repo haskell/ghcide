@@ -20,6 +20,7 @@ import qualified HeaderInfo as Hdr
 import Development.IDE.Types.Diagnostics
 import Development.IDE.Types.Location
 import Development.IDE.GHC.Error
+import Development.IDE.GHC.Util
 import SysTools (Option (..), runUnlit, runPp)
 import Control.Monad.Trans.Except
 import qualified GHC.LanguageExtensions as LangExt
@@ -145,7 +146,7 @@ parsePragmasIntoDynFlags fp contents = catchSrcErrors "pragmas" $ do
     liftIO $ evaluate $ rnf opts
 
     (dflags, _, _) <- parseDynamicFilePragma dflags0 opts
-    return dflags
+    return $ disableWarningsAsErrors dflags
 
 
 -- | Run (unlit) literate haskell preprocessor on a file, or buffer if set
