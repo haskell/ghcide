@@ -301,9 +301,9 @@ loadSession dir = do
           -- files in the project so that `knownFiles` can learn about them and
           -- we can generate a complete module graph
           liftIO $ modifyVar_ knownFilesVar $ traverseHashed $ pure . HashSet.union (HashSet.fromList cfps')
-          mmt <- uses GetModificationTime cfps'
-          let cs_exist = catMaybes (zipWith (<$) cfps' mmt)
           when checkProject $ do
+            mmt <- uses GetModificationTime cfps'
+            let cs_exist = catMaybes (zipWith (<$) cfps' mmt)
             modIfaces <- uses GetModIface cs_exist
             -- update xports map
             extras <- getShakeExtras
