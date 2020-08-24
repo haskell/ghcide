@@ -106,6 +106,7 @@ main = do
             let options = (defaultIdeOptions sessionLoader)
                     { optReportProgress = clientSupportsProgress caps
                     , optShakeProfiling = argsShakeProfiling
+                    , optOTProfiling    = IdeOTProfiling argsOTProfiling
                     , optTesting        = IdeTesting argsTesting
                     , optThreads        = argsThreads
                     , optCheckParents   = checkParents config
