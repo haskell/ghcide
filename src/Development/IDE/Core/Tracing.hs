@@ -10,7 +10,7 @@ import           Control.Concurrent
 import           Control.Monad
 
 -- | Trace an action using OpenTelemetry. Adds various useful info into tags in the OpenTelemetry span.
-otTraced :: String -> IO a -> IO a
+otTraced :: BS.ByteString -> IO a -> IO a
 otTraced name act = bracket (beginSpan name) endSpan (const act)
 
 -- | Trace a Shake action using opentelemetry.
