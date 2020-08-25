@@ -57,7 +57,6 @@ import qualified Data.IntMap.Strict as IntMap
 import Data.IntMap.Strict (IntMap)
 import Data.List
 import qualified Data.Set                                 as Set
-import qualified Data.HashMap.Strict                      as HM
 import qualified Data.Text                                as T
 import qualified Data.Text.Encoding                       as T
 import           Development.IDE.GHC.Error
@@ -825,14 +824,6 @@ extractHiFileResult (Just tmr) =
     -- Bang patterns are important to force the inner fields
     Just $! tmr_hiFileResult tmr
 
-isFileOfInterestRule :: Rules ()
-isFileOfInterestRule = defineEarlyCutoff $ \IsFileOfInterest f -> do
-    filesOfInterest <- getFilesOfInterest
-    let res = case f `HM.lookup` filesOfInterest of
-          Just x -> IsFOI x
-          Nothing -> NotFOI
-    return (Just $ BS.pack $ show $ hash res, ([], Just res))
-
 -- | A rule that wires per-file rules together
 mainRule :: Rules ()
 mainRule = do
@@ -848,7 +839,6 @@ mainRule = do
     loadGhcSession
     getModIfaceFromDiskRule
     getModIfaceRule
-    isFileOfInterestRule
     getModSummaryRule
     isHiFileStableRule
     getModuleGraphRule
