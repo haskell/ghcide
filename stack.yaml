@@ -19,7 +19,9 @@ extra-deps:
 - tasty-rerun-1.1.17
 - ghc-check-0.5.0.1
 - extra-1.7.2
-
+- opentelemetry-0.4.2
+- git: https://github.com/mpardalos/heapsize.git
+  commit: e6d791eadeb97920d6697627de026e996465850d
 nix:
   packages: [zlib]
 

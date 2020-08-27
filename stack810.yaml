@@ -12,8 +12,8 @@ extra-deps:
 - opentelemetry-extra-0.6.0
 - ghc-events-0.13.0
 - ghc-trace-events-0.1.2.1
-- git: https://github.com/mpardalos/ghc-datasize.git
-  commit: e4f4829c8f6e2430455e73b32d499e856c4ff58f
+- git: https://github.com/mpardalos/heapsize.git
+  commit: e6d791eadeb97920d6697627de026e996465850d
 
 # not yet in stackage
 - Chart-diagrams-1.9.3
