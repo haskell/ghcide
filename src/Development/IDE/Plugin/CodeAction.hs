@@ -746,15 +746,18 @@ suggestNewImport _ _ _ = []
 constructNewImportSuggestions
   :: PackageExportsMap -> NotInScope -> Maybe [T.Text] -> [T.Text]
 constructNewImportSuggestions exportsMap thingMissing notTheseModules = nubOrd
-  [ renderNewImport identInfo m
+  [ i
   | (identInfo, m) <- fromMaybe [] $ Map.lookup name exportsMap
   , canUseIdent thingMissing identInfo
   , m `notElem` fromMaybe [] notTheseModules
+  , i <- renderNewImport identInfo m
   ]
  where
   renderNewImport identInfo m
-    | Just q <- qual = "import qualified " <> m <> " as " <> q
-    | otherwise      = "import " <> m <> " (" <> importWhat identInfo <> ")"
+    | Just q <- qual = ["import qualified " <> m <> " as " <> q]
+    | otherwise      = ["import " <> m <> " (" <> importWhat identInfo <> ")"
+                       ,"import " <> m
+                       ]
 
   (qual, name) = case T.splitOn "." (notInScope thingMissing) of
     [n]      -> (Nothing, n)
