@@ -71,7 +71,7 @@ library
         unordered-containers >= 0.2.10.0,
         utf8-string,
         hslogger,
-        opentelemetry >=0.6.0,
+        opentelemetry >=0.6.1,
         heapsize ==0.1
     if flag(ghc-lib)
       build-depends:
