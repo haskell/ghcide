@@ -104,12 +104,12 @@ If you can't get `ghcide` working outside the editor, see [this setup troublesho
   // When to check the dependents of a module
   // AlwaysCheck means retypechecking them on every change
   // CheckOnSave means dependent/parent modules will only be checked when you save
-  // "CheckOnSave" by default
-  checkParents : "CheckOnSave" | "AlwaysCheck" | "NeverCheck",
+  // "CheckOnSaveAndClose" by default
+  checkParents : "NeverCheck" | "CheckOnClose" | "CheckOnSaveAndClose" | "AlwaysCheck" | ,
   // Whether to check the entire project on initial load
   // true by default
   checkProject : boolean
-   
+
 }
 ```
 

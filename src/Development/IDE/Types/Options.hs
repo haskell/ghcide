@@ -93,7 +93,13 @@ data IdeOptions = IdeOptions
 newtype CheckProject = CheckProject { shouldCheckProject :: Bool }
   deriving stock (Eq, Ord, Show)
   deriving newtype (FromJSON,ToJSON)
-data CheckParents = AlwaysCheck | NeverCheck | CheckOnSave
+data CheckParents
+    -- Note that ordering of constructors is meaningful and must be monotonically
+    -- increasing in the scenarios where parents are checked
+    = NeverCheck
+    | CheckOnClose
+    | CheckOnSaveAndClose
+    | AlwaysCheck
   deriving stock (Eq, Ord, Show, Generic)
   deriving anyclass (FromJSON, ToJSON)
 
@@ -105,7 +111,7 @@ data LspConfig
     deriving anyclass (FromJSON, ToJSON)
 
 defaultLspConfig :: LspConfig
-defaultLspConfig = LspConfig CheckOnSave (CheckProject True)
+defaultLspConfig = LspConfig CheckOnSaveAndClose (CheckProject True)
 
 data IdePreprocessedSource = IdePreprocessedSource
   { preprocWarnings :: [(GHC.SrcSpan, String)]
@@ -139,8 +145,8 @@ defaultIdeOptions session = IdeOptions
     ,optKeywords = haskellKeywords
     ,optDefer = IdeDefer True
     ,optTesting = IdeTesting False
-    ,optCheckProject = CheckProject True
-    ,optCheckParents = CheckOnSave
+    ,optCheckProject = checkProject defaultLspConfig
+    ,optCheckParents = checkParents defaultLspConfig
     }
 
 
