@@ -568,7 +568,7 @@ shakeRestart IdeState{..} acts =
 --   Appropriate for user actions other than edits.
 shakeEnqueue :: ShakeExtras -> DelayedAction a -> IO (IO a)
 shakeEnqueue ShakeExtras{actionQueue} act = do
-    (b, dai) <- instantiateDelayedAction actionQueue act
+    (b, dai) <- instantiateDelayedAction act
     atomically $ pushQueue dai actionQueue
     let wait' b =
             waitBarrier b `catch` \BlockedIndefinitelyOnMVar ->
@@ -591,6 +591,7 @@ newSession ShakeExtras{..} shakeDb acts = do
         run d  = do
             start <- liftIO offsetTime
             getAction d
+            liftIO $ atomically $ doneQueue d actionQueue
             runTime <- liftIO start
             liftIO $ logPriority logger (actionPriority d) $ T.pack $
                 "finish: " ++ actionName d ++ " (took " ++ showDuration runTime ++ ")"
@@ -621,10 +622,9 @@ newSession ShakeExtras{..} shakeDb acts = do
     pure (ShakeSession{..})
 
 instantiateDelayedAction
-    :: ActionQueue
-    -> DelayedAction a
+    :: DelayedAction a
     -> IO (Barrier (Either SomeException a), DelayedActionInternal)
-instantiateDelayedAction queue (DelayedAction _ s p a) = do
+instantiateDelayedAction (DelayedAction _ s p a) = do
   u <- newUnique
   b <- newBarrier
   let a' = do
@@ -636,7 +636,6 @@ instantiateDelayedAction queue (DelayedAction _ s p a) = do
           x <- actionCatch @SomeException (Right <$> a) (pure . Left)
           liftIO $ do
             signalBarrier b x
-            atomically $ doneQueue d' queue
       d' = DelayedAction (Just u) s p a'
   return (b, d')
 
