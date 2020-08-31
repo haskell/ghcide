@@ -141,9 +141,9 @@ main = shakeArgs shakeOptions {shakeChange = ChangeModtimeAndDigest} $ do
       need =<< getDirectoryFiles "." ["src//*.hs", "exe//*.hs", "ghcide.cabal"]
       cmd_
           ( "stack --local-bin-path=" <> takeDirectory out
-              <> " --stack-yaml=stack88.yaml build ghcide:ghcide --copy-bins --ghc-options -rtsopts"
+              <> " build ghcide:ghcide --copy-bins --ghc-options -rtsopts"
           )
-      Stdout ghcLoc <- cmd (s "stack --stack-yaml=stack88.yaml exec which ghc")
+      Stdout ghcLoc <- cmd (s "stack exec which ghc")
       writeFile' ghcpath ghcLoc
 
   [ build -/- "*/ghcide",
@@ -155,12 +155,12 @@ main = shakeArgs shakeOptions {shakeChange = ChangeModtimeAndDigest} $ do
       commitid <- readFile' $ b </> ver </> "commitid"
       cmd_ $ "git worktree add bench-temp " ++ commitid
       flip actionFinally (cmd_ (s "git worktree remove bench-temp --force")) $ do
-        Stdout ghcLoc <- cmd [Cwd "bench-temp"] (s "stack --stack-yaml=stack88.yaml exec which ghc")
+        Stdout ghcLoc <- cmd [Cwd "bench-temp"] (s "stack exec which ghc")
         cmd_
           [Cwd "bench-temp"]
           ( "stack --local-bin-path=../"
               <> takeDirectory out
-              <> " --stack-yaml=stack88.yaml build ghcide:ghcide --copy-bins --ghc-options -rtsopts"
+              <> " build ghcide:ghcide --copy-bins --ghc-options -rtsopts"
           )
         writeFile' ghcpath ghcLoc
 
