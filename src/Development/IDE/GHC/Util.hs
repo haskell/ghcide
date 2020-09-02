@@ -28,6 +28,7 @@ module Development.IDE.GHC.Util(
     hDuplicateTo',
     setHieDir,
     dontWriteHieFiles,
+    disableWarningsAsErrors,
     ) where
 
 import Control.Concurrent
