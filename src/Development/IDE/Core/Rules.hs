@@ -271,12 +271,14 @@ getParsedModuleRule = defineEarlyCutoff $ \GetParsedModule file -> do
             -- parse errors
             let diagsM = mergeParseErrorsHaddock diags diagsh
             case resh of
-              Just _ -> pure (fph, (diagsM, resh))
+              Just _
+                | HaddockParse <- optHaddockParse opt
+                -> pure (fph, (diagsM, resh))
               -- If we fail to parse haddocks, report the haddock diagnostics as well and
               -- return the non-haddock parse.
               -- This seems to be the correct behaviour because the Haddock flag is added
               -- by us and not the user, so our IDE shouldn't stop working because of it.
-              Nothing  -> pure (fp, (diagsM, res))
+              _ -> pure (fp, (diagsM, res))
 
 
 withOptHaddock :: HscEnv -> HscEnv
