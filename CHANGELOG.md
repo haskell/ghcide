@@ -26,7 +26,6 @@
 * Avoid excessive retypechecking of TH codebases (#673) - (Pepe Iborra)
 * Use stale information if it's available to answer requests quickly (#624) - (Matthew Pickering)
 * Code action: add constraint (#653) - (Denis Frezzato)
-* Code action: add constraint (#653) - (Denis Frezzato)
 * Make BenchHist non buildable by default and save logs (#666) - (Pepe Iborra)
 * Delete unused top level binding code action (#657) - (Serhii)
 * stack810.yaml: bump (#651) - (Domen Kozar)
