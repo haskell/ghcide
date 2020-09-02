@@ -445,6 +445,9 @@ shakeOpen getLspId eventer withProgress withIndefiniteProgress logger debouncer
     initSession <- newSession shakeExtras shakeDb []
     shakeSession <- newMVar initSession
     let ideState = IdeState{..}
+
+    startTelemetry "Values map" (state shakeExtras)
+
     return ideState
     where
         -- The progress thread is a state machine with two states:

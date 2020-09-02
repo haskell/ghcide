@@ -72,6 +72,7 @@ library
         utf8-string,
         hslogger,
         opentelemetry >=0.6.0,
+        ghc-datasize ==0.3
     if flag(ghc-lib)
       build-depends:
         ghc-lib >= 8.8,

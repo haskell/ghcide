@@ -24,6 +24,7 @@ import           Language.Haskell.LSP.Messages
 import           Language.Haskell.LSP.Types
 
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
 
 gotoDefinition :: IdeState -> TextDocumentPositionParams -> IO (Either ResponseError LocationResponseParams)
 hover          :: IdeState -> TextDocumentPositionParams -> IO (Either ResponseError (Maybe Hover))
