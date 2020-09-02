@@ -3,15 +3,14 @@ trigger:
   batch: false
   branches:
     include:
-      - master
-      - azure*
+      - daml
 
 # Enable PR triggers that target the master branch
 pr:
   autoCancel: true # cancel previous builds on push
   branches:
     include:
-      - master
+      - daml
 
 jobs:
   - template: ./.azure/linux-stack.yml
