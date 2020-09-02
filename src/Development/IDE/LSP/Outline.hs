@@ -46,12 +46,14 @@ moduleOutline _lsp ideState DocumentSymbolParams { _textDocument = TextDocumentI
         Just ParsedModule { pm_parsed_source = L _ltop HsModule { hsmodName, hsmodDecls, hsmodImports } }
           -> let
                declSymbols  = mapMaybe documentSymbolForDecl hsmodDecls
-               moduleSymbol = hsmodName <&> \(L (RealSrcSpan l) m) ->
-                 (defDocumentSymbol l :: DocumentSymbol)
-                   { _name  = pprText m
-                   , _kind  = SkFile
-                   , _range = Range (Position 0 0) (Position maxBound 0) -- _ltop is 0 0 0 0
-                   }
+               moduleSymbol = hsmodName >>= \case
+                 (L (RealSrcSpan l) m) -> Just $
+                   (defDocumentSymbol l :: DocumentSymbol)
+                     { _name  = pprText m
+                     , _kind  = SkFile
+                     , _range = Range (Position 0 0) (Position maxBound 0) -- _ltop is 0 0 0 0
+                     }
+                 _ -> Nothing
                importSymbols = maybe [] pure $
                   documentSymbolForImportSummary
                     (mapMaybe documentSymbolForImport hsmodImports)
