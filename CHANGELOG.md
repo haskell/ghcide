@@ -1,6 +1,6 @@
 ### unreleased
 
-### 0.3.0 (2020-09-01)
+### 0.3.0 (2020-09-02)
 
 * CI: remove (internal) DA Slack notifications (#750) - (Gary Verhaegen)
 * Add session-loader to hie.yaml (#714) - (Luke Lau)
