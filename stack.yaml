@@ -21,8 +21,7 @@ extra-deps:
 - extra-1.7.2
 - opentelemetry-0.6.1
 - opentelemetry-extra-0.6.1
-- git: https://github.com/mpardalos/heapsize.git
-  commit: e6d791eadeb97920d6697627de026e996465850d
+- heapsize-0.1
 nix:
   packages: [zlib]
 

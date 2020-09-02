@@ -10,7 +10,7 @@ import           OpenTelemetry.Eventlog
 import qualified Data.ByteString.Char8         as BS
 import           Control.Concurrent.Extra
 import           Control.Concurrent.Async
-import GHC.DataSize
+import           HeapSize
 import qualified Data.HashMap.Strict as HMap
 import           Data.Functor
 import           System.Mem (performGC)
