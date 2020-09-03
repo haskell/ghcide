@@ -23,6 +23,7 @@ module Development.IDE.GHC.Compat(
     dontWriteHieFiles,
 #if !MIN_GHC_API_VERSION(8,8,0)
     ml_hie_file,
+    addBootSuffixLocnOut,
 #endif
     hPutStringBuffer,
     includePathsGlobal,
@@ -42,15 +43,16 @@ module Development.IDE.GHC.Compat(
     pattern IEThingWith,
     pattern VarPat,
     pattern PatSynBind,
+    pattern ValBinds,
+    pattern HsValBinds,
     GHC.ModLocation,
     Module.addBootSuffix,
     pattern ModLocation,
     getConArgs,
-
     HasSrcSpan,
     getLoc,
-
     upNameCache,
+    disableWarningsAsErrors,
 
     module GHC,
 #if MIN_GHC_API_VERSION(8,6,0)
@@ -92,6 +94,8 @@ import GHC hiding (
       ModLocation,
       HasSrcSpan,
       PatSynBind,
+      ValBinds,
+      HsValBinds,
       lookupName,
       getLoc
 #if MIN_GHC_API_VERSION(8,6,0)
@@ -100,6 +104,7 @@ import GHC hiding (
     )
 import qualified HeaderInfo as Hdr
 import Avail
+import Data.List (foldl')
 import ErrUtils (ErrorMessages)
 import FastString (FastString)
 
@@ -119,9 +124,11 @@ import System.FilePath ((-<.>))
 #endif
 
 #if !MIN_GHC_API_VERSION(8,8,0)
+import qualified EnumSet
 
 #if MIN_GHC_API_VERSION(8,6,0)
 import GhcPlugins (srcErrorMessages)
+import Data.List (isSuffixOf)
 #else
 import System.IO.Error
 import IfaceEnv
@@ -153,7 +160,9 @@ hieExportNames = nameListFromAvails . hie_exports
 
 #if !MIN_GHC_API_VERSION(8,8,0)
 ml_hie_file :: GHC.ModLocation -> FilePath
-ml_hie_file ml = ml_hi_file ml -<.> ".hie"
+ml_hie_file ml
+  | "boot" `isSuffixOf ` ml_hi_file ml = ml_hi_file ml -<.> ".hie-boot"
+  | otherwise  = ml_hi_file ml -<.> ".hie"
 #endif
 
 #endif
@@ -284,6 +293,22 @@ pattern PatSynBind x <-
     GHC.PatSynBind x
 #endif
 
+pattern ValBinds :: LHsBinds p -> [LSig p] -> HsValBindsLR p p
+pattern ValBinds b s <-
+#if MIN_GHC_API_VERSION(8,6,0)
+    GHC.ValBinds _ b s
+#else
+    GHC.ValBindsIn b s
+#endif
+
+pattern HsValBinds :: HsValBindsLR p p -> HsLocalBindsLR p p
+pattern HsValBinds b <-
+#if MIN_GHC_API_VERSION(8,6,0)
+    GHC.HsValBinds _ b
+#else
+    GHC.HsValBinds b
+#endif
+
 setHieDir :: FilePath -> DynFlags -> DynFlags
 setHieDir _f d =
 #if MIN_GHC_API_VERSION(8,8,0)
@@ -380,6 +405,14 @@ instance HasSrcSpan (GenLocated SrcSpan a) where
 getHeaderImports a b c d =
     catch (Right <$> Hdr.getImports a b c d)
           (return . Left . srcErrorMessages)
+
+-- | Add the @-boot@ suffix to all output file paths associated with the
+-- module, not including the input file itself
+addBootSuffixLocnOut :: GHC.ModLocation -> GHC.ModLocation
+addBootSuffixLocnOut locn
+  = locn { ml_hi_file  = Module.addBootSuffix (ml_hi_file locn)
+         , ml_obj_file = Module.addBootSuffix (ml_obj_file locn)
+         }
 #endif
 
 getModuleHash :: ModIface -> Fingerprint
@@ -398,3 +431,13 @@ getConArgs = GHC.getConDetails
 
 getPackageName :: DynFlags -> Module.InstalledUnitId -> Maybe PackageName
 getPackageName dfs i = packageName <$> lookupPackage dfs (Module.DefiniteUnitId (Module.DefUnitId i))
+
+disableWarningsAsErrors :: DynFlags -> DynFlags
+disableWarningsAsErrors df =
+    flip gopt_unset Opt_WarnIsError $ foldl' wopt_unset_fatal df [toEnum 0 ..]
+
+#if !MIN_GHC_API_VERSION(8,8,0)
+wopt_unset_fatal :: DynFlags -> WarningFlag -> DynFlags
+wopt_unset_fatal dfs f
+    = dfs { fatalWarningFlags = EnumSet.delete f (fatalWarningFlags dfs) }
+#endif

@@ -87,6 +87,8 @@ main = do
     , nonLspCommandLine
     , benchmarkTests
     , ifaceTests
+    , bootTests
+    , rootUriTests
     ]
 
 initializeResponseTests :: TestTree
@@ -468,6 +470,34 @@ diagnosticTests = testGroup "diagnostics"
             Lens.filtered (T.isInfixOf ("/" <> name <> ".hs:"))
           failure msg = liftIO $ assertFailure $ "Expected file path to be stripped but got " <> T.unpack msg
       Lens.mapMOf_ offenders failure notification
+  , testSession' "-Werror in cradle is ignored" $ \sessionDir -> do
+      liftIO $ writeFile (sessionDir </> "hie.yaml")
+        "cradle: {direct: {arguments: [\"-Wall\", \"-Werror\"]}}"
+      let fooContent = T.unlines
+            [ "module Foo where"
+            , "foo = ()"
+            ]
+      _ <- createDoc "Foo.hs" "haskell" fooContent
+      expectDiagnostics
+        [ ( "Foo.hs"
+          , [(DsWarning, (1, 0), "Top-level binding with no type signature:")
+            ]
+          )
+        ]
+  , testSessionWait "-Werror in pragma is ignored" $ do
+      let fooContent = T.unlines
+            [ "{-# OPTIONS_GHC -Wall -Werror #-}"
+            , "module Foo() where"
+            , "foo :: Int"
+            , "foo = 1"
+            ]
+      _ <- createDoc "Foo.hs" "haskell" fooContent
+      expectDiagnostics
+        [ ( "Foo.hs"
+          , [(DsWarning, (3, 0), "Defined but not used:")
+            ]
+          )
+        ]
   ]
 
 codeActionTests :: TestTree
@@ -1009,7 +1039,9 @@ suggestImportTests = testGroup "suggest import actions"
     [ test True []          "f = nonEmpty"                []                "import Data.List.NonEmpty (nonEmpty)"
     , test True []          "f = (:|)"                    []                "import Data.List.NonEmpty (NonEmpty((:|)))"
     , test True []          "f :: Natural"                ["f = undefined"] "import Numeric.Natural (Natural)"
+    , test True []          "f :: Natural"                ["f = undefined"] "import Numeric.Natural"
     , test True []          "f :: NonEmpty ()"            ["f = () :| []"]  "import Data.List.NonEmpty (NonEmpty)"
+    , test True []          "f :: NonEmpty ()"            ["f = () :| []"]  "import Data.List.NonEmpty"
     , test True []          "f = First"                   []                "import Data.Monoid (First(First))"
     , test True []          "f = Endo"                    []                "import Data.Monoid (Endo(Endo))"
     , test True []          "f = Version"                 []                "import Data.Version (Version(Version))"
@@ -1017,9 +1049,12 @@ suggestImportTests = testGroup "suggest import actions"
     , test True []          "f = AssertionFailed"         []                "import Control.Exception (AssertionFailed(AssertionFailed))"
     , test True ["Prelude"] "f = nonEmpty"                []                "import Data.List.NonEmpty (nonEmpty)"
     , test True []          "f :: Alternative f => f ()"  ["f = undefined"] "import Control.Applicative (Alternative)"
+    , test True []          "f :: Alternative f => f ()"  ["f = undefined"] "import Control.Applicative"
     , test True []          "f = empty"                   []                "import Control.Applicative (Alternative(empty))"
+    , test True []          "f = empty"                   []                "import Control.Applicative"
     , test True []          "f = (&)"                     []                "import Data.Function ((&))"
     , test True []          "f = NE.nonEmpty"             []                "import qualified Data.List.NonEmpty as NE"
+    , test True []          "f = Data.List.NonEmpty.nonEmpty" []            "import qualified Data.List.NonEmpty"
     , test True []          "f :: Typeable a => a"        ["f = undefined"] "import Data.Typeable (Typeable)"
     , test True []          "f = pack"                    []                "import Data.Text (pack)"
     , test True []          "f :: Text"                   ["f = undefined"] "import Data.Text (Text)"
@@ -1201,6 +1236,91 @@ deleteUnusedDefinitionTests = testGroup "delete unused definition action"
         , ""
         , "some = ()"
       ])
+  , testSession "delete unused binding in where clause" $
+    testFor
+    (T.unlines [ "{-# OPTIONS_GHC -Wunused-binds #-}"
+               , "module A (h, g) where"
+               , ""
+               , "h :: Int"
+               , "h = 3"
+               , ""
+               , "g :: Int"
+               , "g = 6"
+               , "  where"
+               , "    h :: Int"
+               , "    h = 4"
+               , ""
+               ])
+    (10, 4)
+    "Delete ‘h’"
+    (T.unlines [ "{-# OPTIONS_GHC -Wunused-binds #-}"
+               , "module A (h, g) where"
+               , ""
+               , "h :: Int"
+               , "h = 3"
+               , ""
+               , "g :: Int"
+               , "g = 6"
+               , "  where"
+               , ""
+               ])
+  , testSession "delete unused binding with multi-oneline signatures front" $
+    testFor
+    (T.unlines [ "{-# OPTIONS_GHC -Wunused-binds #-}"
+               , "module A (b, c) where"
+               , ""
+               , "a, b, c :: Int"
+               , "a = 3"
+               , "b = 4"
+               , "c = 5"
+               ])
+    (4, 0)
+    "Delete ‘a’"
+    (T.unlines [ "{-# OPTIONS_GHC -Wunused-binds #-}"
+               , "module A (b, c) where"
+               , ""
+               , "b, c :: Int"
+               , "b = 4"
+               , "c = 5"
+               ])
+  , testSession "delete unused binding with multi-oneline signatures mid" $
+    testFor
+    (T.unlines [ "{-# OPTIONS_GHC -Wunused-binds #-}"
+               , "module A (a, c) where"
+               , ""
+               , "a, b, c :: Int"
+               , "a = 3"
+               , "b = 4"
+               , "c = 5"
+               ])
+    (5, 0)
+    "Delete ‘b’"
+    (T.unlines [ "{-# OPTIONS_GHC -Wunused-binds #-}"
+               , "module A (a, c) where"
+               , ""
+               , "a, c :: Int"
+               , "a = 3"
+               , "c = 5"
+               ])
+  , testSession "delete unused binding with multi-oneline signatures end" $
+    testFor
+    (T.unlines [ "{-# OPTIONS_GHC -Wunused-binds #-}"
+               , "module A (a, b) where"
+               , ""
+               , "a, b, c :: Int"
+               , "a = 3"
+               , "b = 4"
+               , "c = 5"
+               ])
+    (6, 0)
+    "Delete ‘c’"
+    (T.unlines [ "{-# OPTIONS_GHC -Wunused-binds #-}"
+               , "module A (a, b) where"
+               , ""
+               , "a, b :: Int"
+               , "a = 3"
+               , "b = 4"
+               ])
   ]
   where
     testFor source pos expectedTitle expectedResult = do
@@ -2032,7 +2152,7 @@ findDefinitionAndHoverTests = let
   lstL43 = Position 47 12  ;  litL   = [ExpectHoverText ["[8391 :: Int, 6268]"]]
   outL45 = Position 49  3  ;  outSig = [ExpectHoverText ["outer", "Bool"], mkR 46 0 46 5]
   innL48 = Position 52  5  ;  innSig = [ExpectHoverText ["inner", "Char"], mkR 49 2 49 7]
-  cccL17 = Position 17 11  ;  docLink = [ExpectHoverText ["[Documentation](file://"]]
+  cccL17 = Position 17 11  ;  docLink = [ExpectHoverText ["[Documentation](file:///"]]
 #if MIN_GHC_API_VERSION(8,6,0)
   imported = Position 56 13 ; importedSig = getDocUri "Foo.hs" >>= \foo -> return [ExpectHoverText ["foo", "Foo", "Haddock"], mkL foo 5 0 5 3]
   reexported = Position 55 14 ; reexportedSig = getDocUri "Bar.hs" >>= \bar -> return [ExpectHoverText ["Bar", "Bar", "Haddock"], mkL bar 3 0 3 14]
@@ -2067,7 +2187,7 @@ findDefinitionAndHoverTests = let
   , test  yes    yes    mclL36     mcl           "top-level fn 1st clause"
   , test  yes    yes    mclL37     mcl           "top-level fn 2nd clause         #246"
   , test  yes    yes    spaceL37   space        "top-level fn on space #315"
-  , test  no     broken docL41     doc           "documentation                     #7"
+  , test  no     yes    docL41     doc           "documentation                     #7"
   , test  no     yes    eitL40     kindE         "kind of Either                  #273"
   , test  no     yes    intL40     kindI         "kind of Int                     #273"
   , test  no     broken tvrL40     kindV         "kind of (* -> *) type variable  #273"
@@ -2804,6 +2924,22 @@ ifaceTests = testGroup "Interface loading tests"
     , ifaceTHTest
     ]
 
+bootTests :: TestTree
+bootTests = testCase "boot-def-test" $ withoutStackEnv $ runWithExtraFiles "boot" $ \dir -> do
+  let cPath = dir </> "C.hs"
+  cSource <- liftIO $ readFileUtf8 cPath
+
+  -- Dirty the cache
+  liftIO $ runInDir dir $ do
+    cDoc <- createDoc cPath "haskell" cSource
+    _ <- getHover cDoc $ Position 4 3
+    closeDoc cDoc
+
+  cdoc <- createDoc cPath "haskell" cSource
+  locs <- getDefinitions cdoc (Position 7 4)
+  let floc = mkR 7 0 7 1
+  checkDefs locs (pure [floc])
+
 -- | test that TH reevaluates across interfaces
 ifaceTHTest :: TestTree
 ifaceTHTest = testCase "iface-th-test" $ withoutStackEnv $ runWithExtraFiles "TH" $ \dir -> do
@@ -2829,28 +2965,26 @@ ifaceTHTest = testCase "iface-th-test" $ withoutStackEnv $ runWithExtraFiles "TH
 
 ifaceErrorTest :: TestTree
 ifaceErrorTest = testCase "iface-error-test-1" $ withoutStackEnv $ runWithExtraFiles "recomp" $ \dir -> do
-    let aPath = dir </> "A.hs"
-        bPath = dir </> "B.hs"
+    let bPath = dir </> "B.hs"
         pPath = dir </> "P.hs"
 
-    aSource <- liftIO $ readFileUtf8 aPath -- x = y :: Int
     bSource <- liftIO $ readFileUtf8 bPath -- y :: Int
     pSource <- liftIO $ readFileUtf8 pPath -- bar = x :: Int
 
     bdoc <- createDoc bPath "haskell" bSource
-    pdoc <- createDoc pPath "haskell" pSource
     expectDiagnostics [("P.hs", [(DsWarning,(4,0), "Top-level binding")]) -- So what we know P has been loaded
                       ]
 
     -- Change y from Int to B
     changeDoc bdoc [TextDocumentContentChangeEvent Nothing Nothing $ T.unlines ["module B where", "y :: Bool", "y = undefined"]]
+    -- save so that we can that the error propogates to A
+    sendNotification TextDocumentDidSave (DidSaveTextDocumentParams bdoc)
 
     -- Check that the error propogates to A
-    adoc <- createDoc aPath "haskell" aSource
     expectDiagnostics
       [("A.hs", [(DsError, (5, 4), "Couldn't match expected type 'Int' with actual type 'Bool'")])]
-    closeDoc adoc -- Close A
 
+    pdoc <- createDoc pPath "haskell" pSource
     changeDoc pdoc [TextDocumentContentChangeEvent Nothing Nothing $ pSource <> "\nfoo = y :: Bool" ]
     -- Now in P we have
     -- bar = x :: Int
@@ -2988,9 +3122,22 @@ benchmarkTests =
         , Bench.name e /= "edit" -- the edit experiment does not ever fail
     ]
 
+-- | checks if we use InitializeParams.rootUri for loading session
+rootUriTests :: TestTree
+rootUriTests = testCase "use rootUri" . withoutStackEnv . runTest "dirA" "dirB" $ \dir -> do
+  let bPath = dir </> "dirB/Foo.hs"
+  liftIO $ copyTestDataFiles dir "rootUri"
+  bSource <- liftIO $ readFileUtf8 bPath
+  _ <- createDoc "Foo.hs" "haskell" bSource
+  expectNoMoreDiagnostics 0.5
+  where
+    -- similar to run' except we can configure where to start ghcide and session
+    runTest :: FilePath -> FilePath -> (FilePath -> Session ()) -> IO ()
+    runTest dir1 dir2 s = withTempDir $ \dir -> runInDir' dir dir1 dir2 (s dir)
+
 ----------------------------------------------------------------------
 -- Utils
-
+----------------------------------------------------------------------
 
 testSession :: String -> Session () -> TestTree
 testSession name = testCase name . run
@@ -3030,7 +3177,7 @@ mkRange :: Int -> Int -> Int -> Int -> Range
 mkRange a b c d = Range (Position a b) (Position c d)
 
 run :: Session a -> IO a
-run s = withTempDir $ \dir -> runInDir dir s
+run s = run' (const s)
 
 runWithExtraFiles :: FilePath -> (FilePath -> Session a) -> IO a
 runWithExtraFiles prefix s = withTempDir $ \dir -> do
@@ -3049,20 +3196,27 @@ run' :: (FilePath -> Session a) -> IO a
 run' s = withTempDir $ \dir -> runInDir dir (s dir)
 
 runInDir :: FilePath -> Session a -> IO a
-runInDir dir s = do
-  ghcideExe <- locateGhcideExecutable
+runInDir dir = runInDir' dir "." "."
 
+-- | Takes a directory as well as relative paths to where we should launch the executable as well as the session root.
+runInDir' :: FilePath -> FilePath -> FilePath -> Session a -> IO a
+runInDir' dir startExeIn startSessionIn s = do
+  ghcideExe <- locateGhcideExecutable
+  let startDir = dir </> startExeIn
+  let projDir = dir </> startSessionIn
+
+  createDirectoryIfMissing True startDir
+  createDirectoryIfMissing True projDir
   -- Temporarily hack around https://github.com/mpickering/hie-bios/pull/56
   -- since the package import test creates "Data/List.hs", which otherwise has no physical home
-  createDirectoryIfMissing True $ dir ++ "/Data"
+  createDirectoryIfMissing True $ projDir ++ "/Data"
 
-
-  let cmd = unwords [ghcideExe, "--lsp", "--test", "--cwd", dir]
+  let cmd = unwords [ghcideExe, "--lsp", "--test", "--cwd", startDir]
   -- HIE calls getXgdDirectory which assumes that HOME is set.
   -- Only sets HOME if it wasn't already set.
   setEnv "HOME" "/homeless-shelter" False
   let lspTestCaps = fullCaps { _window = Just $ WindowClientCapabilities $ Just True }
-  runSessionWithConfig conf cmd lspTestCaps dir s
+  runSessionWithConfig conf cmd lspTestCaps projDir s
   where
     conf = defaultConfig
       -- If you uncomment this you can see all logging

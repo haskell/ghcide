@@ -19,6 +19,7 @@ import Development.IDE.GHC.Util
 import           Data.Hashable
 import           Data.Typeable
 import qualified Data.Set as S
+import qualified Data.HashSet                             as HS
 import           Development.Shake
 import           GHC.Generics                             (Generic)
 
@@ -28,6 +29,7 @@ import HscTypes (hm_iface, CgGuts, Linkable, HomeModInfo, ModDetails)
 import           Development.IDE.Spans.Type
 import           Development.IDE.Import.FindImports (ArtifactsLocation)
 import Data.ByteString (ByteString)
+import Language.Haskell.LSP.Types (NormalizedFilePath)
 
 
 -- NOTATION
@@ -46,11 +48,24 @@ type instance RuleResult GetDependencyInformation = DependencyInformation
 -- This rule is also responsible for calling ReportImportCycles for each file in the transitive closure.
 type instance RuleResult GetDependencies = TransitiveDependencies
 
+type instance RuleResult GetModuleGraph = DependencyInformation
+
+data GetKnownFiles = GetKnownFiles
+  deriving (Show, Generic, Eq, Ord)
+instance Hashable GetKnownFiles
+instance NFData   GetKnownFiles
+instance Binary   GetKnownFiles
+type instance RuleResult GetKnownFiles = HS.HashSet NormalizedFilePath
+
 -- | Contains the typechecked module and the OrigNameCache entry for
 -- that module.
 data TcModuleResult = TcModuleResult
     { tmrModule     :: TypecheckedModule
+    -- ^ warning, the ModIface in the tm_checked_module_info of the
+    -- TypecheckedModule will always be Nothing, use the ModIface in the
+    -- HomeModInfo instead
     , tmrModInfo    :: HomeModInfo
+    , tmrDeferedError :: !Bool -- ^ Did we defer any type errors for this module?
     }
 instance Show TcModuleResult where
     show = show . pm_mod_summary . tm_parsed_module . tmrModule
@@ -144,6 +159,12 @@ data GetDependencyInformation = GetDependencyInformation
 instance Hashable GetDependencyInformation
 instance NFData   GetDependencyInformation
 instance Binary   GetDependencyInformation
+
+data GetModuleGraph = GetModuleGraph
+    deriving (Eq, Show, Typeable, Generic)
+instance Hashable GetModuleGraph
+instance NFData   GetModuleGraph
+instance Binary   GetModuleGraph
 
 data ReportImportCycles = ReportImportCycles
     deriving (Eq, Show, Typeable, Generic)
