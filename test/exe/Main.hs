@@ -1529,35 +1529,35 @@ fillTypedHoleTests = let
     liftIO $ expectedCode @=? modifiedCode
   in
   testGroup "fill typed holes"
-  [ check "replace `_` with show"
+  [ check "replace _ with show"
           "_"    "n" "n"
           "show" "n" "n"
 
-  , check "replace `_` with globalConvert"
+  , check "replace _ with globalConvert"
           "_"             "n" "n"
           "globalConvert" "n" "n"
 
 #if MIN_GHC_API_VERSION(8,6,0)
-  , check "replace `_convertme` with localConvert"
+  , check "replace _convertme with localConvert"
           "_convertme"   "n" "n"
           "localConvert" "n" "n"
 #endif
 
-  , check "replace `_b` with globalInt"
+  , check "replace _b with globalInt"
           "_a" "_b"        "_c"
           "_a" "globalInt" "_c"
 
-  , check "replace `_c` with globalInt"
+  , check "replace _c with globalInt"
           "_a" "_b"        "_c"
           "_a" "_b" "globalInt"
 
 #if MIN_GHC_API_VERSION(8,6,0)
-  , check "replace `_c` with parameterInt"
+  , check "replace _c with parameterInt"
           "_a" "_b" "_c"
           "_a" "_b"  "parameterInt"
-  , check "replace `_` with foo (_ :: ())"
+  , check "replace _ with foo _"
           "_" "n" "n"
-          "foo (_ :: ())" "n" "n"
+          "(foo _)" "n" "n"
 #endif
   ]
 

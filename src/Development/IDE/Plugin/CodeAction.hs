@@ -48,8 +48,7 @@ import qualified Data.Text as T
 import Data.Tuple.Extra ((&&&))
 import HscTypes
 import Parser
-import Text.Regex.TDFA (CompOption(..), RegexContext, makeRegexOpts, blankCompOpt, blankExecOpt, matchM, (=~), (=~~))
-import Text.Regex.TDFA.Text(Regex)
+import Text.Regex.TDFA (mrAfter, (=~), (=~~))
 import Outputable (ppr, showSDocUnsafe)
 import DynFlags (xFlags, FlagSpec(..))
 import GHC.LanguageExtensions.Type (Extension)
@@ -143,14 +142,14 @@ suggestAction
   -> Diagnostic
   -> [(T.Text, [TextEdit])]
 suggestAction dflags packageExports ideOptions parsedModule text diag = concat
-    [ suggestAddExtension diag
+   -- Order these suggestions by priority
+    [ suggestAddExtension diag             -- Highest priority
+    , suggestSignature True diag
     , suggestExtendImport dflags text diag
-    , suggestFillHole diag
     , suggestFillTypeWildcard diag
     , suggestFixConstructorImport text diag
     , suggestModuleTypo diag
     , suggestReplaceIdentifier text diag
-    , suggestSignature True diag
     , suggestConstraint text diag
     , removeRedundantConstraints text diag
     , suggestAddTypeAnnotationToSatisfyContraints text diag
@@ -160,7 +159,9 @@ suggestAction dflags packageExports ideOptions parsedModule text diag = concat
     ++ suggestNewImport packageExports pm diag
     ++ suggestDeleteUnusedBinding pm text diag
     ++ suggestExportUnusedTopBinding text pm diag
-    | Just pm <- [parsedModule]]
+    | Just pm <- [parsedModule]
+    ] ++
+    suggestFillHole diag                   -- Lowest priority
 
 
 suggestRemoveRedundantImport :: ParsedModule -> Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
@@ -205,7 +206,7 @@ suggestDeleteUnusedBinding
         name
         (L (RealSrcSpan l) (ValD (extractNameAndMatchesFromFunBind -> Just (lname, matches)))) =
         case lname of
-          (L nLoc _name) | isTheBinding nLoc -> 
+          (L nLoc _name) | isTheBinding nLoc ->
             let findSig (L (RealSrcSpan l) (SigD sig)) = findRelatedSigSpan indexedContent name l sig
                 findSig _ = []
             in
@@ -234,17 +235,17 @@ suggestDeleteUnusedBinding
 
       -- Second of the tuple means there is only one match
       findRelatedSigSpan1 :: String -> Sig GhcPs -> Maybe (SrcSpan, Bool)
-      findRelatedSigSpan1 name (TypeSig lnames _) = 
+      findRelatedSigSpan1 name (TypeSig lnames _) =
         let maybeIdx = findIndex (\(L _ id) -> isSameName id name) lnames
         in case maybeIdx of
             Nothing -> Nothing
             Just _ | length lnames == 1 -> Just (getLoc $ head lnames, True)
-            Just idx -> 
+            Just idx ->
               let targetLname = getLoc $ lnames !! idx
                   startLoc = srcSpanStart targetLname
                   endLoc = srcSpanEnd targetLname
-                  startLoc' = if idx == 0 
-                              then startLoc 
+                  startLoc' = if idx == 0
+                              then startLoc
                               else srcSpanEnd . getLoc $ lnames !! (idx - 1)
                   endLoc' = if idx == 0 && idx < length lnames - 1
                             then srcSpanStart . getLoc $ lnames !! (idx + 1)
@@ -263,7 +264,7 @@ suggestDeleteUnusedBinding
         name
         (L _ Match{m_grhss=GRHSs{grhssLocalBinds}}) = do
         case grhssLocalBinds of
-          (L _ (HsValBinds (ValBinds bag lsigs))) -> 
+          (L _ (HsValBinds (ValBinds bag lsigs))) ->
             if isEmptyBag bag
             then []
             else concatMap (findRelatedSpanForHsBind indexedContent name lsigs) bag
@@ -278,10 +279,10 @@ suggestDeleteUnusedBinding
         -> [LSig GhcPs]
         -> LHsBind GhcPs
         -> [Range]
-      findRelatedSpanForHsBind 
+      findRelatedSpanForHsBind
         indexedContent
-        name 
-        lsigs 
+        name
+        lsigs
         (L (RealSrcSpan l) (extractNameAndMatchesFromFunBind -> Just (lname, matches))) =
         if isTheBinding (getLoc lname)
         then
@@ -517,51 +518,77 @@ suggestModuleTypo Diagnostic{_range=_range,..}
 
 suggestFillHole :: Diagnostic -> [(T.Text, [TextEdit])]
 suggestFillHole Diagnostic{_range=_range,..}
-{-
-  Relevant bindings include
-    ...
-    extractFitNames :: [Text] -> [Text]
-      (bound at /Users/pepeiborra/scratch/ghcide/src/Development/IDE/Plugin/CodeAction.hs:454:7)
-    (Some bindings suppressed; use -fmax-relevant-binds=N or -fno-max-relevant-binds)
-  Valid hole fits include
-    ...
-    tail :: forall a. [a] -> [a]
-      with tail @Text
-      (imported from ‘Data.List.Extra’ at /Users/pepeiborra/scratch/ghcide/src/Development/IDE/Plugin/CodeAction.hs:45:1-22
-       (and originally defined in ‘GHC.List’))
-    (Some hole fits suppressed; use -fmax-valid-hole-fits=N or -fno-max-valid-hole-fits)
-  Valid refinement hole fits include
-    (++) (_ :: [Text])
-      where (++) :: forall a. [a] -> [a] -> [a]
-      with (++) @Text
-      (imported from ‘Data.List.Extra’ at /Users/pepeiborra/scratch/ghcide/src/Development/IDE/Plugin/CodeAction.hs:45:1-22
-       (and originally defined in ‘GHC.Base’))
-    ...
-    (Some refinement hole fits suppressed; use -fmax-refinement-hole-fits=N or -fno-max-refinement-hole-fits)
--}
-    | Just [_, holeFits, refinementFits]
-    <- matchRegexSingleLine
-        _message
-        ".*Valid (hole fits|substitutions) include(.*)Valid refinement hole fits include(.*)"
-    , Just holeName <- extractHoleName _message
-    = map (proposeHoleFit holeName)
-    $ fromMaybe [] (extractHoleFits holeFits)
-    ++ fromMaybe [] (extractRefFits refinementFits)
-    | Just [_, holeFits]
-    <- matchRegexSingleLine
-        _message
-        ".*Valid (hole fits|substitutions) include(.*)"
-    , Just fits <- extractHoleFits holeFits
-    , Just holeName <- extractHoleName _message
-    = map (proposeHoleFit holeName) fits
-
+    | Just holeName <- extractHoleName _message
+    , (holeFits, refFits) <- processHoleSuggestions (T.lines _message)
+    = map (proposeHoleFit holeName False) holeFits
+    ++ map (proposeHoleFit holeName True) refFits
     | otherwise = []
     where
-      extractHoleName = fmap head . flip matchRegex "Found hole: ([^ ]*)"
-      extractHoleFits = fmap (map (!! 1)) . flip matchRegexAll "^    ([^ ]*) :: (.*)$"
-      extractRefFits x = fmap (map (!! 1)) $ matchRegexAll x "^    ([^ ]+( \\(_ :: .+\\))*)$"
-      proposeHoleFit holeName name =
-          ("replace `" <> holeName <> "` with " <> name, [TextEdit _range name])
+      extractHoleName = fmap head . flip matchRegexUnifySpaces "Found hole: ([^ ]*)"
+      proposeHoleFit holeName parenthise name =
+          ( "replace " <> holeName <> " with " <> name
+          , [TextEdit _range $ if parenthise then parens name else name])
+      parens x = "(" <> x <> ")"
+
+processHoleSuggestions :: [T.Text] -> ([T.Text], [T.Text])
+processHoleSuggestions mm = (holeSuggestions, refSuggestions)
+{-
+    • Found hole: _ :: LSP.Handlers
+
+      Valid hole fits include def
+      Valid refinement hole fits include
+        fromMaybe (_ :: LSP.Handlers) (_ :: Maybe LSP.Handlers)
+        fromJust (_ :: Maybe LSP.Handlers)
+        haskell-lsp-types-0.22.0.0:Language.Haskell.LSP.Types.Window.$sel:_value:ProgressParams (_ :: ProgressParams
+                                                                                                        LSP.Handlers)
+        T.foldl (_ :: LSP.Handlers -> Char -> LSP.Handlers)
+                (_ :: LSP.Handlers)
+                (_ :: T.Text)
+        T.foldl' (_ :: LSP.Handlers -> Char -> LSP.Handlers)
+                 (_ :: LSP.Handlers)
+                 (_ :: T.Text)
+-}
+  where
+    t = id @T.Text
+    holeSuggestions = do
+      -- get the text indented under Valid hole fits
+      validHolesSection <-
+        getIndentedGroupsBy (=~ t " *Valid (hole fits|substitutions) include") mm
+      -- the Valid hole fits line can contain a hole fit
+      holeFitLine <-
+        mapHead
+            (mrAfter . (=~ t " *Valid (hole fits|substitutions) include"))
+            validHolesSection
+      let holeFit = T.strip holeFitLine
+      guard (not $ T.null holeFit)
+      return holeFit
+    refSuggestions = do -- @[]
+      -- get the text indented under Valid refinement hole fits
+      refinementSection <-
+        getIndentedGroupsBy (=~ t " *Valid refinement hole fits include") mm
+      -- get the text for each hole fit
+      holeFitLines <- getIndentedGroups (tail refinementSection)
+      let holeFit = T.strip $ T.unwords holeFitLines
+      guard $ not $ holeFit =~ t "Some refinement hole fits suppressed"
+      return holeFit
+
+    mapHead f (a:aa) = f a : aa
+    mapHead _ [] = []
+
+-- > getIndentedGroups [" H1", "  l1", "  l2", " H2", "  l3"] = [[" H1,", "  l1", "  l2"], [" H2", "  l3"]]
+getIndentedGroups :: [T.Text] -> [[T.Text]]
+getIndentedGroups [] = []
+getIndentedGroups ll@(l:_) = getIndentedGroupsBy ((== indentation l) . indentation) ll
+-- |
+-- > getIndentedGroupsBy (" H" `isPrefixOf`) [" H1", "  l1", "  l2", " H2", "  l3"] = [[" H1", "  l1", "  l2"], [" H2", "  l3"]]
+getIndentedGroupsBy :: (T.Text -> Bool) -> [T.Text] -> [[T.Text]]
+getIndentedGroupsBy pred inp = case dropWhile (not.pred) inp of
+    (l:ll) -> case span (\l' -> indentation l < indentation l') ll of
+        (indented, rest) -> (l:indented) : getIndentedGroupsBy pred rest
+    _ -> []
+
+indentation :: T.Text -> Int
+indentation = T.length . T.takeWhile isSpace
 
 suggestExtendImport :: Maybe DynFlags -> Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
 suggestExtendImport (Just dflags) contents Diagnostic{_range=_range,..}
@@ -1027,22 +1054,6 @@ matchRegex :: T.Text -> T.Text -> Maybe [T.Text]
 matchRegex message regex = case message =~~ regex of
     Just (_ :: T.Text, _ :: T.Text, _ :: T.Text, bindings) -> Just bindings
     Nothing -> Nothing
-
--- | Returns all the matchgroups
-matchRegexAll :: T.Text -> T.Text -> Maybe [[T.Text]]
-matchRegexAll message regex = message =~~ regex
-
-matchSingleLine
-    :: (RegexContext Regex T.Text target) => T.Text -> T.Text -> Maybe target
-matchSingleLine regex =
-    matchM (makeRegexOpts blankCompOpt{multiline = False} blankExecOpt regex :: Regex)
-
--- | Like 'matchRegex' but treat the input as a single line
---   (dot matches newline, anchors do not treat newline specially)
-matchRegexSingleLine :: T.Text -> T.Text -> Maybe [T.Text]
-matchRegexSingleLine msg regex = do
-  (_ :: T.Text, _ :: T.Text, _ :: T.Text, bindings) <- matchSingleLine regex msg
-  return bindings
 
 setHandlersCodeLens :: PartialHandlers c
 setHandlersCodeLens = PartialHandlers $ \WithMessage{..} x -> return x{
