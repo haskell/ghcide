@@ -105,7 +105,10 @@ loadSession dir = do
     ShakeExtras{logger, eventer, restartShakeSession, withIndefiniteProgress
                ,ideNc, knownFilesVar, session=ideSession} <- getShakeExtras
 
-    IdeOptions{optTesting = IdeTesting optTesting, optCheckProject = CheckProject checkProject } <- getIdeOptions
+    IdeOptions{ optTesting = IdeTesting optTesting
+              , optCheckProject = CheckProject checkProject
+              , optCustomDynFlags
+              } <- getIdeOptions
 
     -- Create a new HscEnv from a hieYaml root and a set of options
     -- If the hieYaml file already has an HscEnv, the new component is
@@ -117,7 +120,7 @@ loadSession dir = do
           -- Parse DynFlags for the newly discovered component
           hscEnv <- emptyHscEnv ideNc libDir
           (df, targets) <- evalGhcEnv hscEnv $
-              setOptions opts (hsc_dflags hscEnv)
+              first optCustomDynFlags <$> setOptions opts (hsc_dflags hscEnv)
           let deps = componentDependencies opts ++ maybeToList hieYaml
           dep_info <- getDependencyInfo deps
           -- Now lookup to see whether we are combining with an existing HscEnv
