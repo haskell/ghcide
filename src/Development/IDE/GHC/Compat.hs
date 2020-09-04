@@ -330,7 +330,9 @@ setUpTypedHoles ::DynFlags -> DynFlags
 #if MIN_GHC_API_VERSION(8,6,0)
 setUpTypedHoles df
   = flip gopt_unset Opt_AbstractRefHoleFits    -- too spammy
+#if MIN_GHC_API_VERSION(8,8,0)
   $ flip gopt_unset Opt_ShowDocsOfHoleFits     -- not used
+#endif
   $ flip gopt_unset Opt_ShowMatchesOfHoleFits  -- nice but broken (forgets module qualifiers)
   $ flip gopt_unset Opt_ShowProvOfHoleFits     -- not used
   $ flip gopt_unset Opt_ShowTypeAppOfHoleFits  -- not used
