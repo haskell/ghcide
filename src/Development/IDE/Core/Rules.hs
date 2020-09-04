@@ -322,7 +322,8 @@ getLocatedImportsRule =
         let dflags = addRelativeImport file (moduleName $ ms_mod ms) $ hsc_dflags env
         opt <- getIdeOptions
         let getTargetExists nfp
-                | HashSet.null targets || nfp `HashSet.member` targets = getFileExists nfp
+                | HashSet.size targets <= 1 || nfp `HashSet.member` targets
+                = getFileExists nfp
                 | otherwise = return False
         (diags, imports') <- fmap unzip $ forM imports $ \(isSource, (mbPkgName, modName)) -> do
             diagOrImp <- locateModule dflags import_dirs (optExtensions opt) getTargetExists modName mbPkgName isSource
