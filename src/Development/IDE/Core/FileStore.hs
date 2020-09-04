@@ -98,9 +98,7 @@ makeLSPVFSHandle lspFuncs = VFSHandle
 isFileOfInterestRule :: Rules ()
 isFileOfInterestRule = defineEarlyCutoff $ \IsFileOfInterest f -> do
     filesOfInterest <- getFilesOfInterest
-    let res = case f `HM.lookup` filesOfInterest of
-          Just x -> IsFOI x
-          Nothing -> NotFOI
+    let res = maybe NotFOI IsFOI $ f `HM.lookup` filesOfInterest
     return (Just $ BS.pack $ show $ hash res, ([], Just res))
 
 -- | Get the contents of a file, either dirty (if the buffer is modified) or Nothing to mean use from disk.
