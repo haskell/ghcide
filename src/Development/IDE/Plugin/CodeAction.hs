@@ -559,7 +559,7 @@ processHoleSuggestions mm = (holeSuggestions, refSuggestions)
         mapHead
             (mrAfter . (=~ t " *Valid (hole fits|substitutions) include"))
             validHolesSection
-      let holeFit = T.strip holeFitLine
+      let holeFit = T.strip $ T.takeWhile (/= ':') holeFitLine
       guard (not $ T.null holeFit)
       return holeFit
     refSuggestions = do -- @[]
