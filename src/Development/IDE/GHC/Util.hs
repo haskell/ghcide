@@ -30,7 +30,7 @@ module Development.IDE.GHC.Util(
     setHieDir,
     dontWriteHieFiles,
     disableWarningsAsErrors,
-    ) where
+    newHscEnvEqPreserveImportPaths) where
 
 import Control.Concurrent
 import Data.List.Extra
@@ -186,6 +186,15 @@ data HscEnvEq = HscEnvEq
 -- | Wrap an 'HscEnv' into an 'HscEnvEq'.
 newHscEnvEq :: HscEnv -> [(InstalledUnitId, DynFlags)] -> IO HscEnvEq
 newHscEnvEq hscEnv0 deps = do
+    envUnique <- newUnique
+    let envImportPaths = importPaths $ hsc_dflags hscEnv0
+        hscEnv = removeImportPaths hscEnv0
+    return HscEnvEq{..}
+
+-- | Wrap an 'HscEnv' into an 'HscEnvEq'.
+newHscEnvEqPreserveImportPaths
+    :: HscEnv -> [(InstalledUnitId, DynFlags)] -> IO HscEnvEq
+newHscEnvEqPreserveImportPaths hscEnv0 deps = do
     envUnique <- newUnique
     let envImportPaths = importPaths $ hsc_dflags hscEnv0
         hscEnv = removeImportPaths hscEnv0

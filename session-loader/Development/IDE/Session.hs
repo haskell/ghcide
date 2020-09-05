@@ -182,7 +182,7 @@ loadSession dir = do
                 -> IO ([NormalizedFilePath],(IdeResult HscEnvEq,[FilePath]))
         session args@(hieYaml, _cfp, _opts, _libDir) = do
           (hscEnv, new, old_deps) <- packageSetup args
-          
+
           -- Whenever we spin up a session on Linux, dynamically load libm.so.6
           -- in. We need this in case the binary is statically linked, in which
           -- case the interactive session will fail when trying to load
@@ -197,7 +197,7 @@ loadSession dir = do
             case res of
               Nothing -> pure ()
               Just err -> hPutStrLn stderr $
-                "Error dynamically loading libm.so.6:\n" <> err 
+                "Error dynamically loading libm.so.6:\n" <> err
 
           -- Make a map from unit-id to DynFlags, this is used when trying to
           -- resolve imports. (especially PackageImports)
@@ -208,7 +208,8 @@ loadSession dir = do
 
           -- New HscEnv for the component in question, returns the new HscEnvEq and
           -- a mapping from FilePath to the newly created HscEnvEq.
-          let new_cache = newComponentCache logger hscEnv uids
+          let new_cache = newComponentCache logger isImplicit hscEnv uids
+              isImplicit = isNothing hieYaml
           (cs, res) <- new_cache new
           -- Modified cache targets for everything else in the hie.yaml file
           -- which now uses the same EPS and so on
@@ -365,16 +366,18 @@ setNameCache nc hsc = hsc { hsc_NC = nc }
 -- | Create a mapping from FilePaths to HscEnvEqs
 newComponentCache
          :: Logger
+         -> Bool    -- ^ Is this for an implicit/crappy cradle
          -> HscEnv
          -> [(InstalledUnitId, DynFlags)]
          -> ComponentInfo
          -> IO ([(NormalizedFilePath, (IdeResult HscEnvEq, DependencyInfo))], (IdeResult HscEnvEq, DependencyInfo))
-newComponentCache logger hsc_env uids ci = do
+newComponentCache logger isImplicit hsc_env uids ci = do
     let df = componentDynFlags ci
     let hscEnv' = hsc_env { hsc_dflags = df
                           , hsc_IC = (hsc_IC hsc_env) { ic_dflags = df } }
 
-    henv <- newHscEnvEq hscEnv' uids
+    let newFunc = if isImplicit then newHscEnvEqPreserveImportPaths else newHscEnvEq
+    henv <- newFunc hscEnv' uids
     let res = (([], Just henv), componentDependencyInfo ci)
     logDebug logger ("New Component Cache HscEnvEq: " <> T.pack (show res))
 
