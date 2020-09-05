@@ -280,7 +280,7 @@ executable ghcide
         hashable,
         haskell-lsp,
         haskell-lsp-types,
-        hie-bios >= 0.7.1 && < 0.8,
+        hie-bios,
         ghcide,
         lens,
         optparse-applicative,
