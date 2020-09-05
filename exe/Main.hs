@@ -30,6 +30,7 @@ import Development.IDE.Types.Logger
 import Development.IDE.Plugin
 import Development.IDE.Plugin.Completions as Completions
 import Development.IDE.Plugin.CodeAction as CodeAction
+import Development.IDE.Plugin.Test as Test
 import Development.IDE.Session
 import qualified Language.Haskell.LSP.Core as LSP
 import Language.Haskell.LSP.Messages
@@ -80,7 +81,7 @@ main = do
     dir <- IO.getCurrentDirectory
     command <- makeLspCommandId "typesignature.add"
 
-    let plugins = Completions.plugin <> CodeAction.plugin
+    let plugins = Completions.plugin <> CodeAction.plugin <> Test.plugin
         onInitialConfiguration :: InitializeRequest -> Either T.Text LspConfig
         onInitialConfiguration x = case x ^. params . initializationOptions of
           Nothing -> Right defaultLspConfig

@@ -7,7 +7,7 @@ module Development.IDE.Types.Action
     popQueue,
     doneQueue,
     peekInProgress,
-  abortQueue)
+  abortQueue,countQueue)
 where
 
 import           Control.Concurrent.STM
@@ -17,6 +17,7 @@ import qualified Data.HashSet                 as Set
 import           Data.Unique                  (Unique)
 import           Development.IDE.Types.Logger
 import           Development.Shake            (Action)
+import           Numeric.Natural
 
 data DelayedAction a = DelayedAction
   { uniqueID       :: Maybe Unique,
@@ -75,6 +76,13 @@ abortQueue x ActionQueue {..} = do
 doneQueue :: DelayedActionInternal -> ActionQueue -> STM ()
 doneQueue x ActionQueue {..} = do
   modifyTVar inProgress (Set.delete x)
+
+countQueue :: ActionQueue -> STM Natural
+countQueue ActionQueue{..} = do
+    backlog <- flushTQueue newActions
+    mapM_ (writeTQueue newActions) backlog
+    m <- Set.size <$> readTVar inProgress
+    return $ fromIntegral $ length backlog + m
 
 peekInProgress :: ActionQueue -> STM [DelayedActionInternal]
 peekInProgress ActionQueue {..} = Set.toList <$> readTVar inProgress
