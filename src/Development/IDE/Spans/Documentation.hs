@@ -170,15 +170,20 @@ lookupSrcHtmlForModule =
 
 lookupHtmlForModule :: (FilePath -> FilePath -> FilePath) -> DynFlags -> Module -> IO (Maybe FilePath)
 lookupHtmlForModule mkDocPath df m = do
-  let mfs = go <$> (listToMaybe =<< lookupHtmls df ui)
+  -- try all directories
+  let mfs =  fmap concat $ (fmap . fmap) go (lookupHtmls df ui)
   htmls <- filterM doesFileExist (concat . maybeToList $ mfs)
   return $ listToMaybe htmls
   where
     -- The file might use "." or "-" as separator
-    go pkgDocDir = [mkDocPath pkgDocDir mn | mn <- [mndot,mndash]]
+    go pkgDocDir = [mkDocPath pkgDocDir mn | mn <- mndots ++ mndashes]
     ui = moduleUnitId m
-    mndash = map (\x -> if x == '.' then '-' else x) mndot
-    mndot = moduleNameString $ moduleName m
+    -- try to locate html file from most to least specific name e.g.
+    --  first Language.Haskell.LSP.Types.Uri.html 
+    --  then Language.Haskell.LSP.Types.html 
+    --  then Language.Haskell.LSP.html etc.
+    mndots = (map (intercalate ".") . reverse . drop 1 . inits . splitOn ".") $ (moduleNameString . moduleName) m
+    mndashes = (fmap . fmap) (\x -> if x == '.' then '-' else x) mndots
 
 lookupHtmls :: DynFlags -> UnitId -> Maybe [FilePath]
 lookupHtmls df ui = haddockHTMLs <$> lookupPackage df ui
