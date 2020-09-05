@@ -7,13 +7,10 @@ module Development.IDE.Types.Action
     popQueue,
     doneQueue,
     peekInProgress,
-  )
+  abortQueue)
 where
 
-import           Control.Concurrent.STM       (STM, TQueue, TVar, atomically,
-                                               modifyTVar, newTQueue, newTVar,
-                                               readTQueue, readTVar,
-                                               writeTQueue)
+import           Control.Concurrent.STM
 import           Data.Hashable                (Hashable (..))
 import           Data.HashSet                 (HashSet)
 import qualified Data.HashSet                 as Set
@@ -67,8 +64,16 @@ popQueue ActionQueue {..} = do
   return x
 
 -- | Completely remove an action from the queue
+abortQueue :: DelayedActionInternal -> ActionQueue -> STM ()
+abortQueue x ActionQueue {..} = do
+  qq <- flushTQueue newActions
+  mapM_ (writeTQueue newActions) (filter (/= x) qq)
+  modifyTVar inProgress (Set.delete x)
+
+-- | Mark an action as complete when called after 'popQueue'.
+--   Has no effect otherwise
 doneQueue :: DelayedActionInternal -> ActionQueue -> STM ()
-doneQueue x ActionQueue {..} =
+doneQueue x ActionQueue {..} = do
   modifyTVar inProgress (Set.delete x)
 
 peekInProgress :: ActionQueue -> STM [DelayedActionInternal]
