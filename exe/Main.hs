@@ -81,7 +81,8 @@ main = do
     dir <- IO.getCurrentDirectory
     command <- makeLspCommandId "typesignature.add"
 
-    let plugins = Completions.plugin <> CodeAction.plugin <> Test.plugin
+    let plugins = Completions.plugin <> CodeAction.plugin
+            <> if argsTesting then Test.plugin else mempty
         onInitialConfiguration :: InitializeRequest -> Either T.Text LspConfig
         onInitialConfiguration x = case x ^. params . initializationOptions of
           Nothing -> Right defaultLspConfig
