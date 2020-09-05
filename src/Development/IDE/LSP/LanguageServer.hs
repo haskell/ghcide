@@ -223,7 +223,7 @@ cancelHandler cancelRequest = PartialHandlers $ \_ x -> return x
 
 exitHandler :: IO () -> PartialHandlers c
 exitHandler exit = PartialHandlers $ \_ x -> return x
-    {LSP.exitNotificationHandler = Just $ \_ -> exit}
+    {LSP.exitNotificationHandler = Just $ const exit}
 
 -- | A message that we need to deal with - the pieces are split up with existentials to gain additional type safety
 --   and defer precise processing until later (allows us to keep at a higher level of abstraction slightly longer)

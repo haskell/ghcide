@@ -41,7 +41,7 @@ plugin = Plugin {
         = requestHandler lsp ide customReq
         | otherwise
         = return $ Left
-        $ ResponseError InvalidRequest ("Cannot parse request") Nothing
+        $ ResponseError InvalidRequest "Cannot parse request" Nothing
 
 requestHandler :: LspFuncs c
                 -> IdeState
