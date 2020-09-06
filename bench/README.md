@@ -4,7 +4,7 @@
 This folder contains two Haskell programs that work together to simplify the
 performance analysis of ghcide:
 
-- `exe/Main.hs` - a standalone benchmark runner. Run with `stack exec ghcide-bench`
+- `exe/Main.hs` - a standalone benchmark runner. Run with `stack run ghcide-bench`
 - `hist/Main.hs` - a Shake script for running the benchmark suite over a set of commits.
   - Run with `stack bench` or `cabal bench`,
   - Requires a `ghcide-bench` binary in the PATH (usually provided by stack/cabal),

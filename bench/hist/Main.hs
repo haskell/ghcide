@@ -271,9 +271,8 @@ buildGhcide Stack out =
 
 
 findGhc :: BuildSystem -> Action FilePath
-findGhc Cabal = do
-    Stdout ghcLoc <- cmd (s "which ghc")
-    return ghcLoc
+findGhc Cabal =
+    liftIO $ fromMaybe (error "ghc is not in the PATH") <$> findExecutable "ghc"
 findGhc Stack = do
     Stdout ghcLoc <- cmd (s "stack exec which ghc")
     return ghcLoc

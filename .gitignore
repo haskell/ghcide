@@ -11,6 +11,8 @@ bench/example/
 bench-hist/
 bench-temp/
 .shake/
-ghcide*
+ghcide
+ghcide-bench
+ghcide-preprocessor
 *.benchmark-gcStats
 tags
