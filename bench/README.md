@@ -6,9 +6,9 @@ performance analysis of ghcide:
 
 - `exe/Main.hs` - a standalone benchmark runner. Run with `stack exec ghcide-bench`
 - `hist/Main.hs` - a Shake script for running the benchmark suite over a set of commits.
-  - Run with `stack bench`,
-  - Requires a `ghcide-bench` binary in the PATH,
-  - Calls `stack` internally to build the project,
+  - Run with `stack bench` or `cabal bench`,
+  - Requires a `ghcide-bench` binary in the PATH (usually provided by stack/cabal),
+  - Calls `cabal` (or `stack`, configurable) internally to build the project,
   - Driven by the `hist.yaml` configuration file.
     By default it compares HEAD with "master"
 
