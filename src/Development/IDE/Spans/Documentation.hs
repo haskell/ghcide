@@ -175,14 +175,14 @@ lookupHtmlForModule mkDocPath df m = do
   htmls <- filterM doesFileExist (concat . maybeToList $ mfs)
   return $ listToMaybe htmls
   where
-    -- The file might use "." or "-" as separator
-    go pkgDocDir = [mkDocPath pkgDocDir mn | mn <- mns]
+    go pkgDocDir = map (mkDocPath pkgDocDir) mns
     ui = moduleUnitId m
     -- try to locate html file from most to least specific name e.g.
     --  first Language.Haskell.LSP.Types.Uri.html and Language-Haskell-LSP-Types-Uri.html
     --  then Language.Haskell.LSP.Types.html and Language-Haskell-LSP-Types.html etc.
     mns = do
       chunks <- (reverse . drop 1 . inits . splitOn ".") $ (moduleNameString . moduleName) m
+      -- The file might use "." or "-" as separator
       map (`intercalate` chunks) [".", "-"]
 
 lookupHtmls :: DynFlags -> UnitId -> Maybe [FilePath]
