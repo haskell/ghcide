@@ -171,7 +171,7 @@ lookupSrcHtmlForModule =
 lookupHtmlForModule :: (FilePath -> FilePath -> FilePath) -> DynFlags -> Module -> IO (Maybe FilePath)
 lookupHtmlForModule mkDocPath df m = do
   -- try all directories
-  let mfs =  fmap concat $ (fmap . fmap) go (lookupHtmls df ui)
+  let mfs = fmap (concat . fmap go) (lookupHtmls df ui)
   htmls <- filterM doesFileExist (concat . maybeToList $ mfs)
   return $ listToMaybe htmls
   where
@@ -181,7 +181,7 @@ lookupHtmlForModule mkDocPath df m = do
     --  first Language.Haskell.LSP.Types.Uri.html and Language-Haskell-LSP-Types-Uri.html
     --  then Language.Haskell.LSP.Types.html and Language-Haskell-LSP-Types.html etc.
     mns = do
-      chunks <- (reverse . drop 1 . inits . splitOn ".") $ (moduleNameString . moduleName) m
+      chunks <- (reverse . drop1 . inits . splitOn ".") $ (moduleNameString . moduleName) m
       -- The file might use "." or "-" as separator
       map (`intercalate` chunks) [".", "-"]
 
