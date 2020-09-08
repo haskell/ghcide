@@ -32,8 +32,9 @@ extra-deps:
 # For benchHist
 - Chart-1.9.3
 - Chart-diagrams-1.9.3
-
-
+# For hie-bios-0.7.1
+- yaml-0.11.2.0
+- libyaml-0.1.2
 nix:
   packages: [zlib]
 
