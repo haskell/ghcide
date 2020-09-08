@@ -171,7 +171,7 @@ lookupSrcHtmlForModule =
 lookupHtmlForModule :: (FilePath -> FilePath -> FilePath) -> DynFlags -> Module -> IO (Maybe FilePath)
 lookupHtmlForModule mkDocPath df m = do
   -- try all directories
-  let mfs = fmap (concat . fmap go) (lookupHtmls df ui)
+  let mfs = fmap (concatMap go) (lookupHtmls df ui)
   htmls <- filterM doesFileExist (concat . maybeToList $ mfs)
   return $ listToMaybe htmls
   where
