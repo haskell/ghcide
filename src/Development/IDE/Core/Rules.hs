@@ -328,7 +328,7 @@ getLocatedImportsRule =
         let env = hscEnvWithImportPaths env_eq
         let import_dirs = deps env_eq
         let dflags = hsc_dflags env
-            isImplicitCradle = envImportPaths env_eq == Nothing
+            isImplicitCradle = isNothing $ envImportPaths env_eq
         dflags <- return $ if isImplicitCradle
                     then addRelativeImport file (moduleName $ ms_mod ms) dflags
                     else dflags
