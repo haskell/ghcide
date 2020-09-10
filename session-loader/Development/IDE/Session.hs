@@ -300,13 +300,13 @@ loadSession dir = do
         return (fmap snd as, wait as)
       unless (null cs) $ do
         cfps' <- liftIO $ filterM (IO.doesFileExist . fromNormalizedFilePath) cs
+        -- populate the knownFilesVar with all the
+        -- files in the project so that `knownFiles` can learn about them and
+        -- we can generate a complete module graph
         liftIO $ modifyVar_ knownFilesVar $ traverseHashed $ \known -> do
             evaluate $ HashSet.union known (HashSet.fromList cfps')
         -- Typecheck all files in the project on startup
         void $ shakeEnqueue extras $ mkDelayedAction "InitialLoad" Debug $ void $ do
-          -- populate the knownFilesVar with all the
-          -- files in the project so that `knownFiles` can learn about them and
-          -- we can generate a complete module graph
           when checkProject $ do
             mmt <- uses GetModificationTime cfps'
             let cs_exist = catMaybes (zipWith (<$) cfps' mmt)
