@@ -328,9 +328,13 @@ getLocatedImportsRule =
         let env = hscEnvWithImportPaths env_eq
         let import_dirs = deps env_eq
         let dflags = hsc_dflags env
+            isImplicitCradle = envImportPaths env_eq == Nothing
+        dflags <- return $ if isImplicitCradle
+                    then addRelativeImport file (moduleName $ ms_mod ms) dflags
+                    else dflags
         opt <- getIdeOptions
         let getTargetExists nfp
-                | HashSet.null targets || nfp `HashSet.member` targets = getFileExists nfp
+                | isImplicitCradle || nfp `HashSet.member` targets = getFileExists nfp
                 | otherwise = return False
         (diags, imports') <- fmap unzip $ forM imports $ \(isSource, (mbPkgName, modName)) -> do
             diagOrImp <- locateModule dflags import_dirs (optExtensions opt) getTargetExists modName mbPkgName isSource

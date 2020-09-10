@@ -15,6 +15,7 @@ module Development.IDE.Core.Compile
   , parseHeader
   , typecheckModule
   , computePackageDeps
+  , addRelativeImport
   , mkTcModuleResult
   , generateByteCode
   , generateAndWriteHieFile
@@ -250,6 +251,10 @@ hideDiag :: DynFlags -> (WarnReason, FileDiagnostic) -> (WarnReason, FileDiagnos
 hideDiag originalFlags (Reason warning, (nfp, _sh, fd))
   | not (wopt warning originalFlags) = (Reason warning, (nfp, HideDiag, fd))
 hideDiag _originalFlags t = t
+
+addRelativeImport :: NormalizedFilePath -> ModuleName -> DynFlags -> DynFlags
+addRelativeImport fp modu dflags = dflags
+    {importPaths = nubOrd $ maybeToList (moduleImportPath fp modu) ++ importPaths dflags}
 
 mkTcModuleResult
     :: GhcMonad m

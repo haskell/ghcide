@@ -7,6 +7,7 @@ module Development.IDE.GHC.Util(
     HscEnvEq,
     hscEnv, newHscEnvEq,
     hscEnvWithImportPaths,
+    envImportPaths,
     modifyDynFlags,
     evalGhcEnv,
     runGhcEnv,
