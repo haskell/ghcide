@@ -1,5 +1,10 @@
 packages: .
 
+source-repository-package
+  type: git
+  location: https://github.com/jneira/implicit-hie-cradle.git
+  tag: 8aa1b4400f1be3c8acf5b8fac398995d0b0eb982
+
 allow-newer:
 	active:base,
 	diagrams-contrib:base,
