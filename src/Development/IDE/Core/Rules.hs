@@ -327,7 +327,7 @@ getLocatedImportsRule =
         env_eq <- use_ GhcSession file
         let env = hscEnvWithImportPaths env_eq
         let import_dirs = deps env_eq
-        let dflags = addRelativeImport file (moduleName $ ms_mod ms) $ hsc_dflags env
+        let dflags = hsc_dflags env
         opt <- getIdeOptions
         let getTargetExists nfp
                 | HashSet.null targets || nfp `HashSet.member` targets = getFileExists nfp
@@ -683,7 +683,7 @@ ghcSessionDepsDefinition file = do
             setupFinderCache (map hirModSummary ifaces)
             mapM_ (uncurry loadDepModule) inLoadOrder
 
-        res <- liftIO $ newHscEnvEq session' []
+        res <- liftIO $ newHscEnvEq "" session' []
         return ([], Just res)
  where
   unpack HiFileResult{..} bc = (hirModIface, bc)

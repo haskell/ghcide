@@ -212,8 +212,7 @@ loadSession dir = do
 
           -- New HscEnv for the component in question, returns the new HscEnvEq and
           -- a mapping from FilePath to the newly created HscEnvEq.
-          let new_cache = newComponentCache logger isImplicit hscEnv uids
-              isImplicit = isNothing hieYaml
+          let new_cache = newComponentCache logger hieYaml hscEnv uids
           (cs, res) <- new_cache new
           -- Modified cache targets for everything else in the hie.yaml file
           -- which now uses the same EPS and so on
@@ -299,14 +298,15 @@ loadSession dir = do
         void $ wait as
         as <- async $ getOptions file
         return (fmap snd as, wait as)
-      unless (null cs) $
+      unless (null cs) $ do
+        cfps' <- liftIO $ filterM (IO.doesFileExist . fromNormalizedFilePath) cs
+        liftIO $ modifyVar_ knownFilesVar $ traverseHashed $ \known -> do
+            evaluate $ HashSet.union known (HashSet.fromList cfps')
         -- Typecheck all files in the project on startup
         void $ shakeEnqueue extras $ mkDelayedAction "InitialLoad" Debug $ void $ do
-          cfps' <- liftIO $ filterM (IO.doesFileExist . fromNormalizedFilePath) cs
           -- populate the knownFilesVar with all the
           -- files in the project so that `knownFiles` can learn about them and
           -- we can generate a complete module graph
-          liftIO $ modifyVar_ knownFilesVar $ traverseHashed $ pure . HashSet.union (HashSet.fromList cfps')
           when checkProject $ do
             mmt <- uses GetModificationTime cfps'
             let cs_exist = catMaybes (zipWith (<$) cfps' mmt)
@@ -370,17 +370,19 @@ setNameCache nc hsc = hsc { hsc_NC = nc }
 -- | Create a mapping from FilePaths to HscEnvEqs
 newComponentCache
          :: Logger
-         -> Bool    -- ^ Is this for an implicit/crappy cradle
+         -> Maybe FilePath -- Path to cradle
          -> HscEnv
          -> [(InstalledUnitId, DynFlags)]
          -> ComponentInfo
          -> IO ([(NormalizedFilePath, (IdeResult HscEnvEq, DependencyInfo))], (IdeResult HscEnvEq, DependencyInfo))
-newComponentCache logger isImplicit hsc_env uids ci = do
+newComponentCache logger cradlePath hsc_env uids ci = do
     let df = componentDynFlags ci
     let hscEnv' = hsc_env { hsc_dflags = df
                           , hsc_IC = (hsc_IC hsc_env) { ic_dflags = df } }
 
-    let newFunc = if isImplicit then newHscEnvEqPreserveImportPaths else newHscEnvEq
+    let newFunc = case cradlePath of
+            Just p -> newHscEnvEq p
+            Nothing -> newHscEnvEqPreserveImportPaths
     henv <- newFunc hscEnv' uids
     let res = (([], Just henv), componentDependencyInfo ci)
     logDebug logger ("New Component Cache HscEnvEq: " <> T.pack (show res))
