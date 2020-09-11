@@ -322,7 +322,7 @@ getLocatedImportsRule :: Rules ()
 getLocatedImportsRule =
     define $ \GetLocatedImports file -> do
         ms <- use_ GetModSummaryWithoutTimestamps file
-        targets <- useNoFile_ GetKnownFiles
+        targets <- toKnownFiles <$> useNoFile_ GetKnownTargets
         let imports = [(False, imp) | imp <- ms_textual_imps ms] ++ [(True, imp) | imp <- ms_srcimps ms]
         env_eq <- use_ GhcSession file
         let env = hscEnvWithImportPaths env_eq
@@ -536,14 +536,14 @@ typeCheckRule = define $ \TypeCheck file -> do
     typeCheckRuleDefinition hsc pm isFoi (Just source)
 
 knownFilesRule :: Rules ()
-knownFilesRule = defineEarlyCutOffNoFile $ \GetKnownFiles -> do
+knownFilesRule = defineEarlyCutOffNoFile $ \GetKnownTargets -> do
   alwaysRerun
-  fs <- knownFiles
+  fs <- knownTargets
   pure (BS.pack (show $ hash fs), unhashed fs)
 
 getModuleGraphRule :: Rules ()
 getModuleGraphRule = defineNoFile $ \GetModuleGraph -> do
-  fs <- useNoFile_ GetKnownFiles
+  fs <- toKnownFiles <$> useNoFile_ GetKnownTargets
   rawDepInfo <- rawDependencyInformation (HashSet.toList fs)
   pure $ processDependencyInformation rawDepInfo
 

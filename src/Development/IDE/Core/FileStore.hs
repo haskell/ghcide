@@ -252,7 +252,7 @@ typecheckParents state nfp = void $ shakeEnqueue (shakeExtras state) parents
 
 typecheckParentsAction :: NormalizedFilePath -> Action ()
 typecheckParentsAction nfp = do
-    fs <- useNoFile_ GetKnownFiles
+    fs <- useNoFile_ GetKnownTargets
     unless (null fs) $ do
       revs <- reverseDependencies nfp <$> useNoFile_ GetModuleGraph
       logger <- logger <$> getShakeExtras
