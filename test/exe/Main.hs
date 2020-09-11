@@ -2994,7 +2994,9 @@ ifaceErrorTest = testCase "iface-error-test-1" $ withoutStackEnv $ runWithExtraF
 
     -- Check that we wrote the interfaces for B when we saved
     lid <- sendRequest (CustomClientMethod "hidir") $ GetInterfaceFilesDir bPath
-    res <- responseForId lid
+    res <- skipManyTill (message :: Session WorkDoneProgressCreateRequest) $
+           skipManyTill (message :: Session WorkDoneProgressBeginNotification) $
+             responseForId lid
     liftIO $ case res of
       ResponseMessage{_result=Right hidir} -> do
         hi_exists <- doesFileExist $ hidir </> "B.hi"
