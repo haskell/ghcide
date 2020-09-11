@@ -533,7 +533,7 @@ codeLensesTests = testGroup "code lenses"
 watchedFilesTests :: TestTree
 watchedFilesTests = testGroup "watched files"
   [ testSession' "workspace files" $ \sessionDir -> do
-      liftIO $ writeFile (sessionDir </> "hie.yaml") "cradle: {direct: {arguments: [\"-isrc\"]}}"
+      liftIO $ writeFile (sessionDir </> "hie.yaml") "cradle: {direct: {arguments: [\"-isrc\", \"A\", \"WatchedFilesMissingModule\"]}}"
       _doc <- createDoc "A.hs" "haskell" "{-#LANGUAGE NoImplicitPrelude #-}\nmodule A where\nimport WatchedFilesMissingModule"
       watchedFileRegs <- getWatchedFilesSubscriptionsUntil @PublishDiagnosticsNotification
 
@@ -546,7 +546,7 @@ watchedFilesTests = testGroup "watched files"
       liftIO $ length watchedFileRegs @?= 5
 
   , testSession' "non workspace file" $ \sessionDir -> do
-      liftIO $ writeFile (sessionDir </> "hie.yaml") "cradle: {direct: {arguments: [\"-i/tmp\"]}}"
+      liftIO $ writeFile (sessionDir </> "hie.yaml") "cradle: {direct: {arguments: [\"-i/tmp\", \"A\", \"WatchedFilesMissingModule\"]}}"
       _doc <- createDoc "A.hs" "haskell" "{-# LANGUAGE NoImplicitPrelude#-}\nmodule A where\nimport WatchedFilesMissingModule"
       watchedFileRegs <- getWatchedFilesSubscriptionsUntil @PublishDiagnosticsNotification
 
