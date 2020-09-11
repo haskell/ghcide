@@ -225,9 +225,11 @@ loadSession dir = do
         -- populate the knownFilesVar with all the
         -- files in the project so that `knownFiles` can learn about them and
         -- we can generate a complete module graph
+          knownTargets <- filterM (IO.doesFileExist . fromNormalizedFilePath) resultCachedTargets
           modifyVar_ knownFilesVar $ traverseHashed $ \known -> do
-            let known' = HashSet.union known (HashSet.fromList resultCachedTargets)
-            when (known /= known') $ logDebug logger $ "Known files updated: " <> T.pack(show $ map fromNormalizedFilePath $ HashSet.toList known')
+            let known' = HashSet.union known $ HashSet.fromList knownTargets
+            when (known /= known') $
+                logDebug logger $ "Known files updated: " <> T.pack(show $ map fromNormalizedFilePath $ HashSet.toList known')
             evaluate known'
 
           -- Invalidate all the existing GhcSession build nodes by restarting the Shake session
