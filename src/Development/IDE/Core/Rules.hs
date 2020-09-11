@@ -90,6 +90,7 @@ import qualified HeaderInfo as Hdr
 import Data.Time (UTCTime(..))
 import Data.Hashable
 import qualified Data.HashSet as HashSet
+import qualified Data.HashMap.Strict as HM
 
 -- | This is useful for rules to convert rules that can only produce errors or
 -- a result into the more general IdeResult type that supports producing
@@ -322,7 +323,7 @@ getLocatedImportsRule :: Rules ()
 getLocatedImportsRule =
     define $ \GetLocatedImports file -> do
         ms <- use_ GetModSummaryWithoutTimestamps file
-        targets <- toKnownFiles <$> useNoFile_ GetKnownTargets
+        targets <- useNoFile_ GetKnownTargets
         let imports = [(False, imp) | imp <- ms_textual_imps ms] ++ [(True, imp) | imp <- ms_srcimps ms]
         env_eq <- use_ GhcSession file
         let env = hscEnvWithImportPaths env_eq
@@ -333,8 +334,9 @@ getLocatedImportsRule =
                     then addRelativeImport file (moduleName $ ms_mod ms) dflags
                     else dflags
         opt <- getIdeOptions
-        let getTargetExists nfp
-                | isImplicitCradle || nfp `HashSet.member` targets = getFileExists nfp
+        let getTargetExists modName nfp
+                | isImplicitCradle = getFileExists nfp
+                | HM.member modName targets = getFileExists nfp
                 | otherwise = return False
         (diags, imports') <- fmap unzip $ forM imports $ \(isSource, (mbPkgName, modName)) -> do
             diagOrImp <- locateModule dflags import_dirs (optExtensions opt) getTargetExists modName mbPkgName isSource
