@@ -220,11 +220,21 @@ loadSession dir = do
           modifyVar_ fileToFlags $ \var -> do
               pure $ Map.insert hieYaml (HM.fromList (cs ++ cached_targets)) var
 
+          let resultCachedTargets = map fst cs ++ map fst cached_targets
+
+        -- populate the knownFilesVar with all the
+        -- files in the project so that `knownFiles` can learn about them and
+        -- we can generate a complete module graph
+          modifyVar_ knownFilesVar $ traverseHashed $ \known -> do
+            let known' = HashSet.union known (HashSet.fromList resultCachedTargets)
+            when (known /= known') $ logDebug logger $ "Known files updated: " <> T.pack(show $ map fromNormalizedFilePath $ HashSet.toList known')
+            evaluate known'
+
           -- Invalidate all the existing GhcSession build nodes by restarting the Shake session
           invalidateShakeCache
           restartShakeSession [kick]
 
-          return (map fst cs ++ map fst cached_targets, second Map.keys res)
+          return (resultCachedTargets, second Map.keys res)
 
     let consultCradle :: Maybe FilePath -> FilePath -> IO ([NormalizedFilePath], (IdeResult HscEnvEq, [FilePath]))
         consultCradle hieYaml cfp = do
@@ -300,11 +310,6 @@ loadSession dir = do
         return (fmap snd as, wait as)
       unless (null cs) $ do
         cfps' <- liftIO $ filterM (IO.doesFileExist . fromNormalizedFilePath) cs
-        -- populate the knownFilesVar with all the
-        -- files in the project so that `knownFiles` can learn about them and
-        -- we can generate a complete module graph
-        liftIO $ modifyVar_ knownFilesVar $ traverseHashed $ \known -> do
-            evaluate $ HashSet.union known (HashSet.fromList cfps')
         -- Typecheck all files in the project on startup
         void $ shakeEnqueue extras $ mkDelayedAction "InitialLoad" Debug $ void $ do
           when checkProject $ do
