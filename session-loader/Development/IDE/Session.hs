@@ -387,9 +387,7 @@ newComponentCache logger cradlePath hsc_env uids ci = do
     let hscEnv' = hsc_env { hsc_dflags = df
                           , hsc_IC = (hsc_IC hsc_env) { ic_dflags = df } }
 
-    let newFunc = case cradlePath of
-            Just p -> newHscEnvEq p
-            Nothing -> newHscEnvEqPreserveImportPaths
+    let newFunc = maybe newHscEnvEqPreserveImportPaths newHscEnvEq cradlePath
     henv <- newFunc hscEnv' uids
     let res = (([], Just henv), componentDependencyInfo ci)
     logDebug logger ("New Component Cache HscEnvEq: " <> T.pack (show res))
