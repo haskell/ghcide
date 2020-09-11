@@ -3001,8 +3001,10 @@ ifaceErrorTest = testCase "iface-error-test-1" $ withoutStackEnv $ runWithExtraF
       ResponseMessage{_result=Right hidir} -> do
         hi_exists <- doesFileExist $ hidir </> "B.hi"
         assertBool ("Couldn't find B.hi in " ++ hidir) hi_exists
+#if MIN_GHC_API_VERSION(8,6,0)
         hie_exists <- doesFileExist $ hidir </> "B.hie"
         assertBool ("Couldn't find B.hie in " ++ hidir) hie_exists
+#endif
       _ -> assertFailure $ "Got malformed response for CustomMessage hidir: " ++ show res
 
     -- Check that the error propogates to A
