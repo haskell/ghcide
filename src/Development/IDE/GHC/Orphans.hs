@@ -81,6 +81,8 @@ instance Show ModuleName where
 instance Hashable ModuleName where
     hashWithSalt salt = hashWithSalt salt . show
 
+
+#if MIN_GHC_API_VERSION(8,6,0)
 instance NFData a => NFData (IdentifierDetails a) where
     rnf (IdentifierDetails a b) = rnf a `seq` rnf (length b)
  
@@ -89,3 +91,4 @@ instance NFData RealSrcSpan where
 
 instance NFData Type where
     rnf = rwhnf
+#endif

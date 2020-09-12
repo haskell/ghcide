@@ -74,6 +74,11 @@ module Development.IDE.GHC.Compat(
     module Development.IDE.GHC.HieUtils,
 #endif
 
+#else
+    HieASTs,
+    getAsts,
+    generateReferencesMap,
+
 #endif
     ) where
 
@@ -88,7 +93,6 @@ import HscTypes
 import NameCache
 import qualified Data.ByteString as BS
 import MkIface
-import Data.Map.Strict (Map)
 import TcRnTypes
 
 import qualified GHC
@@ -136,6 +140,7 @@ import Development.IDE.GHC.HieAst (mkHieFile,enrichHie)
 import Development.IDE.GHC.HieBin
 import qualified DynamicLoading
 import Plugins (Plugin(parsedResultAction), withPlugins)
+import Data.Map.Strict (Map)
 
 #if MIN_GHC_API_VERSION(8,8,0)
 import HieUtils
@@ -205,6 +210,8 @@ includePathsGlobal = id
 includePathsQuote = const []
 #endif
 
+
+#if MIN_GHC_API_VERSION(8,6,0)
 type RefMap = Map Identifier [(Span, IdentifierDetails Type)]
 
 mkHieFile' :: ModSummary
@@ -224,6 +231,28 @@ mkHieFile' ms exports asts src = do
       , hie_exports = mkIfaceExports exports
       , hie_hs_src = src
       }
+#else
+type RefMap = ()
+type HieASTs a = ()
+
+mkHieFile' :: ModSummary
+           -> [AvailInfo]
+           -> HieASTs Type
+           -> BS.ByteString
+           -> Hsc HieFile
+mkHieFile' ms exports _ _ = return (HieFile (ms_mod ms) es)
+  where
+    es = nameListFromAvails (mkIfaceExports exports)
+
+enrichHie :: TypecheckedSource -> RenamedSource -> Hsc (HieASTs Type)
+enrichHie _ _ = pure ()
+
+getAsts :: HieASTs Type -> ()
+getAsts = id
+
+generateReferencesMap :: () -> RefMap
+generateReferencesMap = id
+#endif
 
 addIncludePathsQuote :: FilePath -> DynFlags -> DynFlags
 #if MIN_GHC_API_VERSION(8,6,0)
