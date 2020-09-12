@@ -80,3 +80,12 @@ instance Show ModuleName where
     show = moduleNameString
 instance Hashable ModuleName where
     hashWithSalt salt = hashWithSalt salt . show
+
+instance NFData a => NFData (IdentifierDetails a) where
+    rnf (IdentifierDetails a b) = rnf a `seq` rnf (length b)
+ 
+instance NFData RealSrcSpan where
+    rnf = rwhnf
+
+instance NFData Type where
+    rnf = rwhnf

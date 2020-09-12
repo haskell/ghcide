@@ -46,7 +46,7 @@ import           Development.IDE.Core.FileExists
 import           Development.IDE.Core.FileStore        (modificationTime, getFileContents)
 import           Development.IDE.Types.Diagnostics as Diag
 import Development.IDE.Types.Location
-import Development.IDE.GHC.Compat hiding (parseModule, typecheckModule, TargetModule, TargetFile)
+import Development.IDE.GHC.Compat hiding (parseModule, typecheckModule, writeHieFile, TargetModule, TargetFile)
 import Development.IDE.GHC.Util
 import Development.IDE.GHC.WithDynFlags
 import Data.Either.Extra
@@ -507,6 +507,21 @@ getDependenciesRule =
         let mbFingerprints = map (fingerprintString . fromNormalizedFilePath) allFiles <$ optShakeFiles opts
         return (fingerprintToBS . fingerprintFingerprints <$> mbFingerprints, ([], transitiveDeps depInfo file))
 
+getHieAstsRule :: Rules ()
+getHieAstsRule =
+    define $ \GetHieAst f -> do
+      tmr <- use_ TypeCheck f
+      (diags,masts) <- case tmrHieAsts tmr of
+        -- If we already have them from typechecking, return them
+        Just asts -> pure ([], Just asts)
+        -- Compute asts if we haven't already computed them
+        Nothing -> do
+          hsc <- hscEnv <$> use_ GhcSession f
+          (diagsHieGen, masts) <- liftIO $ generateHieAsts hsc (tmrModule tmr)
+          pure (diagsHieGen, masts)
+      let refmap = generateReferencesMap . getAsts <$> masts
+      pure (diags, HAR (ms_mod  $ tmrModSummary tmr) <$> masts <*> refmap)
+
 -- Source SpanInfo is used by AtPoint and Goto Definition.
 getSpanInfoRule :: Rules ()
 getSpanInfoRule =
@@ -573,14 +588,20 @@ typeCheckRuleDefinition hsc pm isFoi source = do
         case isFoi of
           IsFOI Modified -> return (diags, Just tcm)
           _ -> do -- If the file is saved on disk, or is not a FOI, we write out ifaces
-            diagsHie <- generateAndWriteHieFile hsc (tmrModule tcm) (fromMaybe "" source)
+            let tm = tmrModule tcm
+                ms = tmrModSummary tcm
+                exports = tcg_exports $ fst $ tm_internals_ tm
+            (diagsHieGen, masts) <- generateHieAsts hsc (tmrModule tcm)
+            diagsHieWrite <- case masts of
+              Nothing -> pure mempty
+              Just asts -> writeHieFile hsc ms exports asts $ fromMaybe "" source
             -- Don't save interface files for modules that compiled due to defering
             -- type errors, as we won't get proper diagnostics if we load these from
             -- disk
             diagsHi  <- if not $ tmrDeferedError tcm
                         then writeHiFile hsc tcm
                         else pure mempty
-            return (diags <> diagsHi <> diagsHie, Just tcm)
+            return (diags <> diagsHi <> diagsHieGen <> diagsHieWrite, Just tcm{tmrHieAsts = masts})
       (diags, res) ->
         return (diags, snd <$> res)
  where
@@ -860,6 +881,7 @@ mainRule = do
     getModuleGraphRule
     knownFilesRule
     getClientSettingsRule
+    getHieAstsRule
 
 -- | Given the path to a module src file, this rule returns True if the
 -- corresponding `.hi` file is stable, that is, if it is newer
