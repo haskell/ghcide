@@ -2,6 +2,10 @@
 -- SPDX-License-Identifier: Apache-2.0
 module Development.IDE.Core.PositionMapping
   ( PositionMapping(..)
+  , PositionResult(..)
+  , lowerRange
+  , upperRange
+  , positionResultToMaybe
   , fromCurrentPosition
   , toCurrentPosition
   , PositionDelta(..)
@@ -21,17 +25,45 @@ import qualified Data.Text as T
 import Language.Haskell.LSP.Types
 import Data.List
 
+data PositionResult a = PositionRange { unsafeLowerRange :: a, unsafeUpperRange :: a } | PositionExact a
+  deriving (Eq,Ord,Show,Functor)
+
+lowerRange :: PositionResult a -> a
+lowerRange (PositionExact a) = a
+lowerRange (PositionRange lower _) = lower
+
+upperRange :: PositionResult a -> a
+upperRange (PositionExact a) = a
+upperRange (PositionRange _ upper) = upper
+
+positionResultToMaybe :: PositionResult a -> Maybe a
+positionResultToMaybe (PositionExact a) = Just a
+positionResultToMaybe _ = Nothing
+
+instance Applicative PositionResult where
+  pure = PositionExact
+  (PositionExact f) <*> a = fmap f a
+  (PositionRange f g) <*> (PositionExact a) = PositionRange (f a) (g a)
+  (PositionRange f g) <*> (PositionRange lower upper) = PositionRange (f lower) (g upper)
+
+instance Monad PositionResult where
+  (PositionExact a) >>= f = f a
+  (PositionRange lower upper) >>= f = PositionRange lower' upper'
+    where
+      lower' = lowerRange $ f lower
+      upper' = upperRange $ f upper
+
 -- The position delta is the difference between two versions
 data PositionDelta = PositionDelta
-  { toDelta :: !(Position -> Maybe Position)
-  , fromDelta :: !(Position -> Maybe Position)
+  { toDelta :: !(Position -> PositionResult Position)
+  , fromDelta :: !(Position -> PositionResult Position)
   }
 
 fromCurrentPosition :: PositionMapping -> Position -> Maybe Position
-fromCurrentPosition (PositionMapping pm) = fromDelta pm
+fromCurrentPosition (PositionMapping pm) = positionResultToMaybe . fromDelta pm
 
 toCurrentPosition :: PositionMapping -> Position -> Maybe Position
-toCurrentPosition (PositionMapping pm) = toDelta pm
+toCurrentPosition (PositionMapping pm) = positionResultToMaybe . toDelta pm
 
 -- A position mapping is the difference from the current version to
 -- a specific version
@@ -59,7 +91,7 @@ composeDelta (PositionDelta to1 from1) (PositionDelta to2 from2) =
                 (from1 >=> from2)
 
 idDelta :: PositionDelta
-idDelta = PositionDelta Just Just
+idDelta = PositionDelta pure pure
 
 -- | Convert a set of changes into a delta from k  to k + 1
 mkDelta :: [TextDocumentContentChangeEvent] -> PositionDelta
@@ -76,16 +108,16 @@ applyChange PositionDelta{..} (TextDocumentContentChangeEvent (Just r) _ t) = Po
     }
 applyChange posMapping _ = posMapping
 
-toCurrent :: Range -> T.Text -> Position -> Maybe Position
-toCurrent (Range (Position startLine startColumn) (Position endLine endColumn)) t (Position line column)
+toCurrent :: Range -> T.Text -> Position -> PositionResult Position
+toCurrent (Range start@(Position startLine startColumn) end@(Position endLine endColumn)) t (Position line column)
     | line < startLine || line == startLine && column < startColumn =
       -- Position is before the change and thereby unchanged.
-      Just $ Position line column
+      PositionExact $ Position line column
     | line > endLine || line == endLine && column >= endColumn =
       -- Position is after the change so increase line and column number
       -- as necessary.
-      Just $ Position (line + lineDiff) newColumn
-    | otherwise = Nothing
+      PositionExact $ Position (line + lineDiff) newColumn
+    | otherwise = PositionRange start end
     -- Position is in the region that was changed.
     where
         lineDiff = linesNew - linesOld
@@ -98,16 +130,16 @@ toCurrent (Range (Position startLine startColumn) (Position endLine endColumn)) 
           | line == endLine = column + newEndColumn - endColumn
           | otherwise = column
 
-fromCurrent :: Range -> T.Text -> Position -> Maybe Position
-fromCurrent (Range (Position startLine startColumn) (Position endLine endColumn)) t (Position line column)
+fromCurrent :: Range -> T.Text -> Position -> PositionResult Position
+fromCurrent (Range start@(Position startLine startColumn) end@(Position endLine endColumn)) t (Position line column)
     | line < startLine || line == startLine && column < startColumn =
       -- Position is before the change and thereby unchanged
-      Just $ Position line column
+      PositionExact $ Position line column
     | line > newEndLine || line == newEndLine && column >= newEndColumn =
       -- Position is after the change so increase line and column number
       -- as necessary.
-      Just $ Position (line - lineDiff) newColumn
-    | otherwise = Nothing
+      PositionExact $ Position (line - lineDiff) newColumn
+    | otherwise = PositionRange start end
     -- Position is in the region that was changed.
     where
         lineDiff = linesNew - linesOld
