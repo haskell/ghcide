@@ -3272,14 +3272,19 @@ runInDir' dir startExeIn startSessionIn s = do
   -- Only sets HOME if it wasn't already set.
   setEnv "HOME" "/homeless-shelter" False
   let lspTestCaps = fullCaps { _window = Just $ WindowClientCapabilities $ Just True }
-  runSessionWithConfig conf cmd lspTestCaps projDir s
+  logColor <- fromMaybe True <$> checkEnv "LSP_TEST_LOG_COLOR"
+  runSessionWithConfig conf{logColor} cmd lspTestCaps projDir s
   where
+    checkEnv :: String -> IO (Maybe Bool)
+    checkEnv s = fmap convertVal <$> getEnv s
+    convertVal "0" = False
+    convertVal _ = True
+
     conf = defaultConfig
-      -- If you uncomment this you can see all logging
-      -- which can be quite useful for debugging.
-    --   { logStdErr = True, logColor = False }
-    --   If you really want to, you can also see all messages
-    --   { logMessages = True, logColor = False }
+      -- uncomment this or set LSP_TEST_LOG_STDERR=1 to see all logging
+    --   { logStdErr = True }
+    --   uncomment this or set LSP_TEST_LOG_MESSAGES=1 to see all messages
+    --   { logMessages = True }
 
 openTestDataDoc :: FilePath -> Session TextDocumentIdentifier
 openTestDataDoc path = do
