@@ -17,7 +17,7 @@ Main functions for .hie file generation
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DataKinds #-}
-module Development.IDE.GHC.HieAst ( mkHieFile ) where
+module Development.IDE.GHC.HieAst ( mkHieFile, enrichHie ) where
 
 import Avail                      ( Avails )
 import Bag                        ( Bag, bagToList )

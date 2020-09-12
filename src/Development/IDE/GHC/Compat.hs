@@ -5,7 +5,7 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE PatternSynonyms #-}
-{-# OPTIONS -Wno-dodgy-imports #-}
+{-# OPTIONS -Wno-dodgy-imports -Wno-incomplete-uni-patterns #-}
 #include "ghc-api-version.h"
 
 -- | Attempt at hiding the GHC version differences we can.
@@ -16,6 +16,9 @@ module Development.IDE.GHC.Compat(
     NameCacheUpdater(..),
     hieExportNames,
     mkHieFile,
+    mkHieFile',
+    enrichHie,
+    RefMap,
     writeHieFile,
     readHieFile,
     supportsHieFiles,
@@ -54,6 +57,8 @@ module Development.IDE.GHC.Compat(
     getLoc,
     upNameCache,
     disableWarningsAsErrors,
+    AvailInfo,
+    tcg_exports,
 
     module GHC,
 #if MIN_GHC_API_VERSION(8,6,0)
@@ -78,6 +83,10 @@ import Packages
 import Data.IORef
 import HscTypes
 import NameCache
+import qualified Data.ByteString as BS
+import MkIface
+import Data.Map.Strict (Map)
+import TcRnTypes
 
 import qualified GHC
 import GHC hiding (
@@ -110,7 +119,7 @@ import ErrUtils (ErrorMessages)
 import FastString (FastString)
 
 #if MIN_GHC_API_VERSION(8,6,0)
-import Development.IDE.GHC.HieAst (mkHieFile)
+import Development.IDE.GHC.HieAst (mkHieFile,enrichHie)
 import Development.IDE.GHC.HieBin
 
 #if MIN_GHC_API_VERSION(8,8,0)
@@ -181,6 +190,25 @@ includePathsGlobal = id
 includePathsQuote = const []
 #endif
 
+type RefMap = Map Identifier [(Span, IdentifierDetails Type)]
+
+mkHieFile' :: ModSummary
+           -> [AvailInfo]
+           -> HieASTs Type
+           -> BS.ByteString
+           -> Hsc HieFile
+mkHieFile' ms exports asts src = do
+  let Just src_file = ml_hs_file $ ms_location ms
+      (asts',arr) = compressTypes asts
+  return $ HieFile
+      { hie_hs_file = src_file
+      , hie_module = ms_mod ms
+      , hie_types = arr
+      , hie_asts = asts'
+      -- mkIfaceExports sorts the AvailInfos for stability
+      , hie_exports = mkIfaceExports exports
+      , hie_hs_src = src
+      }
 
 addIncludePathsQuote :: FilePath -> DynFlags -> DynFlags
 #if MIN_GHC_API_VERSION(8,6,0)

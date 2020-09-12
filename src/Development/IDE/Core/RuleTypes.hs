@@ -65,6 +65,7 @@ data TcModuleResult = TcModuleResult
     -- HomeModInfo instead
     , tmrModInfo    :: HomeModInfo
     , tmrDeferedError :: !Bool -- ^ Did we defer any type errors for this module?
+    , tmrHieAsts :: !(Maybe (HieASTs Type)) -- ^ The HieASTs if we computed them
     }
 instance Show TcModuleResult where
     show = show . pm_mod_summary . tm_parsed_module . tmrModule
@@ -97,9 +98,21 @@ instance NFData HiFileResult where
 instance Show HiFileResult where
     show = show . hirModSummary
 
+-- | Save the uncompressed AST here, we compress it just before writing to disk
+data HieAstResult = HAR { hieModule :: Module, hieAst :: !(HieASTs Type), refMap :: !RefMap }
+ 
+instance NFData HieAstResult where
+    rnf (HAR m hf rm) = rnf m `seq` rwhnf hf `seq` rnf rm
+ 
+instance Show HieAstResult where
+    show = show . hieModule
+
 -- | The type checked version of this file, requires TypeCheck+
 type instance RuleResult TypeCheck = TcModuleResult
 
+-- | The uncompressed HieAST
+type instance RuleResult GetHieAst = HieAstResult
+ 
 -- | Information about what spans occur where, requires TypeCheck
 type instance RuleResult GetSpanInfo = SpansInfo
 
@@ -200,6 +213,12 @@ data GetSpanInfo = GetSpanInfo
 instance Hashable GetSpanInfo
 instance NFData   GetSpanInfo
 instance Binary   GetSpanInfo
+
+data GetHieAst = GetHieAst
+    deriving (Eq, Show, Typeable, Generic)
+instance Hashable GetHieAst
+instance NFData   GetHieAst
+instance Binary   GetHieAst
 
 data GenerateCore = GenerateCore
     deriving (Eq, Show, Typeable, Generic)
