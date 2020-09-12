@@ -162,7 +162,6 @@ import IfaceEnv
 import Binary
 import Data.ByteString (ByteString)
 import GhcPlugins (Hsc, srcErrorMessages, Unfolding(BootUnfolding), setIdUnfolding, tidyTopType, setIdType, globaliseId, isWiredInName, elemNameSet, idName, filterOut)
-import MkIface
 #endif
 
 import Control.Exception (catch)
