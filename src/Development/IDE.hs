@@ -30,9 +30,9 @@ import Development.IDE.Core.Shake as X
     IdeRule,
     define,
     GetModificationTime(GetModificationTime),
-    use, useNoFile, uses, useWithStaleFast, useWithStaleFast',
+    use, useNoFile, uses, useWithStale, useWithStaleFast, useWithStaleFast',
     FastResult(..),
-    use_, useNoFile_, uses_,
+    use_, useNoFile_, uses_, useWithStale_,
     ideLogger,
     actionLogger,
     IdeAction(..), runIdeAction
