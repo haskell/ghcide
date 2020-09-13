@@ -341,7 +341,7 @@ test-suite ghcide-tests
         QuickCheck,
         quickcheck-instances,
         record-dot-preprocessor,
-        -- record-hasfield,
+        record-hasfield,
         rope-utf16-splay,
         safe,
         safe-exceptions,
