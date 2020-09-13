@@ -25,7 +25,7 @@ import qualified Data.Text as T
 import Language.Haskell.LSP.Types
 import Data.List
 
-data PositionResult a = PositionRange { unsafeLowerRange :: a, unsafeUpperRange :: a } | PositionExact a
+data PositionResult a = PositionRange { unsafeLowerRange :: !a, unsafeUpperRange :: !a } | PositionExact !a
   deriving (Eq,Ord,Show,Functor)
 
 lowerRange :: PositionResult a -> a
