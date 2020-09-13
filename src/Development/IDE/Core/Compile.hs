@@ -101,8 +101,8 @@ parseModule
 parseModule IdeOptions{..} env comp_pkgs filename modTime mbContents =
     fmap (either (, Nothing) id) $
     evalGhcEnv env $ runExceptT $ do
-        (contents, dflags) <- preprocessor filename mbContents
-        (diag, modu) <- parseFileContents optPreprocessor dflags comp_pkgs filename modTime contents
+        (contents, dflags) <- preprocessor env filename mbContents
+        (diag, modu) <- parseFileContents env optPreprocessor dflags comp_pkgs filename modTime contents
         return (diag, Just (contents, modu))
 
 
@@ -456,12 +456,13 @@ getModSummaryFromBuffer fp modTime dflags parsed contents = do
 --   Runs preprocessors as needed.
 getModSummaryFromImports
   :: (HasDynFlags m, ExceptionMonad m, MonadIO m)
-  => FilePath
+  => HscEnv
+  -> FilePath
   -> UTCTime
   -> Maybe SB.StringBuffer
   -> ExceptT [FileDiagnostic] m ModSummary
-getModSummaryFromImports fp modTime contents = do
-    (contents, dflags) <- preprocessor fp contents
+getModSummaryFromImports env fp modTime contents = do
+    (contents, dflags) <- preprocessor env fp contents
     (srcImports, textualImports, L _ moduleName) <-
         ExceptT $ liftIO $ first (diagFromErrMsgs "parser" dflags) <$> GHC.getHeaderImports dflags contents fp fp
 
@@ -532,14 +533,15 @@ parseHeader dflags filename contents = do
 -- parsed module (or errors) and any parse warnings. Does not run any preprocessors
 parseFileContents
        :: GhcMonad m
-       => (GHC.ParsedSource -> IdePreprocessedSource)
+       => HscEnv
+       -> (GHC.ParsedSource -> IdePreprocessedSource)
        -> DynFlags -- ^ flags to use
        -> [PackageName] -- ^ The package imports to ignore
        -> FilePath  -- ^ the filename (for source locations)
        -> UTCTime   -- ^ the modification timestamp
        -> SB.StringBuffer -- ^ Haskell module source text (full Unicode is supported)
        -> ExceptT [FileDiagnostic] m ([FileDiagnostic], ParsedModule)
-parseFileContents customPreprocessor dflags comp_pkgs filename modTime contents = do
+parseFileContents env customPreprocessor dflags comp_pkgs filename modTime contents = do
    let loc  = mkRealSrcLoc (mkFastString filename) 1 1
    case unP Parser.parseModule (mkPState dflags contents loc) of
 #if MIN_GHC_API_VERSION(8,10,0)
@@ -582,7 +584,11 @@ parseFileContents customPreprocessor dflags comp_pkgs filename modTime contents 
                        , pm_annotations = hpm_annotations
                       }
                    warnings = diagFromErrMsgs "parser" dflags warns
-               pure (warnings ++ preproc_warnings, pm)
+                   applyPluginAction p opts = parsedResultAction p opts ms
+               hspm <- liftIO $ runHsc env $ withPlugins dflags applyPluginAction 
+                 (HsParsedModule parsed' [] hpm_annotations)
+               let pm' = pm { pm_parsed_source = hpm_module hspm }
+               pure (warnings ++ preproc_warnings, pm')
 
 
 -- | After parsing the module remove all package imports referring to

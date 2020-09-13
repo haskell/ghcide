@@ -1,6 +1,9 @@
 -- Copyright (c) 2019 The DAML Authors. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
 
+{-# LANGUAGE CPP #-}
+#include "ghc-api-version.h"
+
 module Development.IDE.Core.Preprocessor
   ( preprocessor
   ) where
@@ -10,6 +13,10 @@ import Development.IDE.GHC.Orphans()
 import Development.IDE.GHC.Compat
 import GhcMonad
 import StringBuffer as SB
+
+#if MIN_GHC_API_VERSION(8,6,0)
+import DynamicLoading (initializePlugins)
+#endif
 
 import Data.List.Extra
 import System.FilePath
@@ -37,8 +44,8 @@ import Exception (ExceptionMonad)
 
 -- | Given a file and some contents, apply any necessary preprocessors,
 --   e.g. unlit/cpp. Return the resulting buffer and the DynFlags it implies.
-preprocessor :: (ExceptionMonad m, HasDynFlags m, MonadIO m) => FilePath -> Maybe StringBuffer -> ExceptT [FileDiagnostic] m (StringBuffer, DynFlags)
-preprocessor filename mbContents = do
+preprocessor :: (ExceptionMonad m, HasDynFlags m, MonadIO m) => HscEnv -> FilePath -> Maybe StringBuffer -> ExceptT [FileDiagnostic] m (StringBuffer, DynFlags)
+preprocessor env filename mbContents = do
     -- Perform unlit
     (isOnDisk, contents) <-
         if isLiterate filename then do
@@ -51,7 +58,7 @@ preprocessor filename mbContents = do
             return (isOnDisk, contents)
 
     -- Perform cpp
-    dflags  <- ExceptT $ parsePragmasIntoDynFlags filename contents
+    dflags  <- ExceptT $ parsePragmasIntoDynFlags env filename contents
     (isOnDisk, contents, dflags) <-
         if not $ xopt LangExt.Cpp dflags then
             return (isOnDisk, contents, dflags)
@@ -68,7 +75,7 @@ preprocessor filename mbContents = do
                                   [] -> throw e
                                   diags -> return $ Left diags
                             )
-            dflags <- ExceptT $ parsePragmasIntoDynFlags filename contents
+            dflags <- ExceptT $ parsePragmasIntoDynFlags env filename contents
             return (False, contents, dflags)
 
     -- Perform preprocessor
@@ -76,7 +83,7 @@ preprocessor filename mbContents = do
         return (contents, dflags)
     else do
         contents <- liftIO $ runPreprocessor dflags filename $ if isOnDisk then Nothing else Just contents
-        dflags <- ExceptT $ parsePragmasIntoDynFlags filename contents
+        dflags <- ExceptT $ parsePragmasIntoDynFlags env filename contents
         return (contents, dflags)
   where
     logAction :: IORef [CPPLog] -> LogAction
@@ -134,10 +141,11 @@ isLiterate x = takeExtension x `elem` [".lhs",".lhs-boot"]
 -- | This reads the pragma information directly from the provided buffer.
 parsePragmasIntoDynFlags
     :: (ExceptionMonad m, HasDynFlags m, MonadIO m)
-    => FilePath
+    => HscEnv
+    -> FilePath
     -> SB.StringBuffer
     -> m (Either [FileDiagnostic] DynFlags)
-parsePragmasIntoDynFlags fp contents = catchSrcErrors "pragmas" $ do
+parsePragmasIntoDynFlags env fp contents = catchSrcErrors "pragmas" $ do
     dflags0  <- getDynFlags
     let opts = Hdr.getOptions dflags0 contents fp
 
@@ -145,7 +153,16 @@ parsePragmasIntoDynFlags fp contents = catchSrcErrors "pragmas" $ do
     liftIO $ evaluate $ rnf opts
 
     (dflags, _, _) <- parseDynamicFilePragma dflags0 opts
-    return $ disableWarningsAsErrors dflags
+    dflags' <- initPlugins env dflags
+    return $ disableWarningsAsErrors dflags'
+
+initPlugins :: MonadIO m => HscEnv -> DynFlags -> m DynFlags
+initPlugins env dflags = do
+#if MIN_GHC_API_VERSION(8,6,0)
+    liftIO $ initializePlugins env dflags
+#else
+    return dflags
+#endif
 
 
 -- | Run (unlit) literate haskell preprocessor on a file, or buffer if set
