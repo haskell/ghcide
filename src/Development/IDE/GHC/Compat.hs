@@ -142,10 +142,6 @@ import TcRnTypes
 import MkIface
 #endif
 
-
-import DynFlags
-import HscTypes
-
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Exception (catch)
 import System.IO
