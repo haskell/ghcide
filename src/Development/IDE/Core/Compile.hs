@@ -43,7 +43,6 @@ import Development.IDE.Types.Options
 import Development.IDE.Types.Location
 
 #if MIN_GHC_API_VERSION(8,6,0)
-import DynamicLoading (initializePlugins)
 import LoadIface (loadModuleInterface)
 #endif
 
@@ -145,7 +144,7 @@ initPlugins :: GhcMonad m => ModSummary -> m ModSummary
 initPlugins modSummary = do
 #if MIN_GHC_API_VERSION(8,6,0)
     session <- getSession
-    dflags <- liftIO $ initializePlugins session (ms_hspp_opts modSummary)
+    dflags <- initializePlugins session (ms_hspp_opts modSummary)
     return modSummary{ms_hspp_opts = dflags}
 #else
     return modSummary

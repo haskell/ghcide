@@ -57,6 +57,7 @@ module Development.IDE.GHC.Compat(
 
     module GHC,
 #if MIN_GHC_API_VERSION(8,6,0)
+    initializePlugins,
 
 #if MIN_GHC_API_VERSION(8,8,0)
     module HieTypes,
@@ -112,6 +113,7 @@ import FastString (FastString)
 #if MIN_GHC_API_VERSION(8,6,0)
 import Development.IDE.GHC.HieAst (mkHieFile)
 import Development.IDE.GHC.HieBin
+import qualified DynamicLoading
 
 #if MIN_GHC_API_VERSION(8,8,0)
 import HieUtils
@@ -140,6 +142,11 @@ import TcRnTypes
 import MkIface
 #endif
 
+
+import DynFlags
+import HscTypes
+
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Exception (catch)
 import System.IO
 import Foreign.ForeignPtr
@@ -467,3 +474,12 @@ wopt_unset_fatal :: DynFlags -> WarningFlag -> DynFlags
 wopt_unset_fatal dfs f
     = dfs { fatalWarningFlags = EnumSet.delete f (fatalWarningFlags dfs) }
 #endif
+
+initializePlugins :: MonadIO m => HscEnv -> DynFlags -> m DynFlags
+initializePlugins env dflags = do
+#if MIN_GHC_API_VERSION(8,6,0)
+    liftIO $ DynamicLoading.initializePlugins env dflags
+#else
+    return dflags
+#endif
+

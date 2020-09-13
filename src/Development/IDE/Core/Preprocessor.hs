@@ -1,9 +1,6 @@
 -- Copyright (c) 2019 The DAML Authors. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
 
-{-# LANGUAGE CPP #-}
-#include "ghc-api-version.h"
-
 module Development.IDE.Core.Preprocessor
   ( preprocessor
   ) where
@@ -13,10 +10,6 @@ import Development.IDE.GHC.Orphans()
 import Development.IDE.GHC.Compat
 import GhcMonad
 import StringBuffer as SB
-
-#if MIN_GHC_API_VERSION(8,6,0)
-import DynamicLoading (initializePlugins)
-#endif
 
 import Data.List.Extra
 import System.FilePath
@@ -153,17 +146,8 @@ parsePragmasIntoDynFlags env fp contents = catchSrcErrors "pragmas" $ do
     liftIO $ evaluate $ rnf opts
 
     (dflags, _, _) <- parseDynamicFilePragma dflags0 opts
-    dflags' <- initPlugins env dflags
+    dflags' <- initializePlugins env dflags
     return $ disableWarningsAsErrors dflags'
-
-initPlugins :: MonadIO m => HscEnv -> DynFlags -> m DynFlags
-initPlugins env dflags = do
-#if MIN_GHC_API_VERSION(8,6,0)
-    liftIO $ initializePlugins env dflags
-#else
-    return dflags
-#endif
-
 
 -- | Run (unlit) literate haskell preprocessor on a file, or buffer if set
 runLhs :: DynFlags -> FilePath -> Maybe SB.StringBuffer -> IO SB.StringBuffer
