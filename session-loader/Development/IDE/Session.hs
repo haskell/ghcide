@@ -680,7 +680,7 @@ notifyUserImplicitCradle fp =
     NotificationMessage "2.0" WindowShowMessage $ ShowMessageParams MtWarning $
       "No [cradle](https://github.com/mpickering/hie-bios#hie-bios) found for "
       <> T.pack fp <>
-      ".\n Proceeding with [implicit](https://hackage.haskell.org/package/implicit-hie) cradle"
+      ".\n Proceeding with [implicit cradle](https://hackage.haskell.org/package/implicit-hie)"
 
 notifyCradleLoaded :: FilePath -> FromServerMessage
 notifyCradleLoaded fp =
