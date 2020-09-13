@@ -80,6 +80,7 @@ import Data.IORef
 import HscTypes
 import NameCache
 
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified GHC
 import GHC hiding (
       ClassOpSig,
@@ -142,7 +143,6 @@ import TcRnTypes
 import MkIface
 #endif
 
-import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Exception (catch)
 import System.IO
 import Foreign.ForeignPtr
