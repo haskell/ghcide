@@ -25,7 +25,12 @@ import qualified Data.Text as T
 import Language.Haskell.LSP.Types
 import Data.List
 
-data PositionResult a = PositionRange { unsafeLowerRange :: !a, unsafeUpperRange :: !a } | PositionExact !a
+-- | Either an exact position, or the range of text that was substituted
+data PositionResult a
+  = PositionRange -- ^ Fields need to be non-strict otherwise bind is exponential
+  { unsafeLowerRange :: a
+  , unsafeUpperRange :: a }
+  | PositionExact !a
   deriving (Eq,Ord,Show,Functor)
 
 lowerRange :: PositionResult a -> a
@@ -116,7 +121,7 @@ toCurrent (Range start@(Position startLine startColumn) end@(Position endLine en
     | line > endLine || line == endLine && column >= endColumn =
       -- Position is after the change so increase line and column number
       -- as necessary.
-      PositionExact $ Position (line + lineDiff) newColumn
+      PositionExact $ Position newLine newColumn
     | otherwise = PositionRange start end
     -- Position is in the region that was changed.
     where
@@ -126,9 +131,10 @@ toCurrent (Range start@(Position startLine startColumn) end@(Position endLine en
         newEndColumn
           | linesNew == 0 = startColumn + T.length t
           | otherwise = T.length $ T.takeWhileEnd (/= '\n') t
-        newColumn
+        !newColumn
           | line == endLine = column + newEndColumn - endColumn
           | otherwise = column
+        !newLine = line + lineDiff
 
 fromCurrent :: Range -> T.Text -> Position -> PositionResult Position
 fromCurrent (Range start@(Position startLine startColumn) end@(Position endLine endColumn)) t (Position line column)
@@ -138,7 +144,7 @@ fromCurrent (Range start@(Position startLine startColumn) end@(Position endLine 
     | line > newEndLine || line == newEndLine && column >= newEndColumn =
       -- Position is after the change so increase line and column number
       -- as necessary.
-      PositionExact $ Position (line - lineDiff) newColumn
+      PositionExact $ Position newLine newColumn
     | otherwise = PositionRange start end
     -- Position is in the region that was changed.
     where
@@ -149,6 +155,7 @@ fromCurrent (Range start@(Position startLine startColumn) end@(Position endLine 
         newEndColumn
           | linesNew == 0 = startColumn + T.length t
           | otherwise = T.length $ T.takeWhileEnd (/= '\n') t
-        newColumn
+        !newColumn
           | line == newEndLine = column - (newEndColumn - endColumn)
           | otherwise = column
+        !newLine = line - lineDiff
