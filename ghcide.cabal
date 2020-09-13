@@ -340,6 +340,7 @@ test-suite ghcide-tests
         process,
         QuickCheck,
         quickcheck-instances,
+        record-dot-preprocessor,
         rope-utf16-splay,
         safe,
         safe-exceptions,
