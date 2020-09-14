@@ -470,11 +470,13 @@ wopt_unset_fatal dfs f
     = dfs { fatalWarningFlags = EnumSet.delete f (fatalWarningFlags dfs) }
 #endif
 
+#if MIN_GHC_API_VERSION(8,6,0)
 initializePlugins :: HscEnv -> DynFlags -> IO DynFlags
 initializePlugins env dflags = do
-#if MIN_GHC_API_VERSION(8,6,0)
     DynamicLoading.initializePlugins env dflags
 #else
+initializePlugins :: HscEnv -> DynFlags -> IO DynFlags
+initializePlugins _env dflags = do
     return dflags
 #endif
 
