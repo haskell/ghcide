@@ -376,7 +376,7 @@ getCompletions
     :: IdeOptions
     -> CachedCompletions
     -> ParsedModule
-    -> PositionMapping
+    -> PositionMapping     -- ^ map current position to position in parsed module
     -> VFS.PosPrefixInfo
     -> ClientCapabilities
     -> WithSnippets
