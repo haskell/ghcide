@@ -66,10 +66,6 @@ import           StringBuffer                   as SB
 import           TcRnMonad (tct_id, TcTyThing(AGlobal, ATcId), initTc, initIfaceLoad, tcg_th_coreplugins)
 import           TcIface                        (typecheckIface)
 import           TidyPgm
-#if MIN_GHC_API_VERSION(8,6,0)
-#else
-import           Plugins (withPlugins, Plugin(parsedResultAction))
-#endif
 
 import Control.Exception.Safe
 import Control.Monad.Extra
@@ -579,21 +575,16 @@ parseFileContents env customPreprocessor dflags comp_pkgs filename modTime conte
                let parsed' = removePackageImports comp_pkgs parsed
                let preproc_warnings = diagFromStrings "parser" DsWarning preproc_warns
                ms <- getModSummaryFromBuffer filename modTime dflags parsed' contents
-               -- Apply parsedResultAction of plugins
-               let applyPluginAction p opts = parsedResultAction p opts ms
-               parsed'' <- fmap hpm_module $ liftIO $ 
-                 runHsc env $ withPlugins dflags applyPluginAction 
-                   (HsParsedModule parsed' [] hpm_annotations)
+               parsed'' <- liftIO $ applyPluginsParsedResultAction env dflags ms hpm_annotations parsed
                let pm =
                      ParsedModule {
                          pm_mod_summary = ms
                        , pm_parsed_source = parsed''
                        , pm_extra_src_files=[] -- src imports not allowed
                        , pm_annotations = hpm_annotations
-                     }
+                      }
                    warnings = diagFromErrMsgs "parser" dflags warns
                pure (warnings ++ preproc_warnings, pm)
-
 
 -- | After parsing the module remove all package imports referring to
 -- these packages as we have already dealt with what they map to.

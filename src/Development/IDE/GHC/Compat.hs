@@ -57,6 +57,7 @@ module Development.IDE.GHC.Compat(
 
     module GHC,
     initializePlugins,
+    applyPluginsParsedResultAction,
 #if MIN_GHC_API_VERSION(8,6,0)
 
 #if MIN_GHC_API_VERSION(8,8,0)
@@ -130,6 +131,7 @@ import System.FilePath ((-<.>))
 import qualified EnumSet
 
 #if MIN_GHC_API_VERSION(8,6,0)
+import Plugins
 import GhcPlugins (srcErrorMessages)
 import Data.List (isSuffixOf)
 #else
@@ -474,9 +476,22 @@ wopt_unset_fatal dfs f
 initializePlugins :: HscEnv -> DynFlags -> IO DynFlags
 initializePlugins env dflags = do
     DynamicLoading.initializePlugins env dflags
+
+applyPluginsParsedResultAction :: HscEnv -> DynFlags -> ModSummary -> ApiAnns -> ParsedSource -> IO ParsedSource
+applyPluginsParsedResultAction env dflags ms hpm_annotations parsed = do
+  -- Apply parsedResultAction of plugins
+  let applyPluginAction p opts = parsedResultAction p opts ms
+  fmap hpm_module $ 
+    runHsc env $ withPlugins dflags applyPluginAction 
+      (HsParsedModule parsed [] hpm_annotations)
+
 #else
 initializePlugins :: HscEnv -> DynFlags -> IO DynFlags
 initializePlugins _env dflags = do
     return dflags
+
+applyPluginsParsedResultAction :: HscEnv -> DynFlags -> ModSummary -> ApiAnns -> ParsedSource -> IO ParsedSource
+applyPluginsParsedResultAction _env _dflags _ms _hpm_annotations parsed =
+    return parsed
 #endif
 
