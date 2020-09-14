@@ -2251,8 +2251,6 @@ checkFileCompiles fp =
     void (openTestDataDoc (dir </> fp))
     expectNoMoreDiagnostics 0.5
 
-
-
 pluginSimpleTests :: TestTree
 pluginSimpleTests = 
   testSessionWait "simple plugin" $ do
@@ -2278,7 +2276,7 @@ pluginSimpleTests =
 
 pluginParsedResultTests :: TestTree 
 pluginParsedResultTests = 
-  testSessionWait "parsedResultAction plugin" $ do 
+  (`xfail84` "record-dot-preprocessor unsupported on 8.4") $ testSessionWait "parsedResultAction plugin" $ do 
     let content = 
           T.unlines 
             [ "{-# LANGUAGE DuplicateRecordFields, TypeApplications, FlexibleContexts, DataKinds, MultiParamTypeClasses, TypeSynonymInstances, FlexibleInstances #-}"
@@ -2750,6 +2748,13 @@ pattern R x y x' y' = Range (Position x y) (Position x' y')
 
 xfail :: TestTree -> String -> TestTree
 xfail = flip expectFailBecause
+
+xfail84 :: TestTree -> String -> TestTree
+#if MIN_GHC_API_VERSION(8,6,0)
+xfail84 t _ = t
+#else
+xfail84 = flip expectFailBecause
+#endif
 
 expectFailCabal :: String -> TestTree -> TestTree
 #ifdef STACK
