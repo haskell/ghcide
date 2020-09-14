@@ -77,7 +77,8 @@ main = do
     , codeLensesTests
     , outlineTests
     , findDefinitionAndHoverTests
-    , pluginTests
+    , pluginSimpleTests
+    , pluginParsedResultTests
     , preprocessorTests
     , thTests
     , safeTests
@@ -2252,46 +2253,47 @@ checkFileCompiles fp =
 
 
 
-pluginTests :: TestTree
-pluginTests = 
-  testGroup "plugin" 
-    [ testSessionWait "simple plugin" $ do
-        let content =
-              T.unlines
-                [ "{-# OPTIONS_GHC -fplugin GHC.TypeLits.KnownNat.Solver #-}"
-                , "{-# LANGUAGE DataKinds, ScopedTypeVariables, TypeOperators #-}"
-                , "module Testing where"
-                , "import Data.Proxy"
-                , "import GHC.TypeLits"
-                -- This function fails without plugins being initialized.
-                , "f :: forall n. KnownNat n => Proxy n -> Integer"
-                , "f _ = natVal (Proxy :: Proxy n) + natVal (Proxy :: Proxy (n+2))"
-                , "foo :: Int -> Int -> Int"
-                , "foo a b = a + c"
-                ]
-        _ <- createDoc "Testing.hs" "haskell" content
-        expectDiagnostics
-          [ ( "Testing.hs",
-              [(DsError, (8, 14), "Variable not in scope: c")]
-            )
-          ]
-    , testSessionWait "parsedResultAction plugin" $ do 
-      let content = 
-            T.unlines 
-              [ "{-# LANGUAGE DuplicateRecordFields, TypeApplications, FlexibleContexts, DataKinds, MultiParamTypeClasses, TypeSynonymInstances, FlexibleInstances #-}"
-              , "{-# OPTIONS_GHC -fplugin=RecordDotPreprocessor #-}"
-              , "module Testing where"
-              , "data Company = Company {name :: String}"
-              , "display :: Company -> String"
-              , "display c = c.name"
-              ]
-      _ <- createDoc "Testing.hs" "haskell" content 
-      expectDiagnostics 
-        [ ( "Testing.hs",
-            []
+pluginSimpleTests :: TestTree
+pluginSimpleTests = 
+  testSessionWait "simple plugin" $ do
+    let content =
+          T.unlines
+            [ "{-# OPTIONS_GHC -fplugin GHC.TypeLits.KnownNat.Solver #-}"
+            , "{-# LANGUAGE DataKinds, ScopedTypeVariables, TypeOperators #-}"
+            , "module Testing where"
+            , "import Data.Proxy"
+            , "import GHC.TypeLits"
+            -- This function fails without plugins being initialized.
+            , "f :: forall n. KnownNat n => Proxy n -> Integer"
+            , "f _ = natVal (Proxy :: Proxy n) + natVal (Proxy :: Proxy (n+2))"
+            , "foo :: Int -> Int -> Int"
+            , "foo a b = a + c"
+            ]
+    _ <- createDoc "Testing.hs" "haskell" content
+    expectDiagnostics
+      [ ( "Testing.hs",
+          [(DsError, (8, 14), "Variable not in scope: c")]
           )
-        ]
-    ]
+      ]
+
+pluginParsedResultTests :: TestTree 
+pluginParsedResultTests = 
+  testSessionWait "parsedResultAction plugin" $ do 
+    let content = 
+          T.unlines 
+            [ "{-# LANGUAGE DuplicateRecordFields, TypeApplications, FlexibleContexts, DataKinds, MultiParamTypeClasses, TypeSynonymInstances, FlexibleInstances #-}"
+            , "{-# OPTIONS_GHC -fplugin=RecordDotPreprocessor #-}"
+            , "module Testing (Company(..), display) where"
+            , "data Company = Company {name :: String}"
+            , "display :: Company -> String"
+            , "display c = c.name"
+            ]
+    _ <- createDoc "Testing.hs" "haskell" content 
+    expectDiagnostics 
+      [ ( "Testing.hs",
+          []
+        )
+      ]
 
 cppTests :: TestTree
 cppTests =
