@@ -80,7 +80,6 @@ import Data.IORef
 import HscTypes
 import NameCache
 
-import Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified GHC
 import GHC hiding (
       ClassOpSig,
@@ -471,10 +470,10 @@ wopt_unset_fatal dfs f
     = dfs { fatalWarningFlags = EnumSet.delete f (fatalWarningFlags dfs) }
 #endif
 
-initializePlugins :: MonadIO m => HscEnv -> DynFlags -> m DynFlags
+initializePlugins :: HscEnv -> DynFlags -> IO DynFlags
 initializePlugins env dflags = do
 #if MIN_GHC_API_VERSION(8,6,0)
-    liftIO $ DynamicLoading.initializePlugins env dflags
+    DynamicLoading.initializePlugins env dflags
 #else
     return dflags
 #endif

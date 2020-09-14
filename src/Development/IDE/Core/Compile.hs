@@ -144,7 +144,7 @@ initPlugins :: GhcMonad m => ModSummary -> m ModSummary
 initPlugins modSummary = do
 #if MIN_GHC_API_VERSION(8,6,0)
     session <- getSession
-    dflags <- initializePlugins session (ms_hspp_opts modSummary)
+    dflags <- liftIO $ initializePlugins session (ms_hspp_opts modSummary)
     return modSummary{ms_hspp_opts = dflags}
 #else
     return modSummary
@@ -573,21 +573,22 @@ parseFileContents env customPreprocessor dflags comp_pkgs filename modTime conte
                let IdePreprocessedSource preproc_warns errs parsed = customPreprocessor rdr_module
                unless (null errs) $ throwE $ diagFromStrings "parser" DsError errs
                let parsed' = removePackageImports comp_pkgs parsed
-               let preproc_warnings = diagFromStrings "parser" DsWarning preproc_warns
                ms <- getModSummaryFromBuffer filename modTime dflags parsed' contents
-               let pm =
+               -- Apply parsedResultAction of plugins
+               let applyPluginAction p opts = parsedResultAction p opts ms
+               parsed'' <- fmap hpm_module $ liftIO $ 
+                 runHsc env $ withPlugins dflags applyPluginAction 
+                   (HsParsedModule parsed' [] hpm_annotations)
+               let warnings = diagFromErrMsgs "parser" dflags warns
+                   preproc_warnings = diagFromStrings "parser" DsWarning preproc_warns
+                   pm =
                      ParsedModule {
                          pm_mod_summary = ms
-                       , pm_parsed_source = parsed'
+                       , pm_parsed_source = parsed''
                        , pm_extra_src_files=[] -- src imports not allowed
                        , pm_annotations = hpm_annotations
                       }
-                   warnings = diagFromErrMsgs "parser" dflags warns
-                   applyPluginAction p opts = parsedResultAction p opts ms
-               hspm <- liftIO $ runHsc env $ withPlugins dflags applyPluginAction 
-                 (HsParsedModule parsed' [] hpm_annotations)
-               let pm' = pm { pm_parsed_source = hpm_module hspm }
-               pure (warnings ++ preproc_warnings, pm')
+               pure (warnings ++ preproc_warnings, pm)
 
 
 -- | After parsing the module remove all package imports referring to
