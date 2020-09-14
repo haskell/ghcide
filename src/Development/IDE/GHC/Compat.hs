@@ -56,8 +56,8 @@ module Development.IDE.GHC.Compat(
     disableWarningsAsErrors,
 
     module GHC,
-#if MIN_GHC_API_VERSION(8,6,0)
     initializePlugins,
+#if MIN_GHC_API_VERSION(8,6,0)
 
 #if MIN_GHC_API_VERSION(8,8,0)
     module HieTypes,
