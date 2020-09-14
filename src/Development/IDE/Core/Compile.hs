@@ -573,21 +573,21 @@ parseFileContents env customPreprocessor dflags comp_pkgs filename modTime conte
                let IdePreprocessedSource preproc_warns errs parsed = customPreprocessor rdr_module
                unless (null errs) $ throwE $ diagFromStrings "parser" DsError errs
                let parsed' = removePackageImports comp_pkgs parsed
+               let preproc_warnings = diagFromStrings "parser" DsWarning preproc_warns
                ms <- getModSummaryFromBuffer filename modTime dflags parsed' contents
                -- Apply parsedResultAction of plugins
                let applyPluginAction p opts = parsedResultAction p opts ms
                parsed'' <- fmap hpm_module $ liftIO $ 
                  runHsc env $ withPlugins dflags applyPluginAction 
                    (HsParsedModule parsed' [] hpm_annotations)
-               let warnings = diagFromErrMsgs "parser" dflags warns
-                   preproc_warnings = diagFromStrings "parser" DsWarning preproc_warns
-                   pm =
+               let pm =
                      ParsedModule {
                          pm_mod_summary = ms
                        , pm_parsed_source = parsed''
                        , pm_extra_src_files=[] -- src imports not allowed
                        , pm_annotations = hpm_annotations
-                      }
+                     }
+                   warnings = diagFromErrMsgs "parser" dflags warns
                pure (warnings ++ preproc_warnings, pm)
 
 
