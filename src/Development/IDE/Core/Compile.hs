@@ -66,7 +66,10 @@ import           StringBuffer                   as SB
 import           TcRnMonad (tct_id, TcTyThing(AGlobal, ATcId), initTc, initIfaceLoad, tcg_th_coreplugins)
 import           TcIface                        (typecheckIface)
 import           TidyPgm
+#if MIN_GHC_API_VERSION(8,6,0)
+#else
 import           Plugins (withPlugins, Plugin(parsedResultAction))
+#endif
 
 import Control.Exception.Safe
 import Control.Monad.Extra
