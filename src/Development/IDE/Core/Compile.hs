@@ -66,6 +66,7 @@ import           StringBuffer                   as SB
 import           TcRnMonad (tct_id, TcTyThing(AGlobal, ATcId), initTc, initIfaceLoad, tcg_th_coreplugins)
 import           TcIface                        (typecheckIface)
 import           TidyPgm
+import           Plugins (withPlugins, Plugin(parsedResultAction))
 
 import Control.Exception.Safe
 import Control.Monad.Extra
