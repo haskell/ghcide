@@ -115,6 +115,7 @@ import FastString (FastString)
 import Development.IDE.GHC.HieAst (mkHieFile)
 import Development.IDE.GHC.HieBin
 import qualified DynamicLoading
+import Plugins (Plugin(parsedResultAction), withPlugins)
 
 #if MIN_GHC_API_VERSION(8,8,0)
 import HieUtils
@@ -131,7 +132,6 @@ import System.FilePath ((-<.>))
 import qualified EnumSet
 
 #if MIN_GHC_API_VERSION(8,6,0)
-import Plugins
 import GhcPlugins (srcErrorMessages)
 import Data.List (isSuffixOf)
 #else
