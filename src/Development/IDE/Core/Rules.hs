@@ -41,6 +41,7 @@ import Development.IDE.Core.Compile
 import Development.IDE.Core.OfInterest
 import Development.IDE.Types.Options
 import Development.IDE.Spans.Documentation
+import Development.IDE.Spans.LocalBindings
 import Development.IDE.Import.DependencyInformation
 import Development.IDE.Import.FindImports
 import           Development.IDE.Core.FileExists
@@ -532,6 +533,12 @@ getHieAstsRule =
       let refmap = generateReferencesMap . getAsts <$> masts
       pure (diags, HAR (ms_mod  $ tmrModSummary tmr) <$> masts <*> refmap)
 
+getBindingsRule :: Rules ()
+getBindingsRule =
+  define $ \GetBindings f -> do
+    har <- use_ GetHieAst f
+    pure ([], Just $ bindings $ refMap har)
+
 getDocMapRule :: Rules ()
 getDocMapRule =
     define $ \GetDocMap file -> do
@@ -893,6 +900,7 @@ mainRule = do
     knownFilesRule
     getClientSettingsRule
     getHieAstsRule
+    getBindingsRule
 
 -- | Given the path to a module src file, this rule returns True if the
 -- corresponding `.hi` file is stable, that is, if it is newer

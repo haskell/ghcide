@@ -8,6 +8,7 @@ module Development.IDE.Spans.AtPoint (
   , gotoDefinition
   , gotoTypeDefinition
   , documentHighlight
+  , pointCommand
   ) where
 
 import           Development.IDE.GHC.Error

@@ -17,6 +17,7 @@ import qualified StringBuffer as SB
 import Control.DeepSeq
 import Data.Hashable
 import Development.IDE.GHC.Util
+import Bag
 
 
 -- Orphan instances for types from the GHC API.
@@ -92,3 +93,6 @@ instance NFData RealSrcSpan where
 instance NFData Type where
     rnf = rwhnf
 #endif
+
+instance Show a => Show (Bag a) where
+    show = show . bagToList

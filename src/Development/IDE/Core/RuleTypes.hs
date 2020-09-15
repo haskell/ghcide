@@ -28,6 +28,7 @@ import Module (InstalledUnitId)
 import HscTypes (hm_iface, CgGuts, Linkable, HomeModInfo, ModDetails)
 
 import           Development.IDE.Spans.Common
+import           Development.IDE.Spans.LocalBindings
 import           Development.IDE.Import.FindImports (ArtifactsLocation)
 import Data.ByteString (ByteString)
 
@@ -113,7 +114,8 @@ type instance RuleResult TypeCheck = TcModuleResult
 
 -- | The uncompressed HieAST
 type instance RuleResult GetHieAst = HieAstResult
--- | Information about what spans occur where, requires TypeCheck
+
+type instance RuleResult GetBindings = Bindings
 
 newtype PDocMap = PDocMap {getDocMap :: DocMap}
 instance NFData PDocMap where
@@ -218,7 +220,6 @@ instance Binary   TypeCheck
 
 data GetDocMap = GetDocMap
     deriving (Eq, Show, Typeable, Generic)
-
 instance Hashable GetDocMap
 instance NFData   GetDocMap
 instance Binary   GetDocMap
@@ -228,6 +229,12 @@ data GetHieAst = GetHieAst
 instance Hashable GetHieAst
 instance NFData   GetHieAst
 instance Binary   GetHieAst
+
+data GetBindings = GetBindings
+    deriving (Eq, Show, Typeable, Generic)
+instance Hashable GetBindings
+instance NFData   GetBindings
+instance Binary   GetBindings
 
 data GenerateCore = GenerateCore
     deriving (Eq, Show, Typeable, Generic)
