@@ -20,6 +20,7 @@ import GHC.Generics
 
 import Development.IDE.Plugin
 import Development.IDE.Core.Service
+import Development.IDE.Core.PositionMapping
 import Development.IDE.Plugin.Completions.Logic
 import Development.IDE.Types.Location
 import Development.IDE.Types.Options
@@ -127,10 +128,9 @@ instance Hashable NonLocalCompletions
 instance NFData   NonLocalCompletions
 instance Binary   NonLocalCompletions
 
-
 -- | Generate code actions.
 getCompletionsLSP
-    :: LSP.LspFuncs c
+    :: LSP.LspFuncs cofd
     -> IdeState
     -> CompletionParams
     -> IO (Either ResponseError CompletionResponseResult)
@@ -146,17 +146,18 @@ getCompletionsLSP lsp ide
             opts <- liftIO $ getIdeOptionsIO $ shakeExtras ide
             compls <- useWithStaleFast ProduceCompletions npath
             pm <- useWithStaleFast GetParsedModule npath
-            pure (opts, liftA2 (,) compls pm)
+            binds <- fromMaybe (mempty, zeroMapping) <$> useWithStaleFast GetBindings npath
+            pure (opts, liftA2 (,,binds) compls pm)
         case compls of
-          Just ((cci', _), (pm, mapping)) -> do
-            pfix <- maybe (return Nothing) (flip VFS.getCompletionPrefix cnts) (Just position)
+          Just ((cci', _), parsedMod, bindMap) -> do
+            pfix <- VFS.getCompletionPrefix position cnts
             case (pfix, completionContext) of
               (Just (VFS.PosPrefixInfo _ "" _ _), Just CompletionContext { _triggerCharacter = Just "."})
                 -> return (Completions $ List [])
               (Just pfix', _) -> do
                   -- TODO pass the real capabilities here (or remove the logic for snippets)
                 let fakeClientCapabilities = ClientCapabilities Nothing Nothing Nothing Nothing
-                Completions . List <$> getCompletions ideOpts cci' pm mapping pfix' fakeClientCapabilities (WithSnippets True)
+                Completions . List <$> getCompletions ideOpts cci' parsedMod bindMap pfix' fakeClientCapabilities (WithSnippets True)
               _ -> return (Completions $ List [])
           _ -> return (Completions $ List [])
       _ -> return (Completions $ List [])

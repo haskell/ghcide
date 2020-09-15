@@ -49,6 +49,7 @@ module Development.IDE.GHC.Compat(
     pattern PatSynBind,
     pattern ValBinds,
     pattern HsValBinds,
+    noExtField,
     GHC.ModLocation,
     Module.addBootSuffix,
     pattern ModLocation,
@@ -59,6 +60,12 @@ module Development.IDE.GHC.Compat(
     disableWarningsAsErrors,
     AvailInfo,
     tcg_exports,
+
+#if MIN_GHC_API_VERSION(8,10,0)
+    module GHC.Hs.Extension,
+#else
+    module HsExtension,
+#endif
 
     module GHC,
 #if MIN_GHC_API_VERSION(8,6,0)
@@ -87,6 +94,12 @@ import qualified Data.ByteString as BS
 import MkIface
 import Data.Map.Strict (Map)
 import TcRnTypes
+
+#if MIN_GHC_API_VERSION(8,10,0)
+import GHC.Hs.Extension
+#else
+import HsExtension
+#endif
 
 import qualified GHC
 import GHC hiding (
@@ -161,6 +174,12 @@ hPutStringBuffer hdl (StringBuffer buf len cur)
              hPutBuf hdl ptr len
 
 #endif
+
+#if !MIN_GHC_API_VERSION(8,10,0)
+noExtField :: NoExt
+noExtField = noExt
+#endif
+
 
 #if MIN_GHC_API_VERSION(8,6,0)
 supportsHieFiles :: Bool
