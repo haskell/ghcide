@@ -42,6 +42,8 @@ import qualified GHC.LanguageExtensions.Type as GHC
 import Development.IDE.Types.Options
 import Development.IDE.Types.Location
 
+import Language.Haskell.LSP.Types (DiagnosticTag(..))
+
 #if MIN_GHC_API_VERSION(8,6,0)
 import LoadIface (loadModuleInterface)
 #endif
@@ -133,7 +135,7 @@ typecheckModule (IdeDefer defer) hsc pm = do
         (warnings, tcm) <- withWarnings "typecheck" $ \tweak ->
             GHC.typecheckModule $ enableTopLevelWarnings
                                 $ demoteIfDefer pm{pm_mod_summary = tweak modSummary'}
-        let errorPipeline = unDefer . hideDiag dflags
+        let errorPipeline = unDefer . tagDiag . hideDiag dflags
             diags = map errorPipeline warnings
         tcm2 <- mkTcModuleResult tcm (any fst diags)
         return (map snd diags, tcm2)
@@ -250,6 +252,31 @@ hideDiag :: DynFlags -> (WarnReason, FileDiagnostic) -> (WarnReason, FileDiagnos
 hideDiag originalFlags (Reason warning, (nfp, _sh, fd))
   | not (wopt warning originalFlags) = (Reason warning, (nfp, HideDiag, fd))
 hideDiag _originalFlags t = t
+
+tagDiag :: (WarnReason, FileDiagnostic) -> (WarnReason, FileDiagnostic)
+tagDiag (Reason warning, (nfp, sh, fd))
+  | Just tag <- requiresTag warning
+  = (Reason warning, (nfp, sh, fd { _tags = addTag tag (_tags fd) }))
+  where
+    requiresTag :: WarningFlag -> Maybe DiagnosticTag
+    requiresTag Opt_WarnUnusedTopBinds        = Just DtUnnecessary
+    requiresTag Opt_WarnUnusedLocalBinds      = Just DtUnnecessary
+    requiresTag Opt_WarnUnusedPatternBinds    = Just DtUnnecessary
+    requiresTag Opt_WarnUnusedImports         = Just DtUnnecessary
+    requiresTag Opt_WarnUnusedMatches         = Just DtUnnecessary
+    requiresTag Opt_WarnUnusedTypePatterns    = Just DtUnnecessary
+    requiresTag Opt_WarnUnusedForalls         = Just DtUnnecessary
+#if MIN_GHC_API_VERSION(8,10,0)
+    requiresTag Opt_WarnUnusedRecordWildcards = Just DtUnnecessary
+#endif
+    requiresTag Opt_WarnInaccessibleCode      = Just DtUnnecessary
+    requiresTag Opt_WarnWarningsDeprecations  = Just DtDeprecated
+    requiresTag _ = Nothing
+    addTag :: DiagnosticTag -> Maybe (List DiagnosticTag) -> Maybe (List DiagnosticTag)
+    addTag t Nothing          = Just (List [t])
+    addTag t (Just (List ts)) = Just (List (t : ts))
+-- other diagnostics are left unaffected
+tagDiag t = t
 
 addRelativeImport :: NormalizedFilePath -> ModuleName -> DynFlags -> DynFlags
 addRelativeImport fp modu dflags = dflags

@@ -9,6 +9,7 @@ module Development.IDE.Test
   , requireDiagnostic
   , diagnostic
   , expectDiagnostics
+  , expectDiagnostics_
   , expectNoMoreDiagnostics
   , canonicalizeUri
   ) where
@@ -35,8 +36,8 @@ type Cursor = (Int, Int)
 cursorPosition :: Cursor -> Position
 cursorPosition (line,  col) = Position line col
 
-requireDiagnostic :: List Diagnostic -> (DiagnosticSeverity, Cursor, T.Text) -> Assertion
-requireDiagnostic actuals expected@(severity, cursor, expectedMsg) = do
+requireDiagnostic :: List Diagnostic -> (DiagnosticSeverity, Cursor, T.Text, Maybe DiagnosticTag) -> Assertion
+requireDiagnostic actuals expected@(severity, cursor, expectedMsg, expectedTag) = do
     unless (any match actuals) $
         assertFailure $
             "Could not find " <> show expected <>
@@ -48,6 +49,12 @@ requireDiagnostic actuals expected@(severity, cursor, expectedMsg) = do
         && cursorPosition cursor == d ^. range . start
         && standardizeQuotes (T.toLower expectedMsg) `T.isInfixOf`
            standardizeQuotes (T.toLower $ d ^. message)
+        && hasTag expectedTag (d ^. tags)
+
+    hasTag :: Maybe DiagnosticTag -> Maybe (List DiagnosticTag) -> Bool
+    hasTag Nothing  _       = True
+    hasTag (Just _) Nothing = False
+    hasTag (Just actualTag) (Just (List tags)) = actualTag `elem` tags
 
 -- |wait for @timeout@ seconds and report an assertion failure
 -- if any diagnostic messages arrive in that period
@@ -76,7 +83,11 @@ expectNoMoreDiagnostics timeout = do
     ignoreOthers = void anyMessage >> handleMessages
 
 expectDiagnostics :: [(FilePath, [(DiagnosticSeverity, Cursor, T.Text)])] -> Session ()
-expectDiagnostics expected = do
+expectDiagnostics
+  = expectDiagnostics_ . map (\(fp, dd) -> (fp, map (\(ds, c, t) -> (ds, c, t, Nothing)) dd))
+
+expectDiagnostics_ :: [(FilePath, [(DiagnosticSeverity, Cursor, T.Text, Maybe DiagnosticTag)])] -> Session ()
+expectDiagnostics_ expected = do
     let f = getDocUri >=> liftIO . canonicalizeUri >=> pure . toNormalizedUri
     expected' <- Map.fromListWith (<>) <$> traverseOf (traverse . _1) f expected
     go expected'

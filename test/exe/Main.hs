@@ -361,9 +361,9 @@ diagnosticTests = testGroup "diagnostics"
             ]
       _ <- createDoc "ModuleA.hs" "haskell" contentA
       _ <- createDoc "ModuleB.hs" "haskell" contentB
-      expectDiagnostics
+      expectDiagnostics_
         [ ( "ModuleB.hs"
-          , [(DsWarning, (2, 0), "The import of 'ModuleA' is redundant")]
+          , [(DsWarning, (2, 0), "The import of 'ModuleA' is redundant", Just DtUnnecessary)]
           )
         ]
   , testSessionWait "package imports" $ do
