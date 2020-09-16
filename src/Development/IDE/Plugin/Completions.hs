@@ -149,7 +149,7 @@ getCompletionsLSP lsp ide
             pure (opts, liftA2 (,) compls pm)
         case compls of
           Just ((cci', _), (pm, mapping)) -> do
-            pfix <- maybe (return Nothing) (flip VFS.getCompletionPrefix cnts) (Just position)
+            pfix <- VFS.getCompletionPrefix position cnts
             case (pfix, completionContext) of
               (Just (VFS.PosPrefixInfo _ "" _ _), Just CompletionContext { _triggerCharacter = Just "."})
                 -> return (Completions $ List [])
