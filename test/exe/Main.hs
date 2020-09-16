@@ -3033,6 +3033,11 @@ ifaceErrorTest = testCase "iface-error-test-1" $ withoutStackEnv $ runWithExtraF
     -- save so that we can that the error propogates to A
     sendNotification TextDocumentDidSave (DidSaveTextDocumentParams bdoc)
 
+    -- Check that the error propogates to A
+    expectDiagnostics
+      [("A.hs", [(DsError, (5, 4), "Couldn't match expected type 'Int' with actual type 'Bool'")])]
+
+
     -- Check that we wrote the interfaces for B when we saved
     lid <- sendRequest (CustomClientMethod "hidir") $ GetInterfaceFilesDir bPath
     res <- skipManyTill (message :: Session WorkDoneProgressCreateRequest) $
@@ -3047,10 +3052,6 @@ ifaceErrorTest = testCase "iface-error-test-1" $ withoutStackEnv $ runWithExtraF
         assertBool ("Couldn't find B.hie in " ++ hidir) hie_exists
 #endif
       _ -> assertFailure $ "Got malformed response for CustomMessage hidir: " ++ show res
-
-    -- Check that the error propogates to A
-    expectDiagnostics
-      [("A.hs", [(DsError, (5, 4), "Couldn't match expected type 'Int' with actual type 'Bool'")])]
 
     pdoc <- createDoc pPath "haskell" pSource
     changeDoc pdoc [TextDocumentContentChangeEvent Nothing Nothing $ pSource <> "\nfoo = y :: Bool" ]
