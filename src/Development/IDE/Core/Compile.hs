@@ -269,7 +269,9 @@ tagDiag (Reason warning, (nfp, sh, fd))
 #if MIN_GHC_API_VERSION(8,10,0)
     requiresTag Opt_WarnUnusedRecordWildcards = Just DtUnnecessary
 #endif
+#if MIN_GHC_API_VERSION(8,6,0)
     requiresTag Opt_WarnInaccessibleCode      = Just DtUnnecessary
+#endif
     requiresTag Opt_WarnWarningsDeprecations  = Just DtDeprecated
     requiresTag _ = Nothing
     addTag :: DiagnosticTag -> Maybe (List DiagnosticTag) -> Maybe (List DiagnosticTag)
