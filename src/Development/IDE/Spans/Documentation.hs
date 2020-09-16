@@ -181,4 +181,7 @@ lookupHtmlForModule mkDocPath df m = do
     mndot = moduleNameString $ moduleName m
 
 lookupHtmls :: DynFlags -> UnitId -> Maybe [FilePath]
-lookupHtmls df ui = haddockHTMLs <$> lookupPackage df ui
+lookupHtmls df ui =
+  -- use haddockInterfaces instead of haddockHTMLs to obtain the docs dir
+  -- GHC treats haddockHTMLs as URL not path and therefore doesn't expand $topdir on Windows
+  (map (fst . splitFileName) . haddockInterfaces) <$> lookupPackage df ui
