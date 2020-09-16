@@ -172,7 +172,10 @@ lookupHtmlForModule :: (FilePath -> FilePath -> FilePath) -> DynFlags -> Module 
 lookupHtmlForModule mkDocPath df m = do
   let mfs = go <$> (listToMaybe =<< lookupHtmls df ui)
   htmls <- filterM doesFileExist (concat . maybeToList $ mfs)
-  return $ listToMaybe htmls
+  -- canonicalize located html to remove /../ indirection which can break some clients
+  -- (vscode on Windows at least)
+  htmls' <- traverse canonicalizePath htmls
+  return $ listToMaybe htmls'
   where
     -- The file might use "." or "-" as separator
     go pkgDocDir = [mkDocPath pkgDocDir mn | mn <- [mndot,mndash]]
@@ -182,6 +185,6 @@ lookupHtmlForModule mkDocPath df m = do
 
 lookupHtmls :: DynFlags -> UnitId -> Maybe [FilePath]
 lookupHtmls df ui =
-  -- use haddockInterfaces instead of haddockHTMLs to obtain the docs dir
-  -- GHC treats haddockHTMLs as URL not path and therefore doesn't expand $topdir on Windows
-  (map (fst . splitFileName) . haddockInterfaces) <$> lookupPackage df ui
+  -- use haddockInterfaces instead of haddockHTMLs: GHC treats haddockHTMLs as URL not path 
+  -- and therefore doesn't expand $topdir on Windows
+  map takeDirectory . haddockInterfaces <$> lookupPackage df ui
