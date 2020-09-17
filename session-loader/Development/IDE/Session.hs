@@ -388,7 +388,11 @@ fromTargetId :: [FilePath]          -- ^ import paths
              -> IO [TargetDetails]
 -- For a target module we consider all the import paths
 fromTargetId is exts (TargetModule mod) env dep = do
-    let fps = [i </> moduleNameSlashes mod -<.> ext | ext <- exts, i <- is ]
+    let fps = [i </> moduleNameSlashes mod -<.> ext <> boot
+              | ext <- exts
+              , i <- is
+              , boot <- ["", "-boot"]
+              ]
     locs <- mapM (fmap toNormalizedFilePath' . canonicalizePath) fps
     return [TargetDetails mod env dep locs]
 -- For a 'TargetFile' we consider all the possible module names
