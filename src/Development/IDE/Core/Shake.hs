@@ -567,15 +567,21 @@ shakeRestart IdeState{..} acts =
               let profile = case res of
                       Just fp -> ", profile saved at " <> fp
                       _ -> ""
-              logDebug (logger shakeExtras) $ T.pack $
-                  "Restarting build session (aborting the previous one took " ++
-                  showDuration stopTime ++ profile ++ ")"
+              let msg = T.pack $ "Restarting build session (aborting the previous one took "
+                              ++ showDuration stopTime ++ profile ++ ")"
+              logDebug (logger shakeExtras) $ msg
+              (eventer shakeExtras) (notifyLogMessage msg)
         )
         -- It is crucial to be masked here, otherwise we can get killed
         -- between spawning the new thread and updating shakeSession.
         -- See https://github.com/digital-asset/ghcide/issues/79
         (\() -> do
           (,()) <$> newSession shakeExtras shakeDb acts)
+
+notifyLogMessage :: T.Text -> LSP.FromServerMessage
+notifyLogMessage msg =
+    LSP.NotLogMessage $ LSP.NotificationMessage "2.0" LSP.WindowLogMessage
+                      $ LSP.LogMessageParams LSP.MtLog $ msg
 
 -- | Enqueue an action in the existing 'ShakeSession'.
 --   Returns a computation to block until the action is run, propagating exceptions.
@@ -616,8 +622,11 @@ newSession ShakeExtras{..} shakeDb acts = do
             getAction d
             liftIO $ atomically $ doneQueue d actionQueue
             runTime <- liftIO start
-            liftIO $ logPriority logger (actionPriority d) $ T.pack $
-                "finish: " ++ actionName d ++ " (took " ++ showDuration runTime ++ ")"
+            let msg = T.pack $ "finish: " ++ actionName d
+                            ++ " (took " ++ showDuration runTime ++ ")"
+            liftIO $ do
+                logPriority logger (actionPriority d) $ msg
+                eventer $ notifyLogMessage msg
 
         workRun restore = do
           let acts' = pumpActionThread : map run (reenqueued ++ acts)
@@ -625,9 +634,10 @@ newSession ShakeExtras{..} shakeDb acts = do
           let res' = case res of
                       Left e -> "exception: " <> displayException e
                       Right _ -> "completed"
-
-          let wrapUp = logDebug logger $ T.pack $ "Finishing build session(" ++ res' ++ ")"
-          return wrapUp
+          let msg = T.pack $ "Finishing build session(" ++ res' ++ ")"
+          return $ do
+              logDebug logger $ msg
+              eventer $ notifyLogMessage msg
 
     -- Do the work in a background thread
     workThread <- asyncWithUnmask workRun
