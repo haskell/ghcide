@@ -15,7 +15,7 @@ import Control.Exception (bracket, catch)
 import qualified Control.Lens as Lens
 import Control.Monad
 import Control.Monad.IO.Class (liftIO)
-import Data.Aeson (FromJSON, Value)
+import Data.Aeson (FromJSON, Value, toJSON)
 import qualified Data.Binary as Binary
 import Data.Foldable
 import Data.List.Extra
@@ -94,6 +94,7 @@ main = do
     , bootTests
     , rootUriTests
     , asyncTests
+    , clientSettingsTest
     ]
 
 initializeResponseTests :: TestTree
@@ -3277,6 +3278,26 @@ asyncTests = testGroup "async"
             liftIO $ [ _title | CACodeAction CodeAction{_title} <- actions] @=? ["add signature: foo :: a -> a"]
     ]
 
+
+clientSettingsTest :: TestTree
+clientSettingsTest = testGroup "client settings handling"
+    [
+        testSession "ghcide does not support update config" $ do
+            sendNotification WorkspaceDidChangeConfiguration (DidChangeConfigurationParams (toJSON ("" :: String)))
+            logNot <- skipManyTill anyMessage loggingNotification
+            isMessagePresent "Updating Not supported" [getLogMessage logNot]
+    ,   testSession "ghcide restarts shake session on config changes" $ do
+            sendNotification WorkspaceDidChangeConfiguration (DidChangeConfigurationParams (toJSON ("" :: String)))
+            nots <- skipManyTill anyMessage $ count 3 loggingNotification
+            isMessagePresent "Restarting build session" (map getLogMessage nots)
+
+    ]
+  where getLogMessage (NotLogMessage (NotificationMessage _ _ (LogMessageParams _ msg))) = msg
+        getLogMessage _ = ""
+
+        isMessagePresent expectedMsg actualMsgs = liftIO $
+            assertBool ("\"" ++ expectedMsg ++ "\" is not present in: " ++ show actualMsgs)
+                       (any (expectedMsg `isSubsequenceOf`) (map show actualMsgs))
 ----------------------------------------------------------------------
 -- Utils
 ----------------------------------------------------------------------
