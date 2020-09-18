@@ -38,9 +38,8 @@ bindings refmap = Bindings $ foldr (uncurry IM.insert) mempty  $ do
   info        <- S.toList $ identInfo ident_details
   Just scopes <- pure $ getScopeFromContext info
   scope <- scopes >>= \case
-    ModuleScope -> pure $ Interval (Position 0 0) (Position maxBound maxBound)
     LocalScope scope -> pure $ realSrcSpanToInterval scope
-    NoScope -> []
+    _ -> []
   pure ( scope
        , unitNameEnv name (name,ty)
        )
