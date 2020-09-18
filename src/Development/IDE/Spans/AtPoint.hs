@@ -41,7 +41,7 @@ import qualified Data.Map as M
 
 
 import Data.Either
-import Data.List.Extra (dropEnd)
+import Data.List.Extra (dropEnd1)
 
 documentHighlight
   :: Monad m
@@ -98,7 +98,7 @@ atPoint IdeOptions{} hf dm pos = listToMaybe $ pointCommand hf pos hoverInfo
       (Just range, prettyNames ++ pTypes)
       where
         pTypes
-          | length names == 1 = dropEnd 1 $ map wrapHaskell prettyTypes
+          | length names == 1 = dropEnd1 $ map wrapHaskell prettyTypes
           | otherwise = map wrapHaskell prettyTypes
 
         range = realSrcSpanToRange $ nodeSpan ast

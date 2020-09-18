@@ -1,7 +1,4 @@
 {-# LANGUAGE DerivingStrategies         #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE LambdaCase                 #-}
-{-# LANGUAGE ScopedTypeVariables        #-}
 
 module Development.IDE.Spans.LocalBindings
   ( Bindings

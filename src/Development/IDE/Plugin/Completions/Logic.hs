@@ -151,7 +151,7 @@ mkCompl IdeOptions{..} CI{compKind,insertText, importedFrom,typeText,label,docs}
         docs' = imported : spanDocToMarkdown docs
         imported = case importedFrom of
           Left pos -> "*Defined at '" <> ppr pos <> "'*\n'"
-          Right mod -> ("*Defined in '" <> mod <> "'*\n")
+          Right mod -> "*Defined in '" <> mod <> "'*\n"
         colon = if optNewColonConvention then ": " else ":: "
 
 mkNameCompItem :: Name -> ModuleName -> Maybe Type -> Maybe Backtick -> SpanDoc -> CompItem
