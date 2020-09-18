@@ -14,8 +14,6 @@ module Development.IDE.Spans.Common (
 , DocMap
 ) where
 
-import Data.Data
-import qualified Data.Generics
 import Data.Maybe
 import qualified Data.Text as T
 import Data.List.Extra

@@ -10,7 +10,7 @@ module Development.IDE.Plugin.Completions.Logic (
 ) where
 
 import Control.Applicative
-import Data.Char (isSpace, isUpper)
+import Data.Char (isUpper)
 import Data.Generics
 import Data.List.Extra as List hiding (stripPrefix)
 import qualified Data.Map  as Map
@@ -396,19 +396,7 @@ getCompletions ideOpts CC { allModNamesAsNS, unqualCompls, qualCompls, importabl
           to                             'foo :: Int -> String ->    '
                                                               ^
       -}
-      pos =
-        let Position l c = VFS.cursorPos prefixInfo
-            typeStuff = [isSpace, (`elem` (">-." :: String))]
-            stripTypeStuff = T.dropWhileEnd (\x -> any (\f -> f x) typeStuff)
-            -- if oldPos points to
-            -- foo -> bar -> baz
-            --    ^
-            -- Then only take the line up to there, discard '-> bar -> baz'
-            partialLine = T.take c fullLine
-            -- drop characters used when writing incomplete type sigs
-            -- like '-> '
-            d = T.length fullLine - T.length (stripTypeStuff partialLine)
-        in Position l (c - d)
+      pos = VFS.cursorPos prefixInfo
 
       filtModNameCompls =
         map mkModCompl
@@ -437,7 +425,7 @@ getCompletions ideOpts CC { allModNamesAsNS, unqualCompls, qualCompls, importabl
           ctxCompls = map (\comp -> comp { isInfix = infixCompls }) ctxCompls'
 
           infixCompls :: Maybe Backtick
-          infixCompls = isUsedAsInfix fullLine prefixModule prefixText (VFS.cursorPos prefixInfo)
+          infixCompls = isUsedAsInfix fullLine prefixModule prefixText pos
 
           PositionMapping bDelta = bmapping
           oldPos = fromDelta bDelta $ VFS.cursorPos prefixInfo
