@@ -134,6 +134,7 @@ typecheckModule (IdeDefer defer) hsc pm = do
         modSummary' <- initPlugins modSummary
         (warnings, tcm) <- withWarnings "typecheck" $ \tweak ->
             GHC.typecheckModule $ enableTopLevelWarnings
+                                $ enableUnnecessaryAndDeprecationWarnings
                                 $ demoteIfDefer pm{pm_mod_summary = tweak modSummary'}
         let errorPipeline = unDefer . tagDiag . hideDiag dflags
             diags = map errorPipeline warnings
@@ -249,9 +250,36 @@ upgradeWarningToError (nfp, sh, fd) =
   warn2err = T.intercalate ": error:" . T.splitOn ": warning:"
 
 hideDiag :: DynFlags -> (WarnReason, FileDiagnostic) -> (WarnReason, FileDiagnostic)
-hideDiag originalFlags (Reason warning, (nfp, _sh, fd))
-  | not (wopt warning originalFlags) = (Reason warning, (nfp, HideDiag, fd))
+hideDiag originalFlags (Reason warning, (nfp, sh, fd))
+  | not (wopt warning originalFlags)
+  = if warning `elem` unnecessaryDeprecationWarningFlags
+       then (Reason warning, (nfp, sh, fd{_severity = Just DsInfo}))
+       else (Reason warning, (nfp, HideDiag, fd))
 hideDiag _originalFlags t = t
+
+enableUnnecessaryAndDeprecationWarnings :: ParsedModule -> ParsedModule
+enableUnnecessaryAndDeprecationWarnings =
+  (update_pm_mod_summary . update_hspp_opts)
+  (foldr (.) id [(`wopt_set` flag) | flag <- unnecessaryDeprecationWarningFlags])
+
+-- warnings which lead to a diagnostic tag
+unnecessaryDeprecationWarningFlags :: [WarningFlag]
+unnecessaryDeprecationWarningFlags
+  = [ Opt_WarnUnusedTopBinds
+    , Opt_WarnUnusedLocalBinds
+    , Opt_WarnUnusedPatternBinds
+    , Opt_WarnUnusedImports
+    , Opt_WarnUnusedMatches
+    , Opt_WarnUnusedTypePatterns
+    , Opt_WarnUnusedForalls
+#if MIN_GHC_API_VERSION(8,10,0)
+    , Opt_WarnUnusedRecordWildcards
+#endif
+#if MIN_GHC_API_VERSION(8,6,0)
+    , Opt_WarnInaccessibleCode
+#endif
+    , Opt_WarnWarningsDeprecations
+    ]
 
 tagDiag :: (WarnReason, FileDiagnostic) -> (WarnReason, FileDiagnostic)
 tagDiag (Reason warning, (nfp, sh, fd))
@@ -259,20 +287,11 @@ tagDiag (Reason warning, (nfp, sh, fd))
   = (Reason warning, (nfp, sh, fd { _tags = addTag tag (_tags fd) }))
   where
     requiresTag :: WarningFlag -> Maybe DiagnosticTag
-    requiresTag Opt_WarnUnusedTopBinds        = Just DtUnnecessary
-    requiresTag Opt_WarnUnusedLocalBinds      = Just DtUnnecessary
-    requiresTag Opt_WarnUnusedPatternBinds    = Just DtUnnecessary
-    requiresTag Opt_WarnUnusedImports         = Just DtUnnecessary
-    requiresTag Opt_WarnUnusedMatches         = Just DtUnnecessary
-    requiresTag Opt_WarnUnusedTypePatterns    = Just DtUnnecessary
-    requiresTag Opt_WarnUnusedForalls         = Just DtUnnecessary
-#if MIN_GHC_API_VERSION(8,10,0)
-    requiresTag Opt_WarnUnusedRecordWildcards = Just DtUnnecessary
-#endif
-#if MIN_GHC_API_VERSION(8,6,0)
-    requiresTag Opt_WarnInaccessibleCode      = Just DtUnnecessary
-#endif
-    requiresTag Opt_WarnWarningsDeprecations  = Just DtDeprecated
+    requiresTag Opt_WarnWarningsDeprecations
+      = Just DtDeprecated
+    requiresTag wflag  -- deprecation was already considered above
+      | wflag `elem` unnecessaryDeprecationWarningFlags
+      = Just DtUnnecessary
     requiresTag _ = Nothing
     addTag :: DiagnosticTag -> Maybe (List DiagnosticTag) -> Maybe (List DiagnosticTag)
     addTag t Nothing          = Just (List [t])

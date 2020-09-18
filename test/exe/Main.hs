@@ -196,15 +196,15 @@ diagnosticTests = testGroup "diagnostics"
       let content = T.unlines
             [ "module Testing where"
             , "foo :: Int -> Int -> Int"
-            , "foo a b = a + ab"
+            , "foo a _b = a + ab"
             , "bar :: Int -> Int -> Int"
-            , "bar a b = cd + b"
+            , "bar _a b = cd + b"
             ]
       _ <- createDoc "Testing.hs" "haskell" content
       expectDiagnostics
         [ ( "Testing.hs"
-          , [ (DsError, (2, 14), "Variable not in scope: ab")
-            , (DsError, (4, 10), "Variable not in scope: cd")
+          , [ (DsError, (2, 15), "Variable not in scope: ab")
+            , (DsError, (4, 11), "Variable not in scope: cd")
             ]
           )
         ]
@@ -240,7 +240,7 @@ diagnosticTests = testGroup "diagnostics"
           , "a = " <> a]
         sourceB = T.unlines
           [ "module B where"
-          , "import A"
+          , "import A ()"
           , "b :: Float"
           , "b = True"]
         bMessage = "Couldn't match expected type 'Float' with actual type 'Bool'"
@@ -275,7 +275,7 @@ diagnosticTests = testGroup "diagnostics"
   , testSessionWait "add missing module" $ do
       let contentB = T.unlines
             [ "module ModuleB where"
-            , "import ModuleA"
+            , "import ModuleA ()"
             ]
       _ <- createDoc "ModuleB.hs" "haskell" contentB
       expectDiagnostics [("ModuleB.hs", [(DsError, (1, 7), "Could not find module")])]
@@ -285,7 +285,7 @@ diagnosticTests = testGroup "diagnostics"
   , testSessionWait "add missing module (non workspace)" $ do
       let contentB = T.unlines
             [ "module ModuleB where"
-            , "import ModuleA"
+            , "import ModuleA ()"
             ]
       _ <- createDoc "/tmp/ModuleB.hs" "haskell" contentB
       expectDiagnostics [("/tmp/ModuleB.hs", [(DsError, (1, 7), "Could not find module")])]
@@ -366,6 +366,20 @@ diagnosticTests = testGroup "diagnostics"
           , [(DsWarning, (2, 0), "The import of 'ModuleA' is redundant", Just DtUnnecessary)]
           )
         ]
+  , testSessionWait "redundant import even without warning" $ do
+      let contentA = T.unlines ["module ModuleA where"]
+      let contentB = T.unlines
+            [ "{-# OPTIONS_GHC -Wno-unused-imports #-}"
+            , "module ModuleB where"
+            , "import ModuleA"
+            ]
+      _ <- createDoc "ModuleA.hs" "haskell" contentA
+      _ <- createDoc "ModuleB.hs" "haskell" contentB
+      expectDiagnostics_
+        [ ( "ModuleB.hs"
+          , [(DsInfo, (2, 0), "The import of 'ModuleA' is redundant", Just DtUnnecessary)]
+          )
+        ]
   , testSessionWait "package imports" $ do
       let thisDataListContent = T.unlines
             [ "module Data.List where"
@@ -396,7 +410,7 @@ diagnosticTests = testGroup "diagnostics"
             [ "{-# OPTIONS_GHC -Wredundant-constraints #-}"
             , "module Foo where"
             , "foo :: Ord a => a -> Int"
-            , "foo a = 1"
+            , "foo _a = 1"
             ]
       _ <- createDoc "Foo.hs" "haskell" fooContent
       expectDiagnostics
@@ -513,6 +527,8 @@ diagnosticTests = testGroup "diagnostics"
     bdoc <- createDoc bPath "haskell" bSource
     _pdoc <- createDoc pPath "haskell" pSource
     expectDiagnostics [("P.hs", [(DsWarning,(4,0), "Top-level binding")]) -- So that we know P has been loaded
+                      ,("P.hs", [(DsInfo,(2,0), "The import of")])
+                      ,("P.hs", [(DsInfo,(4,0), "Defined but not used")])
                       ]
 
     -- Change y from Int to B which introduces a type error in A (imported from P)
@@ -806,8 +822,8 @@ removeImportTests = testGroup "remove import actions"
   , testSession "redundant operator" $ do
       let contentA = T.unlines
             [ "module ModuleA where"
-            , "a !! b = a"
-            , "a <?> b = a"
+            , "a !! _b = a"
+            , "a <?> _b = a"
             , "stuffB :: Integer"
             , "stuffB = 123"
             ]
@@ -1376,14 +1392,14 @@ addTypeAnnotationsToLiteralsTest = testGroup "add type annotations to literals t
     testSession "add default type to satisfy one contraint" $
     testFor
     (T.unlines [ "{-# OPTIONS_GHC -Wtype-defaults #-}"
-               , "module A () where"
+               , "module A (f) where"
                , ""
                , "f = 1"
                ])
     [ (DsWarning, (3, 4), "Defaulting the following constraint") ]
     "Add type annotation ‘Integer’ to ‘1’"
     (T.unlines [ "{-# OPTIONS_GHC -Wtype-defaults #-}"
-               , "module A () where"
+               , "module A (f) where"
                , ""
                , "f = (1 :: Integer)"
                ])
@@ -1392,7 +1408,7 @@ addTypeAnnotationsToLiteralsTest = testGroup "add type annotations to literals t
     testFor
     (T.unlines [ "{-# OPTIONS_GHC -Wtype-defaults #-}"
                , "{-# LANGUAGE OverloadedStrings #-}"
-               , "module A () where"
+               , "module A (f) where"
                , ""
                , "import Debug.Trace"
                , ""
@@ -1404,7 +1420,7 @@ addTypeAnnotationsToLiteralsTest = testGroup "add type annotations to literals t
     "Add type annotation ‘[Char]’ to ‘\"debug\"’"
     (T.unlines [ "{-# OPTIONS_GHC -Wtype-defaults #-}"
                , "{-# LANGUAGE OverloadedStrings #-}"
-               , "module A () where"
+               , "module A (f) where"
                , ""
                , "import Debug.Trace"
                , ""
@@ -1414,7 +1430,7 @@ addTypeAnnotationsToLiteralsTest = testGroup "add type annotations to literals t
     testFor
     (T.unlines [ "{-# OPTIONS_GHC -Wtype-defaults #-}"
                , "{-# LANGUAGE OverloadedStrings #-}"
-               , "module A () where"
+               , "module A (f) where"
                , ""
                , "import Debug.Trace"
                , ""
@@ -1424,7 +1440,7 @@ addTypeAnnotationsToLiteralsTest = testGroup "add type annotations to literals t
     "Add type annotation ‘[Char]’ to ‘\"debug\"’"
     (T.unlines [ "{-# OPTIONS_GHC -Wtype-defaults #-}"
                , "{-# LANGUAGE OverloadedStrings #-}"
-               , "module A () where"
+               , "module A (f) where"
                , ""
                , "import Debug.Trace"
                , ""
@@ -1434,7 +1450,7 @@ addTypeAnnotationsToLiteralsTest = testGroup "add type annotations to literals t
     testFor
     (T.unlines [ "{-# OPTIONS_GHC -Wtype-defaults #-}"
                , "{-# LANGUAGE OverloadedStrings #-}"
-               , "module A () where"
+               , "module A (f) where"
                , ""
                , "import Debug.Trace"
                , ""
@@ -1444,7 +1460,7 @@ addTypeAnnotationsToLiteralsTest = testGroup "add type annotations to literals t
     "Add type annotation ‘[Char]’ to ‘\"debug\"’"
     (T.unlines [ "{-# OPTIONS_GHC -Wtype-defaults #-}"
                , "{-# LANGUAGE OverloadedStrings #-}"
-               , "module A () where"
+               , "module A (f) where"
                , ""
                , "import Debug.Trace"
                , ""
@@ -2252,7 +2268,7 @@ checkFileCompiles fp =
     expectNoMoreDiagnostics 0.5
 
 pluginSimpleTests :: TestTree
-pluginSimpleTests = 
+pluginSimpleTests =
   testSessionWait "simple plugin" $ do
     let content =
           T.unlines
@@ -2265,20 +2281,20 @@ pluginSimpleTests =
             , "f :: forall n. KnownNat n => Proxy n -> Integer"
             , "f _ = natVal (Proxy :: Proxy n) + natVal (Proxy :: Proxy (n+2))"
             , "foo :: Int -> Int -> Int"
-            , "foo a b = a + c"
+            , "foo a _b = a + c"
             ]
     _ <- createDoc "Testing.hs" "haskell" content
     expectDiagnostics
       [ ( "Testing.hs",
-          [(DsError, (8, 14), "Variable not in scope: c")]
+          [(DsError, (8, 15), "Variable not in scope: c")]
           )
       ]
 
-pluginParsedResultTests :: TestTree 
-pluginParsedResultTests = 
-  (`xfail84` "record-dot-preprocessor unsupported on 8.4") $ testSessionWait "parsedResultAction plugin" $ do 
-    let content = 
-          T.unlines 
+pluginParsedResultTests :: TestTree
+pluginParsedResultTests =
+  (`xfail84` "record-dot-preprocessor unsupported on 8.4") $ testSessionWait "parsedResultAction plugin" $ do
+    let content =
+          T.unlines
             [ "{-# LANGUAGE DuplicateRecordFields, TypeApplications, FlexibleContexts, DataKinds, MultiParamTypeClasses, TypeSynonymInstances, FlexibleInstances #-}"
             , "{-# OPTIONS_GHC -fplugin=RecordDotPreprocessor #-}"
             , "module Testing (Company(..), display) where"
@@ -2286,7 +2302,7 @@ pluginParsedResultTests =
             , "display :: Company -> String"
             , "display c = c.name"
             ]
-    _ <- createDoc "Testing.hs" "haskell" content 
+    _ <- createDoc "Testing.hs" "haskell" content
     expectNoMoreDiagnostics 1
 
 cppTests :: TestTree
@@ -2358,7 +2374,7 @@ safeTests =
                 ["{-# LANGUAGE Trustworthy #-}"
                 ,"module A where"
                 ,"import System.IO.Unsafe"
-                ,"import System.IO"
+                ,"import System.IO ()"
                 ,"trustWorthyId :: a -> a"
                 ,"trustWorthyId i = unsafePerformIO $ do"
                 ,"  putStrLn \"I'm safe\""
@@ -2645,10 +2661,10 @@ outlineTests = testGroup
     liftIO $ symbols @?= Left
       [docSymbol "a :: ()" SkFunction (R 1 0 1 12)]
   , testSessionWait "function" $ do
-    let source = T.unlines ["a x = ()"]
+    let source = T.unlines ["a _x = ()"]
     docId   <- createDoc "A.hs" "haskell" source
     symbols <- getDocumentSymbols docId
-    liftIO $ symbols @?= Left [docSymbol "a" SkFunction (R 0 0 0 8)]
+    liftIO $ symbols @?= Left [docSymbol "a" SkFunction (R 0 0 0 9)]
   , testSessionWait "type synonym" $ do
     let source = T.unlines ["type A = Bool"]
     docId   <- createDoc "A.hs" "haskell" source
@@ -2678,26 +2694,26 @@ outlineTests = testGroup
           ]
       ]
   , testSessionWait "import" $ do
-    let source = T.unlines ["import Data.Maybe"]
+    let source = T.unlines ["import Data.Maybe ()"]
     docId   <- createDoc "A.hs" "haskell" source
     symbols <- getDocumentSymbols docId
     liftIO $ symbols @?= Left
       [docSymbolWithChildren "imports"
                              SkModule
-                             (R 0 0 0 17)
-                             [ docSymbol "import Data.Maybe" SkModule (R 0 0 0 17)
+                             (R 0 0 0 20)
+                             [ docSymbol "import Data.Maybe" SkModule (R 0 0 0 20)
                              ]
       ]
   , testSessionWait "multiple import" $ do
-    let source = T.unlines ["", "import Data.Maybe", "", "import Control.Exception", ""]
+    let source = T.unlines ["", "import Data.Maybe ()", "", "import Control.Exception ()", ""]
     docId   <- createDoc "A.hs" "haskell" source
     symbols <- getDocumentSymbols docId
     liftIO $ symbols @?= Left
       [docSymbolWithChildren "imports"
                              SkModule
-                             (R 1 0 3 24)
-                             [ docSymbol "import Data.Maybe" SkModule (R 1 0 1 17)
-                             , docSymbol "import Control.Exception" SkModule (R 3 0 3 24)
+                             (R 1 0 3 27)
+                             [ docSymbol "import Data.Maybe" SkModule (R 1 0 1 20)
+                             , docSymbol "import Control.Exception" SkModule (R 3 0 3 27)
                              ]
       ]
   , testSessionWait "foreign import" $ do
@@ -2886,7 +2902,7 @@ dependentFileTest = testGroup "addDependentFile"
               , "               f <- qRunIO (readFile \"dep-file.txt\")"
               , "               if f == \"B\" then [| 1 |] else lift f)"
               ]
-        let bazContent = T.unlines ["module Baz where", "import Foo"]
+        let bazContent = T.unlines ["module Baz where", "import Foo ()"]
         _ <-createDoc "Foo.hs" "haskell" fooContent
         doc <- createDoc "Baz.hs" "haskell" bazContent
         expectDiagnostics
@@ -3026,6 +3042,8 @@ ifaceErrorTest = testCase "iface-error-test-1" $ withoutStackEnv $ runWithExtraF
 
     bdoc <- createDoc bPath "haskell" bSource
     expectDiagnostics [("P.hs", [(DsWarning,(4,0), "Top-level binding")]) -- So what we know P has been loaded
+                      ,("P.hs", [(DsInfo,(2,0), "The import of")])
+                      ,("P.hs", [(DsInfo,(4,0), "Defined but not used")])
                       ]
 
     -- Change y from Int to B
@@ -3065,6 +3083,8 @@ ifaceErrorTest = testCase "iface-error-test-1" $ withoutStackEnv $ runWithExtraF
     --   - P is being typechecked with the last successful artifacts for A.
     expectDiagnostics [("P.hs", [(DsWarning,(4,0), "Top-level binding")])
                       ,("P.hs", [(DsWarning,(6,0), "Top-level binding")])
+                      ,("P.hs", [(DsInfo,(4,0), "Defined but not used")])
+                      ,("P.hs", [(DsInfo,(6,0), "Defined but not used")])
                       ]
     expectNoMoreDiagnostics 2
 
@@ -3079,6 +3099,8 @@ ifaceErrorTest2 = testCase "iface-error-test-2" $ withoutStackEnv $ runWithExtra
     bdoc <- createDoc bPath "haskell" bSource
     pdoc <- createDoc pPath "haskell" pSource
     expectDiagnostics [("P.hs", [(DsWarning,(4,0), "Top-level binding")]) -- So that we know P has been loaded
+                      ,("P.hs", [(DsInfo,(2,0), "The import of")])
+                      ,("P.hs", [(DsInfo,(4,0), "Defined but not used")])
                       ]
 
     -- Change y from Int to B
@@ -3095,8 +3117,10 @@ ifaceErrorTest2 = testCase "iface-error-test-2" $ withoutStackEnv $ runWithExtra
     -- As in the other test, P is being typechecked with the last successful artifacts for A
     -- (ot thanks to -fdeferred-type-errors)
       [("A.hs", [(DsError, (5, 4), "Couldn't match expected type 'Int' with actual type 'Bool'")])
-      ,("P.hs", [(DsWarning,(4,0), "Top-level binding")])
-      ,("P.hs", [(DsWarning,(6,0), "Top-level binding")])
+      ,("P.hs", [(DsWarning, (4, 0), "Top-level binding")])
+      ,("P.hs", [(DsInfo, (4,0), "Defined but not used")])
+      ,("P.hs", [(DsWarning, (6, 0), "Top-level binding")])
+      ,("P.hs", [(DsInfo, (6,0), "Defined but not used")])
       ]
 
     expectNoMoreDiagnostics 2
@@ -3122,6 +3146,8 @@ ifaceErrorTest3 = testCase "iface-error-test-3" $ withoutStackEnv $ runWithExtra
     expectDiagnostics
       [("A.hs", [(DsError, (5, 4), "Couldn't match expected type 'Int' with actual type 'Bool'")])
       ,("P.hs", [(DsWarning,(4,0), "Top-level binding")])
+      ,("P.hs", [(DsInfo,(2,0), "The import of")])
+      ,("P.hs", [(DsInfo,(4,0), "Defined but not used")])
       ]
     expectNoMoreDiagnostics 2
 
