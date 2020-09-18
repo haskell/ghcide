@@ -569,8 +569,8 @@ shakeRestart IdeState{..} acts =
                       _ -> ""
               let msg = T.pack $ "Restarting build session (aborting the previous one took "
                               ++ showDuration stopTime ++ profile ++ ")"
-              logDebug (logger shakeExtras) $ msg
-              (eventer shakeExtras) (notifyLogMessage msg)
+              logDebug (logger shakeExtras) msg
+              eventer shakeExtras (notifyLogMessage msg)
         )
         -- It is crucial to be masked here, otherwise we can get killed
         -- between spawning the new thread and updating shakeSession.
@@ -581,7 +581,7 @@ shakeRestart IdeState{..} acts =
 notifyLogMessage :: T.Text -> LSP.FromServerMessage
 notifyLogMessage msg =
     LSP.NotLogMessage $ LSP.NotificationMessage "2.0" LSP.WindowLogMessage
-                      $ LSP.LogMessageParams LSP.MtLog $ msg
+                      $ LSP.LogMessageParams LSP.MtLog msg
 
 -- | Enqueue an action in the existing 'ShakeSession'.
 --   Returns a computation to block until the action is run, propagating exceptions.
@@ -625,7 +625,7 @@ newSession ShakeExtras{..} shakeDb acts = do
             let msg = T.pack $ "finish: " ++ actionName d
                             ++ " (took " ++ showDuration runTime ++ ")"
             liftIO $ do
-                logPriority logger (actionPriority d) $ msg
+                logPriority logger (actionPriority d) msg
                 eventer $ notifyLogMessage msg
 
         workRun restore = do
@@ -636,7 +636,7 @@ newSession ShakeExtras{..} shakeDb acts = do
                       Right _ -> "completed"
           let msg = T.pack $ "Finishing build session(" ++ res' ++ ")"
           return $ do
-              logDebug logger $ msg
+              logDebug logger msg
               eventer $ notifyLogMessage msg
 
     -- Do the work in a background thread

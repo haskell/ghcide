@@ -3297,7 +3297,7 @@ clientSettingsTest = testGroup "client settings handling"
 
         isMessagePresent expectedMsg actualMsgs = liftIO $
             assertBool ("\"" ++ expectedMsg ++ "\" is not present in: " ++ show actualMsgs)
-                       (any (expectedMsg `isSubsequenceOf`) (map show actualMsgs))
+                       (any ((expectedMsg `isSubsequenceOf`) . show) actualMsgs)
 ----------------------------------------------------------------------
 -- Utils
 ----------------------------------------------------------------------
