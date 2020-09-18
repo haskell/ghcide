@@ -228,7 +228,7 @@ loadSession dir = do
 
           -- New HscEnv for the component in question, returns the new HscEnvEq and
           -- a mapping from FilePath to the newly created HscEnvEq.
-          let new_cache = newComponentCache logger optExtensions hieYaml hscEnv uids
+          let new_cache = newComponentCache logger optExtensions hieYaml _cfp hscEnv uids
           (cs, res) <- new_cache new
           -- Modified cache targets for everything else in the hie.yaml file
           -- which now uses the same EPS and so on
@@ -413,11 +413,12 @@ newComponentCache
          :: Logger
          -> [String]       -- File extensions to consider
          -> Maybe FilePath -- Path to cradle
+         -> NormalizedFilePath -- Path to file that caused the creation of this component
          -> HscEnv
          -> [(InstalledUnitId, DynFlags)]
          -> ComponentInfo
          -> IO ( [TargetDetails], (IdeResult HscEnvEq, DependencyInfo))
-newComponentCache logger exts cradlePath hsc_env uids ci = do
+newComponentCache logger exts cradlePath cfp hsc_env uids ci = do
     let df = componentDynFlags ci
     let hscEnv' = hsc_env { hsc_dflags = df
                           , hsc_IC = (hsc_IC hsc_env) { ic_dflags = df } }
@@ -437,8 +438,7 @@ newComponentCache logger exts cradlePath hsc_env uids ci = do
     -- the component, in which case things will be horribly broken anyway.
     -- Otherwise, we will immediately attempt to reload this module which
     -- causes an infinite loop and high CPU usage.
-    let special_target = TargetDetails (TargetModule m) targetEnv targetDepends [componentFP ci]
-        m = mkModuleName "special"
+    let special_target = TargetDetails (TargetFile cfp) targetEnv targetDepends [componentFP ci]
     return (special_target:ctargets, res)
 
 {- Note [Avoiding bad interface files]
