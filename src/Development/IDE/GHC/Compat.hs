@@ -49,7 +49,6 @@ module Development.IDE.GHC.Compat(
     pattern PatSynBind,
     pattern ValBinds,
     pattern HsValBinds,
-    noExtField,
     GHC.ModLocation,
     Module.addBootSuffix,
     pattern ModLocation,
@@ -66,6 +65,7 @@ module Development.IDE.GHC.Compat(
     module GHC.Hs.Extension,
 #else
     module HsExtension,
+    noExtField,
 #endif
 
     module GHC,
