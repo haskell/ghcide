@@ -136,7 +136,7 @@ typecheckModule (IdeDefer defer) hsc pm = do
             GHC.typecheckModule $ enableTopLevelWarnings
                                 $ enableUnnecessaryAndDeprecationWarnings
                                 $ demoteIfDefer pm{pm_mod_summary = tweak modSummary'}
-        let errorPipeline = unDefer . tagDiag . hideDiag dflags
+        let errorPipeline = unDefer . hideDiag dflags . tagDiag
             diags = map errorPipeline warnings
         tcm2 <- mkTcModuleResult tcm (any fst diags)
         return (map snd diags, tcm2)
@@ -252,9 +252,10 @@ upgradeWarningToError (nfp, sh, fd) =
 hideDiag :: DynFlags -> (WarnReason, FileDiagnostic) -> (WarnReason, FileDiagnostic)
 hideDiag originalFlags (Reason warning, (nfp, sh, fd))
   | not (wopt warning originalFlags)
-  = if warning `elem` unnecessaryDeprecationWarningFlags
-       then (Reason warning, (nfp, sh, fd{_severity = Just DsInfo}))
-       else (Reason warning, (nfp, HideDiag, fd))
+  = if null (_tags fd)
+       then (Reason warning, (nfp, HideDiag, fd))
+            -- keep the diagnostic if it has an associated tag
+       else (Reason warning, (nfp, sh, fd{_severity = Just DsInfo}))
 hideDiag _originalFlags t = t
 
 enableUnnecessaryAndDeprecationWarnings :: ParsedModule -> ParsedModule
@@ -262,7 +263,7 @@ enableUnnecessaryAndDeprecationWarnings =
   (update_pm_mod_summary . update_hspp_opts)
   (foldr (.) id [(`wopt_set` flag) | flag <- unnecessaryDeprecationWarningFlags])
 
--- warnings which lead to a diagnostic tag
+-- | Warnings which lead to a diagnostic tag
 unnecessaryDeprecationWarningFlags :: [WarningFlag]
 unnecessaryDeprecationWarningFlags
   = [ Opt_WarnUnusedTopBinds
@@ -281,6 +282,7 @@ unnecessaryDeprecationWarningFlags
     , Opt_WarnWarningsDeprecations
     ]
 
+-- | Add a unnecessary/deprecated tag to the required diagnostics.
 tagDiag :: (WarnReason, FileDiagnostic) -> (WarnReason, FileDiagnostic)
 tagDiag (Reason warning, (nfp, sh, fd))
   | Just tag <- requiresTag warning

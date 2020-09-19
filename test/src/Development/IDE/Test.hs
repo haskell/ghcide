@@ -9,7 +9,7 @@ module Development.IDE.Test
   , requireDiagnostic
   , diagnostic
   , expectDiagnostics
-  , expectDiagnostics_
+  , expectDiagnosticsWithTags
   , expectNoMoreDiagnostics
   , canonicalizeUri
   ) where
@@ -18,6 +18,7 @@ import Control.Applicative.Combinators
 import Control.Lens hiding (List)
 import Control.Monad
 import Control.Monad.IO.Class
+import Data.Bifunctor (second)
 import qualified Data.Map.Strict as Map
 import qualified Data.Text as T
 import Language.Haskell.LSP.Test hiding (message)
@@ -84,10 +85,11 @@ expectNoMoreDiagnostics timeout = do
 
 expectDiagnostics :: [(FilePath, [(DiagnosticSeverity, Cursor, T.Text)])] -> Session ()
 expectDiagnostics
-  = expectDiagnostics_ . map (\(fp, dd) -> (fp, map (\(ds, c, t) -> (ds, c, t, Nothing)) dd))
+  = expectDiagnosticsWithTags
+  . map (second (map (\(ds, c, t) -> (ds, c, t, Nothing))))
 
-expectDiagnostics_ :: [(FilePath, [(DiagnosticSeverity, Cursor, T.Text, Maybe DiagnosticTag)])] -> Session ()
-expectDiagnostics_ expected = do
+expectDiagnosticsWithTags :: [(FilePath, [(DiagnosticSeverity, Cursor, T.Text, Maybe DiagnosticTag)])] -> Session ()
+expectDiagnosticsWithTags expected = do
     let f = getDocUri >=> liftIO . canonicalizeUri >=> pure . toNormalizedUri
     expected' <- Map.fromListWith (<>) <$> traverseOf (traverse . _1) f expected
     go expected'
