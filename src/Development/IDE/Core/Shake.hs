@@ -562,7 +562,7 @@ shakeRestart IdeState{..} acts =
     withMVar'
         shakeSession
         (\runner -> do
-              (stopTime,queue) <- duration (cancelShakeSession runner)
+              (stopTime,()) <- duration (cancelShakeSession runner)
               res <- shakeDatabaseProfile shakeProfileDir shakeDb
               let profile = case res of
                       Just fp -> ", profile saved at " <> fp
@@ -570,7 +570,6 @@ shakeRestart IdeState{..} acts =
               logDebug (logger shakeExtras) $ T.pack $
                   "Restarting build session (aborting the previous one took " ++
                   showDuration stopTime ++ profile ++ ")"
-              return queue
         )
         -- It is crucial to be masked here, otherwise we can get killed
         -- between spawning the new thread and updating shakeSession.
