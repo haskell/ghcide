@@ -620,9 +620,8 @@ newSession ShakeExtras{..} shakeDb acts = do
                 "finish: " ++ actionName d ++ " (took " ++ showDuration runTime ++ ")"
 
         workRun restore = do
-          let acts' = pumpActionThread : map getAction (reenqueued ++ acts)
-          res <- try @SomeException
-                 (restore $ shakeRunDatabase shakeDb acts')
+          let acts' = pumpActionThread : map run (reenqueued ++ acts)
+          res <- try @SomeException (restore $ shakeRunDatabase shakeDb acts')
           let res' = case res of
                       Left e -> "exception: " <> displayException e
                       Right _ -> "completed"
