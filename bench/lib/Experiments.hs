@@ -239,7 +239,7 @@ runBenchmarks allBenchmarks = do
                 in (b,) <$> runBench run b
 
   -- output raw data as CSV
-  let headers = ["name", "success", "samples", "startup", "setup", "experiment", "maxResidency"]
+  let headers = ["name", "success", "samples", "startup", "setup", "experiment", "maxResidency", "allocatedBytes"]
       rows =
         [ [ name,
             show success,
@@ -247,7 +247,8 @@ runBenchmarks allBenchmarks = do
             show startup,
             show runSetup',
             show runExperiment,
-            showMB maxResidency
+            show maxResidency,
+            show allocations
           ]
           | (Bench {name, samples}, BenchRun {..}) <- results,
             let runSetup' = if runSetup < 0.01 then 0 else runSetup
@@ -266,7 +267,8 @@ runBenchmarks allBenchmarks = do
             showDuration startup,
             showDuration runSetup',
             showDuration runExperiment,
-            showMB maxResidency
+            showMB maxResidency,
+            showMB allocations
           ]
           | (Bench {name, samples}, BenchRun {..}) <- results,
             let runSetup' = if runSetup < 0.01 then 0 else runSetup
@@ -288,9 +290,9 @@ runBenchmarks allBenchmarks = do
         ]
           ++ ghcideOptions ?config
           ++ concat
-            [ ["--shake-profiling", path]
-              | Just path <- [shakeProfiling ?config]
+            [ ["--shake-profiling", path] | Just path <- [shakeProfiling ?config]
             ]
+          ++ ["--verbose" | verbose ?config]
     lspTestCaps =
       fullCaps {_window = Just $ WindowClientCapabilities $ Just True}
     conf =
@@ -306,11 +308,12 @@ data BenchRun = BenchRun
     runSetup :: !Seconds,
     runExperiment :: !Seconds,
     success :: !Bool,
-    maxResidency :: !Int
+    maxResidency :: !Int,
+    allocations :: !Int
   }
 
 badRun :: BenchRun
-badRun = BenchRun 0 0 0 False 0
+badRun = BenchRun 0 0 0 False 0 0
 
 waitForProgressDone :: Session ()
 waitForProgressDone =
@@ -345,10 +348,10 @@ runBench runSess Bench {..} = handleAny (\e -> print e >> return badRun)
     -- sleep to give ghcide a chance to GC
     liftIO $ threadDelay 1100000
 
-    maxResidency <- liftIO $
+    (maxResidency, allocations) <- liftIO $
         ifM (doesFileExist gcStats)
-            (parseMaxResidency <$> readFile gcStats)
-            (pure 0)
+            (parseMaxResidencyAndAllocations <$> readFile gcStats)
+            (pure (0,0))
 
     return BenchRun {..}
   where
@@ -401,11 +404,14 @@ setup = do
 --------------------------------------------------------------------------------------------
 
 -- Parse the max residency in RTS -s output
-parseMaxResidency :: String -> Int
-parseMaxResidency input =
-  case find ("maximum residency" `isInfixOf`) (reverse $ lines input) of
-    Just l -> read $ filter isDigit $ head (words l)
-    Nothing -> -1
+parseMaxResidencyAndAllocations :: String -> (Int, Int)
+parseMaxResidencyAndAllocations input =
+    (f "maximum residency", f "bytes allocated in the heap")
+  where
+    inps = reverse $ lines input
+    f label = case find (label `isInfixOf`) inps of
+        Just l -> read $ filter isDigit $ head (words l)
+        Nothing -> -1
 
 
 escapeSpaces :: String -> String
