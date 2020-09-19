@@ -657,8 +657,8 @@ instantiateDelayedAction (DelayedAction _ s p a) = do
         alreadyDone <- liftIO $ isJust <$> waitBarrierMaybe b
         unless alreadyDone $ do
           x <- actionCatch @SomeException (Right <$> a) (pure . Left)
-          liftIO $ do
-            signalBarrier b x
+          -- ignore exceptions if the barrier has been filled concurrently
+          liftIO $ void $ try @SomeException $ signalBarrier b x
       d' = DelayedAction (Just u) s p a'
   return (b, d')
 
