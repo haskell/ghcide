@@ -366,7 +366,8 @@ runBench runSess Bench {..} = handleAny (\e -> print e >> return badRun)
                   ResponseMessage{_result=Right Null} -> do
                     loop (userWaits+t) (delayedWork+td) (n -1)
                   _ ->
-                    return Nothing
+                  -- Assume a ghcide build lacking the WaitForShakeQueue command
+                    loop (userWaits+t) delayedWork (n -1)
 
     (runExperiment, result) <- duration $ loop 0 0 samples
     let success = isJust result
