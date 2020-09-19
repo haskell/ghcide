@@ -47,6 +47,7 @@ import qualified System.IO.Extra
 import System.Directory
 import System.Exit (ExitCode(ExitSuccess))
 import System.Process.Extra (readCreateProcessWithExitCode, CreateProcess(cwd), proc)
+import System.Info.Extra (isWindows)
 import Test.QuickCheck
 import Test.QuickCheck.Instances ()
 import Test.Tasty
@@ -283,7 +284,7 @@ diagnosticTests = testGroup "diagnostics"
       let contentA = T.unlines [ "module ModuleA where" ]
       _ <- createDoc "ModuleA.hs" "haskell" contentA
       expectDiagnostics [("ModuleB.hs", [])]
-  , testSessionWait "add missing module (non workspace)" $ do
+  , knownBrokenInWindows $ testSessionWait "add missing module (non workspace)" $ do
       let contentB = T.unlines
             [ "module ModuleB where"
             , "import ModuleA ()"
@@ -585,7 +586,7 @@ watchedFilesTests = testGroup "watched files"
       -- Expect 1 subscription: we only ever send one
       liftIO $ length watchedFileRegs @?= 1
 
-  , testSession' "non workspace file" $ \sessionDir -> do
+  , knownBrokenInWindows $ testSession' "non workspace file" $ \sessionDir -> do
       liftIO $ writeFile (sessionDir </> "hie.yaml") "cradle: {direct: {arguments: [\"-i/tmp\", \"A\", \"WatchedFilesMissingModule\"]}}"
       _doc <- createDoc "A.hs" "haskell" "{-# LANGUAGE NoImplicitPrelude#-}\nmodule A where\nimport WatchedFilesMissingModule"
       watchedFileRegs <- getWatchedFilesSubscriptionsUntil @PublishDiagnosticsNotification
@@ -2257,6 +2258,7 @@ findDefinitionAndHoverTests = let
         yes    = Just -- test should run and pass
         broken = Just . (`xfail` "known broken")
         no = const Nothing -- don't run this test at all
+        brokenWin = Just . knownBrokenInWindows
 
 checkFileCompiles :: FilePath -> TestTree
 checkFileCompiles fp =
@@ -2305,7 +2307,7 @@ pluginParsedResultTests =
 cppTests :: TestTree
 cppTests =
   testGroup "cpp"
-    [ testCase "cpp-error" $ do
+    [ knownBrokenInWindows $ testCase "cpp-error" $ do
         let content =
               T.unlines
                 [ "{-# LANGUAGE CPP #-}",
@@ -2394,7 +2396,7 @@ thTests =
   testGroup
     "TemplateHaskell"
     [ -- Test for https://github.com/digital-asset/ghcide/pull/212
-      testSessionWait "load" $ do
+      knownBrokenInWindows $ testSessionWait "load" $ do
         let sourceA =
               T.unlines
                 [ "{-# LANGUAGE PackageImports #-}",
@@ -2948,6 +2950,12 @@ expectFailCabal _ = id
 expectFailCabal = expectFailBecause
 #endif
 
+knownBrokenInWindows :: TestTree -> TestTree
+knownBrokenInWindows = expectFailWindows "known broken in windows"
+
+expectFailWindows :: String -> TestTree -> TestTree
+expectFailWindows = if isWindows then expectFailBecause else flip const
+
 data Expect
   = ExpectRange Range -- Both gotoDef and hover should report this range
   | ExpectLocation Location
@@ -3138,7 +3146,7 @@ simpleMultiTest = testCase "simple-multi-test" $ withoutStackEnv $ runWithExtraF
 
 -- Like simpleMultiTest but open the files in the other order
 simpleMultiTest2 :: TestTree
-simpleMultiTest2 = testCase "simple-multi-test2" $ withoutStackEnv $ runWithExtraFiles "multi" $ \dir -> do
+simpleMultiTest2 = knownBrokenInWindows $ testCase "simple-multi-test2" $ withoutStackEnv $ runWithExtraFiles "multi" $ \dir -> do
     let aPath = dir </> "a/A.hs"
         bPath = dir </> "b/B.hs"
     bSource <- liftIO $ readFileUtf8 bPath
