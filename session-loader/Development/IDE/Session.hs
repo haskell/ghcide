@@ -34,7 +34,8 @@ import Data.Version
 import Development.IDE.Core.OfInterest
 import Development.IDE.Core.Shake
 import Development.IDE.Core.RuleTypes
-import Development.IDE.GHC.Compat
+import Development.IDE.GHC.Compat hiding (Target, TargetModule, TargetFile)
+import qualified Development.IDE.GHC.Compat as GHC
 import Development.IDE.GHC.Util
 import Development.IDE.Session.VersionCheck
 import Development.IDE.Types.Diagnostics
@@ -59,13 +60,12 @@ import System.IO
 
 import GHCi
 import DynFlags
-import HscTypes
+import HscTypes (ic_dflags, hsc_IC, hsc_dflags, hsc_NC)
 import Linker
 import Module
 import NameCache
 import Packages
 import Control.Exception (evaluate)
-import Data.Char
 
 -- | Given a root directory, return a Shake 'Action' which setups an
 -- 'IdeGhcSession' given a file.
@@ -111,6 +111,7 @@ loadSession dir = do
     IdeOptions{ optTesting = IdeTesting optTesting
               , optCheckProject = CheckProject checkProject
               , optCustomDynFlags
+              , optExtensions
               } <- getIdeOptions
 
         -- populate the knownTargetsVar with all the
@@ -119,7 +120,7 @@ loadSession dir = do
     let extendKnownTargets newTargets = do
           knownTargets <- forM newTargets $ \TargetDetails{..} -> do
             found <- filterM (IO.doesFileExist . fromNormalizedFilePath) targetLocations
-            return (targetModule, found)
+            return (targetTarget, found)
           modifyVar_ knownTargetsVar $ traverseHashed $ \known -> do
             let known' = HM.unionWith (<>) known $ HM.fromList knownTargets
             when (known /= known') $
@@ -227,7 +228,7 @@ loadSession dir = do
 
           -- New HscEnv for the component in question, returns the new HscEnvEq and
           -- a mapping from FilePath to the newly created HscEnvEq.
-          let new_cache = newComponentCache logger hieYaml hscEnv uids
+          let new_cache = newComponentCache logger optExtensions hieYaml _cfp hscEnv uids
           (cs, res) <- new_cache new
           -- Modified cache targets for everything else in the hie.yaml file
           -- which now uses the same EPS and so on
@@ -373,38 +374,31 @@ emptyHscEnv nc libDir = do
 
 data TargetDetails = TargetDetails
   {
-      targetModule :: !ModuleName,
+      targetTarget :: !Target,
       targetEnv :: !(IdeResult HscEnvEq),
       targetDepends :: !DependencyInfo,
       targetLocations :: ![NormalizedFilePath]
   }
 
 fromTargetId :: [FilePath]          -- ^ import paths
+             -> [String]            -- ^ extensions to consider
              -> TargetId
              -> IdeResult HscEnvEq
              -> DependencyInfo
              -> IO [TargetDetails]
 -- For a target module we consider all the import paths
-fromTargetId is (TargetModule mod) env dep = do
-    let fps = [i </> moduleNameSlashes mod -<.> ext | ext <- exts, i <- is ]
-        exts = ["hs", "hs-boot", "lhs"]
+fromTargetId is exts (GHC.TargetModule mod) env dep = do
+    let fps = [i </> moduleNameSlashes mod -<.> ext <> boot
+              | ext <- exts
+              , i <- is
+              , boot <- ["", "-boot"]
+              ]
     locs <- mapM (fmap toNormalizedFilePath' . canonicalizePath) fps
-    return [TargetDetails mod env dep locs]
+    return [TargetDetails (TargetModule mod) env dep locs]
 -- For a 'TargetFile' we consider all the possible module names
-fromTargetId _ (TargetFile f _) env deps = do
+fromTargetId _ _ (GHC.TargetFile f _) env deps = do
     nf <- toNormalizedFilePath' <$> canonicalizePath f
-    return [TargetDetails m env deps [nf] | m <- moduleNames f]
-
--- >>> moduleNames "src/A/B.hs"
--- [A.B,B]
-moduleNames :: FilePath -> [ModuleName]
-moduleNames f = map (mkModuleName .intercalate ".") $ init $ tails nameSegments
-    where
-        nameSegments = reverse
-                     $ takeWhile (isUpper . head)
-                     $ reverse
-                     $ splitDirectories
-                     $ dropExtension f
+    return [TargetDetails (TargetFile nf) env deps [nf]]
 
 toFlagsMap :: TargetDetails -> [(NormalizedFilePath, (IdeResult HscEnvEq, DependencyInfo))]
 toFlagsMap TargetDetails{..} =
@@ -417,12 +411,14 @@ setNameCache nc hsc = hsc { hsc_NC = nc }
 -- | Create a mapping from FilePaths to HscEnvEqs
 newComponentCache
          :: Logger
+         -> [String]       -- File extensions to consider
          -> Maybe FilePath -- Path to cradle
+         -> NormalizedFilePath -- Path to file that caused the creation of this component
          -> HscEnv
          -> [(InstalledUnitId, DynFlags)]
          -> ComponentInfo
          -> IO ( [TargetDetails], (IdeResult HscEnvEq, DependencyInfo))
-newComponentCache logger cradlePath hsc_env uids ci = do
+newComponentCache logger exts cradlePath cfp hsc_env uids ci = do
     let df = componentDynFlags ci
     let hscEnv' = hsc_env { hsc_dflags = df
                           , hsc_IC = (hsc_IC hsc_env) { ic_dflags = df } }
@@ -434,7 +430,7 @@ newComponentCache logger cradlePath hsc_env uids ci = do
         res = (targetEnv, targetDepends)
     logDebug logger ("New Component Cache HscEnvEq: " <> T.pack (show res))
 
-    let mk t = fromTargetId (importPaths df) (targetId t) targetEnv targetDepends
+    let mk t = fromTargetId (importPaths df) exts (targetId t) targetEnv targetDepends
     ctargets <- concatMapM mk (componentTargets ci)
 
     -- A special target for the file which caused this wonderful
@@ -442,7 +438,7 @@ newComponentCache logger cradlePath hsc_env uids ci = do
     -- the component, in which case things will be horribly broken anyway.
     -- Otherwise, we will immediately attempt to reload this module which
     -- causes an infinite loop and high CPU usage.
-    let special_target = TargetDetails (mkModuleName "special") targetEnv targetDepends [componentFP ci]
+    let special_target = TargetDetails (TargetFile cfp) targetEnv targetDepends [componentFP ci]
     return (special_target:ctargets, res)
 
 {- Note [Avoiding bad interface files]
@@ -525,7 +521,7 @@ data RawComponentInfo = RawComponentInfo
   -- We do not want to use them unprocessed.
   , rawComponentDynFlags :: DynFlags
   -- | All targets of this components.
-  , rawComponentTargets :: [Target]
+  , rawComponentTargets :: [GHC.Target]
   -- | Filepath which caused the creation of this component
   , rawComponentFP :: NormalizedFilePath
   -- | Component Options used to load the component.
@@ -546,7 +542,7 @@ data ComponentInfo = ComponentInfo
   -- ComponentOptions.
   , _componentInternalUnits :: [InstalledUnitId]
   -- | All targets of this components.
-  , componentTargets :: [Target]
+  , componentTargets :: [GHC.Target]
   -- | Filepath which caused the creation of this component
   , componentFP :: NormalizedFilePath
   -- | Component Options used to load the component.
@@ -619,7 +615,7 @@ memoIO op = do
             Just res -> return (mp, res)
 
 -- | Throws if package flags are unsatisfiable
-setOptions :: GhcMonad m => ComponentOptions -> DynFlags -> m (DynFlags, [Target])
+setOptions :: GhcMonad m => ComponentOptions -> DynFlags -> m (DynFlags, [GHC.Target])
 setOptions (ComponentOptions theOpts compRoot _) dflags = do
     (dflags', targets) <- addCmdOpts theOpts dflags
     let dflags'' =
