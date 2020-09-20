@@ -12,6 +12,7 @@ module Development.IDE.Spans.Documentation (
   ) where
 
 import           Control.Monad
+import           Control.Monad.Extra (findM)
 import           Data.Foldable
 import           Data.List.Extra
 import qualified Data.Map as M
@@ -172,11 +173,10 @@ lookupHtmlForModule :: (FilePath -> FilePath -> FilePath) -> DynFlags -> Module 
 lookupHtmlForModule mkDocPath df m = do
   -- try all directories
   let mfs = fmap (concatMap go) (lookupHtmls df ui)
-  htmls <- filterM doesFileExist (concat . maybeToList $ mfs)
+  html <- findM doesFileExist (concat . maybeToList $ mfs)
   -- canonicalize located html to remove /../ indirection which can break some clients
   -- (vscode on Windows at least)
-  htmls' <- traverse canonicalizePath htmls
-  return $ listToMaybe htmls'
+  traverse canonicalizePath html
   where
     go pkgDocDir = map (mkDocPath pkgDocDir) mns
     ui = moduleUnitId m
