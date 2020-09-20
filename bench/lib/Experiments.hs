@@ -352,8 +352,8 @@ runBench runSess Bench {..} = handleAny (\e -> print e >> return badRun)
 
     liftIO $ output $ "Running " <> name <> " benchmark"
     (runSetup, userState) <- duration $ benchSetup doc
-    let loop userWaits delayedWork 0 = return $ Just (userWaits, delayedWork)
-        loop userWaits delayedWork n = do
+    let loop !userWaits !delayedWork 0 = return $ Just (userWaits, delayedWork)
+        loop !userWaits !delayedWork n = do
           (t, res) <- duration $ experiment userState doc
           if not res
             then return Nothing
@@ -431,16 +431,15 @@ setup = do
 
 --------------------------------------------------------------------------------------------
 
--- Parse the max residency in RTS -s output
+-- Parse the max residency and allocations in RTS -s output
 parseMaxResidencyAndAllocations :: String -> (Int, Int)
 parseMaxResidencyAndAllocations input =
     (f "maximum residency", f "bytes allocated in the heap")
   where
     inps = reverse $ lines input
     f label = case find (label `isInfixOf`) inps of
-        Just l -> read $ filter isDigit $ head (words l)
+        Just l -> read $ filter isDigit $ head $ words l
         Nothing -> -1
-
 
 escapeSpaces :: String -> String
 escapeSpaces = map f
