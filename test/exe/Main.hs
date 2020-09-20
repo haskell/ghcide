@@ -232,6 +232,46 @@ diagnosticTests = testGroup "diagnostics"
           , [(DsError, (2, 8), "Found hole: _ :: Int -> String")]
           )
         ]
+  , testSessionWait "missing_fields" $ do
+      let content = T.unlines
+            [ "data Person = Person {_personName:: String, _personAge:: Int}"
+            , "foo :: Person"
+            , "foo = Person {_personName=\"test\" }"
+            ]
+      _ <- createDoc "Testing.hs" "haskell" content
+      expectDiagnostics
+        [ ( "Testing.hs"
+          , [(DsWarning, (2, 6), "\8226 Fields of \8216Person\8217 not initialised: _personAge")]
+          )
+        ]
+  , testSessionWait "missing_fields_error" $ do
+      let content = T.unlines
+            [ "{-# OPTIONS_GHC -Werror=missing-fields #-}"
+            ,  "data Person = Person {_personName:: String, _personAge:: Int}"
+            , "foo :: Person"
+            , "foo = Person {_personName=\"test\" }"
+            ]
+      _ <- createDoc "Testing.hs" "haskell" content
+      expectDiagnostics
+        [ ( "Testing.hs"
+          , [(DsWarning, (3, 6), "\8226 Fields of \8216Person\8217 not initialised: _personAge")]
+          )
+        ]
+  , testSessionWait "missing_fields_strict" $ do
+      -- for strict fields we have a DsError
+      let content = T.unlines
+            [
+             "data Person = Person {_personName:: !String, _personAge:: !Int}"
+            , "foo :: Person"
+            , "foo = Person {_personName=\"test\" }"
+            ]
+      _ <- createDoc "Testing.hs" "haskell" content
+      expectDiagnostics
+        [ ( "Testing.hs"
+          , [(DsError, (2, 6), "\8226 Constructor \8216Person\8217 does not have the required strict field(s): _personAge\n\8226")]
+          )
+        ]
+
 
   , testGroup "deferral" $
     let sourceA a = T.unlines
