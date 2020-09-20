@@ -252,7 +252,7 @@ loadSession dir = do
                     mmt <- uses GetModificationTime cfps'
                     let cs_exist = catMaybes (zipWith (<$) cfps' mmt)
                     modIfaces <- uses GetModIface cs_exist
-                    -- update xports map
+                    -- update exports map
                     extras <- getShakeExtras
                     let !exportsMap' = createExportsMap $ mapMaybe (fmap hirModIface) modIfaces
                     liftIO $ modifyVar_ (exportsMap extras) $ evaluate . (exportsMap' <>)
