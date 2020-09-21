@@ -12,6 +12,7 @@ import           Data.IntervalMap.FingerTree (IntervalMap, Interval (..))
 import qualified Data.IntervalMap.FingerTree as IM
 import qualified Data.Map as M
 import qualified Data.Set as S
+import qualified Data.List as L
 import           Development.IDE.GHC.Compat (RefMap, identType, identInfo, getScopeFromContext, Scope(..), Name, Type)
 import           Development.IDE.Types.Location
 import           Development.IDE.GHC.Error
@@ -30,7 +31,7 @@ realSrcSpanToInterval rss =
 -- | Compute which identifiers are in scope at every point in the AST. Use
 -- 'getLocalScope' to find the results.
 bindings :: RefMap -> Bindings
-bindings refmap = Bindings $ foldr (uncurry IM.insert) mempty  $ do
+bindings refmap = Bindings $ L.foldl' (flip (uncurry IM.insert)) mempty  $ do
   (ident, refs)      <- M.toList refmap
   Right name         <- pure ident
   (_, ident_details) <- refs
