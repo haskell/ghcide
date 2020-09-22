@@ -570,7 +570,7 @@ shakeRestart IdeState{..} acts =
               let msg = T.pack $ "Restarting build session (aborting the previous one took "
                               ++ showDuration stopTime ++ profile ++ ")"
               logDebug (logger shakeExtras) msg
-              eventer shakeExtras (notifyLogMessage msg)
+              notifyTestingLogMessage shakeExtras msg
         )
         -- It is crucial to be masked here, otherwise we can get killed
         -- between spawning the new thread and updating shakeSession.
@@ -578,10 +578,13 @@ shakeRestart IdeState{..} acts =
         (\() -> do
           (,()) <$> newSession shakeExtras shakeDb acts)
 
-notifyLogMessage :: T.Text -> LSP.FromServerMessage
-notifyLogMessage msg =
-    LSP.NotLogMessage $ LSP.NotificationMessage "2.0" LSP.WindowLogMessage
-                      $ LSP.LogMessageParams LSP.MtLog msg
+notifyTestingLogMessage :: ShakeExtras -> T.Text -> IO ()
+notifyTestingLogMessage extras msg = do
+    (IdeTesting isTestMode) <- optTesting <$> getIdeOptionsIO extras
+    let notif = LSP.NotLogMessage $ LSP.NotificationMessage "2.0" LSP.WindowLogMessage
+                                  $ LSP.LogMessageParams LSP.MtLog msg
+    when isTestMode $ eventer extras notif
+
 
 -- | Enqueue an action in the existing 'ShakeSession'.
 --   Returns a computation to block until the action is run, propagating exceptions.
@@ -608,7 +611,7 @@ shakeEnqueue ShakeExtras{actionQueue, logger} act = do
 -- | Set up a new 'ShakeSession' with a set of initial actions
 --   Will crash if there is an existing 'ShakeSession' running.
 newSession :: ShakeExtras -> ShakeDatabase -> [DelayedActionInternal] -> IO ShakeSession
-newSession ShakeExtras{..} shakeDb acts = do
+newSession extras@ShakeExtras{..} shakeDb acts = do
     reenqueued <- atomically $ peekInProgress actionQueue
     let
         -- A daemon-like action used to inject additional work
@@ -626,7 +629,7 @@ newSession ShakeExtras{..} shakeDb acts = do
                             ++ " (took " ++ showDuration runTime ++ ")"
             liftIO $ do
                 logPriority logger (actionPriority d) msg
-                eventer $ notifyLogMessage msg
+                notifyTestingLogMessage extras msg
 
         workRun restore = do
           let acts' = pumpActionThread : map run (reenqueued ++ acts)
@@ -637,7 +640,7 @@ newSession ShakeExtras{..} shakeDb acts = do
           let msg = T.pack $ "Finishing build session(" ++ res' ++ ")"
           return $ do
               logDebug logger msg
-              eventer $ notifyLogMessage msg
+              notifyTestingLogMessage extras msg
 
     -- Do the work in a background thread
     workThread <- asyncWithUnmask workRun
