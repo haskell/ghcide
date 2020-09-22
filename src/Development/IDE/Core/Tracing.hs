@@ -1,4 +1,10 @@
-module Development.IDE.Core.Tracing where
+module Development.IDE.Core.Tracing
+    ( otTraced
+    , otTracedHandler
+    , otTracedAction
+    , startTelemetry
+    )
+where
 
 import           Control.Concurrent
 import           Control.Exception
@@ -59,8 +65,7 @@ startTelemetry name valuesRef (IdeOTProfiling True) = do
   _ <- regularly 10000 $ -- 100 times/s
     withSpan_ "Measure length" $
       readVar valuesRef
-      <&> length
-      >>= observe mapCountInstrument
+      >>= observe mapCountInstrument . length
   _ <- regularly 500000 $ -- 2 times/s (If it could run that fast)
     withSpan_ "Measure Memory" $
       readVar valuesRef
