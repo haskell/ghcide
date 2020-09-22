@@ -2253,7 +2253,7 @@ checkFileCompiles fp =
     expectNoMoreDiagnostics 0.5
 
 pluginSimpleTests :: TestTree
-pluginSimpleTests = 
+pluginSimpleTests =
   testSessionWait "simple plugin" $ do
     let content =
           T.unlines
@@ -2275,11 +2275,11 @@ pluginSimpleTests =
           )
       ]
 
-pluginParsedResultTests :: TestTree 
-pluginParsedResultTests = 
-  (`xfail84` "record-dot-preprocessor unsupported on 8.4") $ testSessionWait "parsedResultAction plugin" $ do 
-    let content = 
-          T.unlines 
+pluginParsedResultTests :: TestTree
+pluginParsedResultTests =
+  (`xfail84` "record-dot-preprocessor unsupported on 8.4") $ testSessionWait "parsedResultAction plugin" $ do
+    let content =
+          T.unlines
             [ "{-# LANGUAGE DuplicateRecordFields, TypeApplications, FlexibleContexts, DataKinds, MultiParamTypeClasses, TypeSynonymInstances, FlexibleInstances #-}"
             , "{-# OPTIONS_GHC -fplugin=RecordDotPreprocessor #-}"
             , "module Testing (Company(..), display) where"
@@ -2287,7 +2287,7 @@ pluginParsedResultTests =
             , "display :: Company -> String"
             , "display c = c.name"
             ]
-    _ <- createDoc "Testing.hs" "haskell" content 
+    _ <- createDoc "Testing.hs" "haskell" content
     expectNoMoreDiagnostics 1
 
 cppTests :: TestTree
@@ -3084,9 +3084,7 @@ ifaceErrorTest = testCase "iface-error-test-1" $ withoutStackEnv $ runWithExtraF
 
     -- Check that we wrote the interfaces for B when we saved
     lid <- sendRequest (CustomClientMethod "hidir") $ GetInterfaceFilesDir bPath
-    res <- skipManyTill (message :: Session WorkDoneProgressCreateRequest) $
-           skipManyTill (message :: Session WorkDoneProgressBeginNotification) $
-             responseForId lid
+    res <- skipManyTill anyMessage $ responseForId lid
     liftIO $ case res of
       ResponseMessage{_result=Right hidir} -> do
         hi_exists <- doesFileExist $ hidir </> "B.hi"
