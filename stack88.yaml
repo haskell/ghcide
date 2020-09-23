@@ -9,12 +9,13 @@ extra-deps:
 - hie-bios-0.7.1
 - extra-1.7.2
 - implicit-hie-0.1.1.0
-- implicit-hie-cradle-0.2.0.0
+- implicit-hie-cradle-0.2.0.1
 - opentelemetry-0.6.1
 - opentelemetry-extra-0.6.1
 - ghc-events-0.13.0
 - ghc-trace-events-0.1.2.1
 - heapsize-0.1
+
 nix:
   packages: [zlib]
 
