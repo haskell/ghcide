@@ -327,7 +327,14 @@ diagnosticTests = testGroup "diagnostics"
       _ <- createDoc "ModuleA.hs" "haskell" contentA
       _ <- createDoc "ModuleB.hs" "haskell" contentB
       _ <- createDoc "ModuleB.hs-boot" "haskell" contentBboot
-      expectDiagnostics []
+      expectDiagnosticsWithTags
+        [ ( "ModuleA.hs"
+          , [(DsInfo, (1, 0), "The import of 'ModuleB'", Just DtUnnecessary)]
+          )
+        , ( "ModuleB.hs"
+          , [(DsInfo, (1, 0), "The import of 'ModuleA'", Just DtUnnecessary)]
+          )
+        ]
   , testSessionWait "correct reference used with hs-boot" $ do
       let contentB = T.unlines
             [ "module ModuleB where"
