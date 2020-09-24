@@ -12,6 +12,7 @@ module Development.IDE.Spans.Documentation (
   ) where
 
 import           Control.Monad
+import           Control.Monad.Extra (findM)
 import           Data.Foldable
 import           Data.List.Extra
 import qualified Data.Map as M
@@ -170,15 +171,25 @@ lookupSrcHtmlForModule =
 
 lookupHtmlForModule :: (FilePath -> FilePath -> FilePath) -> DynFlags -> Module -> IO (Maybe FilePath)
 lookupHtmlForModule mkDocPath df m = do
-  let mfs = go <$> (listToMaybe =<< lookupHtmls df ui)
-  htmls <- filterM doesFileExist (concat . maybeToList $ mfs)
-  return $ listToMaybe htmls
+  -- try all directories
+  let mfs = fmap (concatMap go) (lookupHtmls df ui)
+  html <- findM doesFileExist (concat . maybeToList $ mfs)
+  -- canonicalize located html to remove /../ indirection which can break some clients
+  -- (vscode on Windows at least)
+  traverse canonicalizePath html
   where
-    -- The file might use "." or "-" as separator
-    go pkgDocDir = [mkDocPath pkgDocDir mn | mn <- [mndot,mndash]]
+    go pkgDocDir = map (mkDocPath pkgDocDir) mns
     ui = moduleUnitId m
-    mndash = map (\x -> if x == '.' then '-' else x) mndot
-    mndot = moduleNameString $ moduleName m
+    -- try to locate html file from most to least specific name e.g.
+    --  first Language.Haskell.LSP.Types.Uri.html and Language-Haskell-LSP-Types-Uri.html
+    --  then Language.Haskell.LSP.Types.html and Language-Haskell-LSP-Types.html etc.
+    mns = do
+      chunks <- (reverse . drop1 . inits . splitOn ".") $ (moduleNameString . moduleName) m
+      -- The file might use "." or "-" as separator
+      map (`intercalate` chunks) [".", "-"]
 
 lookupHtmls :: DynFlags -> UnitId -> Maybe [FilePath]
-lookupHtmls df ui = haddockHTMLs <$> lookupPackage df ui
+lookupHtmls df ui =
+  -- use haddockInterfaces instead of haddockHTMLs: GHC treats haddockHTMLs as URL not path 
+  -- and therefore doesn't expand $topdir on Windows
+  map takeDirectory . haddockInterfaces <$> lookupPackage df ui

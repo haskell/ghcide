@@ -15,7 +15,7 @@ import Control.Exception (bracket, catch)
 import qualified Control.Lens as Lens
 import Control.Monad
 import Control.Monad.IO.Class (liftIO)
-import Data.Aeson (FromJSON, Value)
+import Data.Aeson (FromJSON, Value, toJSON)
 import qualified Data.Binary as Binary
 import Data.Foldable
 import Data.List.Extra
@@ -94,6 +94,7 @@ main = do
     , bootTests
     , rootUriTests
     , asyncTests
+    , clientSettingsTest
     ]
 
 initializeResponseTests :: TestTree
@@ -2443,6 +2444,38 @@ thTests =
         _ <- createDoc "B.hs" "haskell" sourceB
         return ()
     , thReloadingTest `xfail` "expect broken (#672)"
+    -- Regression test for https://github.com/digital-asset/ghcide/issues/614
+    , testSessionWait "findsTHIdentifiers" $ do
+        let sourceA =
+              T.unlines
+                [ "{-# LANGUAGE TemplateHaskell #-}"
+                , "module A (a) where"
+                , "a = [| glorifiedID |]"
+                , "glorifiedID :: a -> a"
+                , "glorifiedID = id" ]
+        let sourceB =
+              T.unlines
+                [ "{-# OPTIONS_GHC -Wall #-}"
+                , "{-# LANGUAGE TemplateHaskell #-}"
+                , "module B where"
+                , "import A"
+                , "main = $a (putStrLn \"success!\")"]
+        _ <- createDoc "A.hs" "haskell" sourceA
+        _ <- createDoc "B.hs" "haskell" sourceB
+        expectDiagnostics [ ( "B.hs", [(DsWarning, (4, 0), "Top-level binding with no type signature: main :: IO ()")] ) ]
+#if MIN_GHC_API_VERSION(8,6,0)
+    , flip xfail "expect broken (#614)" $ testCase "findsTHnewNameConstructor" $ withoutStackEnv $ runWithExtraFiles "THNewName" $ \dir -> do
+
+    -- This test defines a TH value with the meaning "data A = A" in A.hs
+    -- Loads and export the template in B.hs
+    -- And checks wether the constructor A can be loaded in C.hs
+    -- This test does not fail when either A and B get manually loaded before C.hs
+    -- or when we remove the seemingly unnecessary TH pragma from C.hs
+
+    let cPath = dir </> "C.hs"
+    _ <- openDoc cPath "haskell"
+    expectDiagnostics [ ( cPath, [(DsWarning, (3, 0), "Top-level binding with no type signature: a :: A")] ) ]
+#endif
     ]
 
 -- | test that TH is reevaluated on typecheck
@@ -2532,7 +2565,18 @@ localCompletionTests = [
         "class"
         ["bar :: Xx", "xxx = ()", "-- | haddock", "class Xxx a"]
         (Position 0 9)
-        [("Xxx", CiClass, False, True)]
+        [("Xxx", CiClass, False, True)],
+    completionTest
+        "records"
+        ["data Person = Person { _personName:: String, _personAge:: Int}", "bar = Person { _pers }" ]
+        (Position 1 19)
+        [("_personName", CiFunction, False, True),
+         ("_personAge", CiFunction, False, True)],
+    completionTest
+        "recordsConstructor"
+        ["data XxRecord = XyRecord { x:: String, y:: Int}", "bar = Xy" ]
+        (Position 1 19)
+        [("XyRecord", CiConstructor, False, True)]
     ]
 
 nonLocalCompletionTests :: [TestTree]
@@ -3060,9 +3104,7 @@ ifaceErrorTest = testCase "iface-error-test-1" $ withoutStackEnv $ runWithExtraF
 
     -- Check that we wrote the interfaces for B when we saved
     lid <- sendRequest (CustomClientMethod "hidir") $ GetInterfaceFilesDir bPath
-    res <- skipManyTill (message :: Session WorkDoneProgressCreateRequest) $
-           skipManyTill (message :: Session WorkDoneProgressBeginNotification) $
-             responseForId lid
+    res <- skipManyTill anyMessage $ responseForId lid
     liftIO $ case res of
       ResponseMessage{_result=Right hidir} -> do
         hi_exists <- doesFileExist $ hidir </> "B.hi"
@@ -3264,6 +3306,26 @@ asyncTests = testGroup "async"
             liftIO $ [ _title | CACodeAction CodeAction{_title} <- actions] @=? ["add signature: foo :: a -> a"]
     ]
 
+
+clientSettingsTest :: TestTree
+clientSettingsTest = testGroup "client settings handling"
+    [
+        testSession "ghcide does not support update config" $ do
+            sendNotification WorkspaceDidChangeConfiguration (DidChangeConfigurationParams (toJSON ("" :: String)))
+            logNot <- skipManyTill anyMessage loggingNotification
+            isMessagePresent "Updating Not supported" [getLogMessage logNot]
+    ,   testSession "ghcide restarts shake session on config changes" $ do
+            sendNotification WorkspaceDidChangeConfiguration (DidChangeConfigurationParams (toJSON ("" :: String)))
+            nots <- skipManyTill anyMessage $ count 3 loggingNotification
+            isMessagePresent "Restarting build session" (map getLogMessage nots)
+
+    ]
+  where getLogMessage (NotLogMessage (NotificationMessage _ _ (LogMessageParams _ msg))) = msg
+        getLogMessage _ = ""
+
+        isMessagePresent expectedMsg actualMsgs = liftIO $
+            assertBool ("\"" ++ expectedMsg ++ "\" is not present in: " ++ show actualMsgs)
+                       (any ((expectedMsg `isSubsequenceOf`) . show) actualMsgs)
 ----------------------------------------------------------------------
 -- Utils
 ----------------------------------------------------------------------
