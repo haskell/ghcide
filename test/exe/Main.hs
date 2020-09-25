@@ -2258,7 +2258,6 @@ findDefinitionAndHoverTests = let
         yes    = Just -- test should run and pass
         broken = Just . (`xfail` "known broken")
         no = const Nothing -- don't run this test at all
-        brokenWin = Just . knownBrokenInWindows
 
 checkFileCompiles :: FilePath -> TestTree
 checkFileCompiles fp =
@@ -2396,7 +2395,7 @@ thTests =
   testGroup
     "TemplateHaskell"
     [ -- Test for https://github.com/digital-asset/ghcide/pull/212
-      knownBrokenInWindows $ testSessionWait "load" $ do
+      testSessionWait "load" $ do
         let sourceA =
               T.unlines
                 [ "{-# LANGUAGE PackageImports #-}",
@@ -3146,7 +3145,7 @@ simpleMultiTest = testCase "simple-multi-test" $ withoutStackEnv $ runWithExtraF
 
 -- Like simpleMultiTest but open the files in the other order
 simpleMultiTest2 :: TestTree
-simpleMultiTest2 = knownBrokenInWindows $ testCase "simple-multi-test2" $ withoutStackEnv $ runWithExtraFiles "multi" $ \dir -> do
+simpleMultiTest2 = testCase "simple-multi-test2" $ withoutStackEnv $ runWithExtraFiles "multi" $ \dir -> do
     let aPath = dir </> "a/A.hs"
         bPath = dir </> "b/B.hs"
     bSource <- liftIO $ readFileUtf8 bPath
