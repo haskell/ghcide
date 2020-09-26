@@ -66,6 +66,9 @@ getLocalScope bs rss
   $ IM.dominators (realSrcSpanToInterval rss)
   $ getBindings bs
 
+-- | Lookup all names in scope in any span that intersects the interval
+-- defined by the two positions.
+-- This is meant for use with the fuzzy `PositionRange` returned by `PositionMapping`
 getFuzzyScope :: Bindings -> Position -> Position -> [(Name, Maybe Type)]
 getFuzzyScope bs a b
   = nameEnvElts
