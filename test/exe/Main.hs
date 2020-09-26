@@ -2737,13 +2737,23 @@ highlightTests = testGroup "highlight"
     _ <- waitForDiagnostics
     highlights <- getHighlights doc (Position 3 15)
     liftIO $ highlights @?=
+      -- Span is just the .. on 8.10, but Rec{..} before
+#if MIN_GHC_API_VERSION(8,10,0)
+            [ DocumentHighlight (R 3 8 3 10) (Just HkWrite)
+#else
             [ DocumentHighlight (R 3 4 3 11) (Just HkWrite)
+#endif
             , DocumentHighlight (R 3 14 3 20) (Just HkRead)
             ]
     highlights <- getHighlights doc (Position 2 17)
     liftIO $ highlights @?=
             [ DocumentHighlight (R 2 17 2 23) (Just HkWrite)
+      -- Span is just the .. on 8.10, but Rec{..} before
+#if MIN_GHC_API_VERSION(8,10,0)
+            , DocumentHighlight (R 3 8 3 10) (Just HkRead)
+#else
             , DocumentHighlight (R 3 4 3 11) (Just HkRead)
+#endif
             ]
   ]
   where
