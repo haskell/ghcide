@@ -1,4 +1,6 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE DeriveAnyClass #-}
 #include "ghc-api-version.h"
 
 module Development.IDE.Spans.Common (
@@ -12,12 +14,15 @@ module Development.IDE.Spans.Common (
 , spanDocToMarkdown
 , spanDocToMarkdownForTest
 , DocMap
+, KindMap
 ) where
 
 import Data.Maybe
 import qualified Data.Text as T
 import Data.List.Extra
 import Data.Map (Map)
+import Control.DeepSeq
+import GHC.Generics
 
 import GHC
 import Outputable hiding ((<>))
@@ -28,8 +33,10 @@ import Var
 
 import qualified Documentation.Haddock.Parser as H
 import qualified Documentation.Haddock.Types as H
+import Development.IDE.GHC.Orphans ()
 
 type DocMap = Map Name SpanDoc
+type KindMap = Map Name Type
 
 showGhc :: Outputable a => a -> String
 showGhc = showPpr unsafeGlobalDynFlags
@@ -56,13 +63,15 @@ safeTyThingId _                           = Nothing
 data SpanDoc
   = SpanDocString HsDocString SpanDocUris
   | SpanDocText   [T.Text] SpanDocUris
-  deriving (Eq, Show)
+  deriving stock (Eq, Show, Generic)
+  deriving anyclass NFData
 
 data SpanDocUris =
   SpanDocUris
   { spanDocUriDoc :: Maybe T.Text -- ^ The haddock html page
   , spanDocUriSrc :: Maybe T.Text -- ^ The hyperlinked source html page
-  } deriving (Eq, Show)
+  } deriving stock (Eq, Show, Generic)
+    deriving anyclass NFData
 
 emptySpanDoc :: SpanDoc
 emptySpanDoc = SpanDocText [] (SpanDocUris Nothing Nothing)

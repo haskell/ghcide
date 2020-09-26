@@ -117,14 +117,14 @@ type instance RuleResult GetHieAst = HieAstResult
 
 type instance RuleResult GetBindings = Bindings
 
-newtype PDocMap = PDocMap {getDocMap :: DocMap}
-instance NFData PDocMap where
-    rnf = rwhnf
+data DocAndKindMap = DKMap {getDocMap :: !DocMap, getKindMap :: !KindMap}
+instance NFData DocAndKindMap where
+    rnf (DKMap a b) = rnf a `seq` rnf b
 
-instance Show PDocMap where
+instance Show DocAndKindMap where
     show = const "docmap"
 
-type instance RuleResult GetDocMap = PDocMap
+type instance RuleResult GetDocMap = DocAndKindMap
 
 -- | Convert to Core, requires TypeCheck*
 type instance RuleResult GenerateCore = (SafeHaskellMode, CgGuts, ModDetails)

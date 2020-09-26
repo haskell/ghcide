@@ -96,3 +96,6 @@ instance NFData Type where
 
 instance Show a => Show (Bag a) where
     show = show . bagToList
+
+instance NFData HsDocString where
+    rnf = rwhnf

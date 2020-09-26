@@ -20,6 +20,7 @@ import           Language.Haskell.LSP.Types
 import Development.IDE.GHC.Compat
 import Development.IDE.Types.Options
 import Development.IDE.Spans.Common
+import Development.IDE.Core.RuleTypes
 
 -- GHC API imports
 import FastString
@@ -88,10 +89,10 @@ gotoDefinition getHieFile ideOpts srcSpans pos
 atPoint
   :: IdeOptions
   -> HieASTs Type
-  -> DocMap
+  -> DocAndKindMap
   -> Position
   -> Maybe (Maybe Range, [T.Text])
-atPoint IdeOptions{} hf dm pos = listToMaybe $ pointCommand hf pos hoverInfo
+atPoint IdeOptions{} hf (DKMap dm km) pos = listToMaybe $ pointCommand hf pos hoverInfo
   where
     -- Hover info for values/data
     hoverInfo ast =
@@ -113,7 +114,7 @@ atPoint IdeOptions{} hf dm pos = listToMaybe $ pointCommand hf pos hoverInfo
         prettyName (Right n, dets) = T.unlines $
           wrapHaskell (showName n <> maybe "" (" :: " <> ) (prettyType <$> identType dets))
           : definedAt n
-          : concat (maybeToList (spanDocToMarkdown <$> M.lookup n dm))
+          : (catMaybes [T.unlines . spanDocToMarkdown <$> M.lookup n dm, prettyType <$> M.lookup n km])
         prettyName (Left m,_) = showName m
 
         prettyTypes = map (("_ :: "<>) . prettyType) types

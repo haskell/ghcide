@@ -138,10 +138,10 @@ getAtPoint file pos = fmap join $ runMaybeT $ do
   opts <- liftIO $ getIdeOptionsIO ide
 
   (HAR _ hf _, mapping) <- useE GetHieAst file
-  PDocMap dm <- lift $ maybe (PDocMap mempty) fst <$> (runMaybeT $ useE GetDocMap file)
+  dkMap <- lift $ maybe (DKMap mempty mempty) fst <$> (runMaybeT $ useE GetDocMap file)
 
   !pos' <- MaybeT (return $ fromCurrentPosition mapping pos)
-  return $ AtPoint.atPoint opts hf dm pos'
+  return $ AtPoint.atPoint opts hf dkMap pos'
 
 -- | Goto Definition.
 getDefinition :: NormalizedFilePath -> Position -> IdeAction (Maybe Location)
@@ -559,8 +559,8 @@ getDocMapRule =
 
       ifaces <- uses_ GetModIface tdeps
 
-      docMap <- liftIO $ evalGhcEnv hsc $ mkDocMap parsedDeps rf hmi (map hirModIface ifaces)
-      return ([],Just $ PDocMap docMap)
+      dkMap <- liftIO $ evalGhcEnv hsc $ mkDocMap parsedDeps rf hmi (map hirModIface ifaces)
+      return ([],Just dkMap)
 
 -- Typechecks a module.
 typeCheckRule :: Rules ()
