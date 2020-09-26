@@ -114,7 +114,7 @@ atPoint IdeOptions{} hf (DKMap dm km) pos = listToMaybe $ pointCommand hf pos ho
         prettyNames :: [T.Text]
         prettyNames = map prettyName names
         prettyName (Right n, dets) = T.unlines $
-          wrapHaskell (showName n <> maybe "" (" :: " <> ) (fmap prettyType $ identType dets <|> M.lookup n km))
+          wrapHaskell (showName n <> maybe "" ((" :: " <>) . prettyType) (identType dets <|> M.lookup n km))
           : definedAt n
           : catMaybes [ T.unlines . spanDocToMarkdown <$> M.lookup n dm
                       ]
