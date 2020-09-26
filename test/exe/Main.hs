@@ -2524,6 +2524,7 @@ completionTests :: TestTree
 completionTests
   = testGroup "completion"
     [ testGroup "non local" nonLocalCompletionTests
+    , testGroup "topLevel" topLevelCompletionTests
     , testGroup "local" localCompletionTests
     , testGroup "other" otherCompletionTests
     ]
@@ -2542,8 +2543,8 @@ completionTest name src pos expected = testSessionWait name $ do
             when expectedDocs $
                 assertBool ("Missing docs: " <> T.unpack _label) (isJust _documentation)
 
-localCompletionTests :: [TestTree]
-localCompletionTests = [
+topLevelCompletionTests :: [TestTree]
+topLevelCompletionTests = [
     completionTest
         "variable"
         ["bar = xx", "-- | haddock", "xxx :: ()", "xxx = ()", "-- | haddock", "data Xxx = XxxCon"]
@@ -2584,6 +2585,67 @@ localCompletionTests = [
         ["data XxRecord = XyRecord { x:: String, y:: Int}", "bar = Xy" ]
         (Position 1 19)
         [("XyRecord", CiConstructor, False, True)]
+    ]
+
+localCompletionTests :: [TestTree]
+localCompletionTests = [
+    completionTest
+        "argument"
+        ["bar (Just abcdef) abcdefg = abcd"]
+        (Position 0 32)
+        [("abcdef", CiFunction, True, False),
+         ("abcdefg", CiFunction , True, False)
+        ],
+    completionTest
+        "let"
+        ["bar = let (Just abcdef) = undefined"
+        ,"          abcdefg = let abcd = undefined in undefined"
+        ,"        in abcd"
+        ]
+        (Position 2 15)
+        [("abcdef", CiFunction, True, False),
+         ("abcdefg", CiFunction , True, False)
+        ],
+    completionTest
+        "where"
+        ["bar = abcd"
+        ,"  where (Just abcdef) = undefined"
+        ,"        abcdefg = let abcd = undefined in undefined"
+        ]
+        (Position 0 10)
+        [("abcdef", CiFunction, True, False),
+         ("abcdefg", CiFunction , True, False)
+        ],
+    completionTest
+        "do/1"
+        ["bar = do"
+        ,"  Just abcdef <- undefined"
+        ,"  abcd"
+        ,"  abcdefg <- undefined"
+        ,"  pure ()"
+        ]
+        (Position 2 6)
+        [("abcdef", CiFunction, True, False)
+        ],
+    completionTest
+        "do/2"
+        ["bar abcde = do"
+        ,"    Just [(abcdef,_)] <- undefined"
+        ,"    abcdefg <- undefined"
+        ,"    let abcdefgh = undefined"
+        ,"        (Just [abcdefghi]) = undefined"
+        ,"    abcd"
+        ,"  where"
+        ,"    abcdefghij = undefined"
+        ]
+        (Position 5 8)
+        [("abcde", CiFunction, True, False)
+        ,("abcdefghij", CiFunction, True, False)
+        ,("abcdef", CiFunction, True, False)
+        ,("abcdefg", CiFunction, True, False)
+        ,("abcdefgh", CiFunction, True, False)
+        ,("abcdefghi", CiFunction, True, False)
+        ]
     ]
 
 nonLocalCompletionTests :: [TestTree]
