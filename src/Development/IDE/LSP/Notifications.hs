@@ -25,14 +25,13 @@ import           Development.IDE.Types.Options
 import           Control.Monad.Extra
 import qualified Data.Aeson                       as A
 import           Data.Foldable                    as F
-import           Data.List (intercalate)
 import           Data.Maybe
 import qualified Data.HashMap.Strict              as M
 import qualified Data.HashSet                     as S
 import qualified Data.Text                        as Text
 
 import           Development.IDE.Core.FileStore   (setSomethingModified, setFileModified, typecheckParents)
-import           Development.IDE.Core.FileExists  (modifyFileExists)
+import           Development.IDE.Core.FileExists  (modifyFileExists, watchedGlobs)
 import           Development.IDE.Core.OfInterest
 
 
@@ -135,16 +134,14 @@ setHandlersNotifications = PartialHandlers $ \WithMessage{..} x -> return x
                                           (Just (A.toJSON regOptions))
               regOptions =
                 DidChangeWatchedFilesRegistrationOptions { _watchers = List watchers }
-              exts = optExtensions opts
-              extsBoot = fmap (\ext -> ext ++ "-boot") exts
               -- See Note [File existence cache and LSP file watchers] for why this exists, and the choice of watch kind
               watchKind = WatchKind { _watchCreate = True, _watchChange = False, _watchDelete = True}
               -- See Note [Which files should we watch?] for an explanation of why the pattern is the way that it is
               -- The patterns will be something like "**/.hs", i.e. "any number of directory segments,
               -- followed by a file with an extension 'hs'.
-              watcher ext = FileSystemWatcher { _globPattern = "**/*." ++ ext, _kind = Just watchKind }
+              watcher glob = FileSystemWatcher { _globPattern = glob, _kind = Just watchKind }
               -- We use multiple watchers instead of one using '{}' because lsp-test doesn't
               -- support that: https://github.com/bubba/lsp-test/issues/77
-              watchers = [ watcher ext | ext <- exts ++ extsBoot ]
+              watchers = [ watcher glob | glob <- watchedGlobs opts ]
 
             sendFunc $ LSP.ReqRegisterCapability req

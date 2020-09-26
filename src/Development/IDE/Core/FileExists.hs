@@ -5,6 +5,7 @@ module Development.IDE.Core.FileExists
   ( fileExistsRules
   , modifyFileExists
   , getFileExists
+  , watchedGlobs
   )
 where
 
@@ -13,18 +14,20 @@ import           Control.Exception
 import           Control.Monad.Extra
 import           Data.Binary
 import qualified Data.ByteString               as BS
-import Data.HashMap.Strict (HashMap)
+import           Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HashMap
 import           Data.Maybe
 import           Development.IDE.Core.FileStore
 import           Development.IDE.Core.IdeConfiguration
 import           Development.IDE.Core.Shake
 import           Development.IDE.Types.Location
+import           Development.IDE.Types.Options
 import           Development.Shake
 import           Development.Shake.Classes
 import           GHC.Generics
 import           Language.Haskell.LSP.Types.Capabilities
 import qualified System.Directory as Dir
+import qualified System.FilePath.Glob as Glob
 
 {- Note [File existence cache and LSP file watchers]
 Some LSP servers provide the ability to register file watches with the client, which will then notify
@@ -56,6 +59,12 @@ we don't do the checking ourselves. If the client lets us down, we will just be 
 If a file changes status between us asking for notifications and the client actually
 setting up the notifications, we might not get told about it. But this is a relatively
 small race window around startup, so we just don't worry about it.
+
+3. Using the fast path for files that we aren't watching.
+
+In this case we will fall back to the slow path, but cache that result forever (since
+it won't get invalidated by a client notification). To prevent this we guard the
+fast path by a check that the path also matches our watching patterns.
 -}
 
 -- See Note [File existence cache and LSP file watchers]
@@ -132,6 +141,9 @@ This is fine so long as we're watching the files we check most often, i.e. sourc
 -}
 
 -- | The list of file globs that we ask the client to watch.
+watchedGlobs :: IdeOptions -> [String]
+watchedGlobs opts = [ "**/*." ++ extIncBoot | ext <- optExtensions opts, extIncBoot <- [ext, ext ++ "-boot"]]
+
 -- | Installs the 'getFileExists' rules.
 --   Provides a fast implementation if client supports dynamic watched files.
 --   Creates a global state as a side effect in that case.
@@ -142,21 +154,27 @@ fileExistsRules ClientCapabilities{_workspace} vfs = do
   -- e.g. https://github.com/digital-asset/ghcide/issues/599
   addIdeGlobal . FileExistsMapVar =<< liftIO (newVar [])
 
+  extras <- getShakeExtrasRules
+  opts <- liftIO $ getIdeOptionsIO extras
+  let globs = watchedGlobs opts
+
   case () of
     _ | Just WorkspaceClientCapabilities{_didChangeWatchedFiles} <- _workspace
       , Just DidChangeWatchedFilesClientCapabilities{_dynamicRegistration} <- _didChangeWatchedFiles
       , Just True <- _dynamicRegistration
-        -> fileExistsRulesFast vfs
+        -> fileExistsRulesFast globs vfs
       | otherwise -> fileExistsRulesSlow vfs
 
 -- Requires an lsp client that provides WatchedFiles notifications, but assumes that this has already been checked.
-fileExistsRulesFast :: VFSHandle -> Rules ()
-fileExistsRulesFast vfs = do
-    defineEarlyCutoff $ \GetFileExists file -> do
-      isWf <- isWorkspaceFile file
-      if isWf
-          then fileExistsFast vfs file
-          else fileExistsSlow vfs file
+fileExistsRulesFast :: [String] -> VFSHandle -> Rules ()
+fileExistsRulesFast globs vfs =
+    let patterns = fmap Glob.compile globs
+        fpMatches fp = any (\p -> Glob.match p fp) patterns
+    in defineEarlyCutoff $ \GetFileExists file -> do
+        isWf <- isWorkspaceFile file
+        if isWf && fpMatches (fromNormalizedFilePath file)
+            then fileExistsFast vfs file
+            else fileExistsSlow vfs file
 
 {- Note [Invalidating file existence results]
 We have two mechanisms for getting file existence information:
