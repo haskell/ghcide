@@ -2106,11 +2106,12 @@ findDefinitionAndHoverTests = let
   tst (get, check) pos targetRange title = testSessionWithExtraFiles "hover" title $ \dir -> do
 
     -- Dirty the cache to check that definitions work even in the presence of iface files
-    let fooPath = dir </> "Foo.hs"
-    fooSource <- liftIO $ readFileUtf8 fooPath
-    fooDoc <- createDoc fooPath "haskell" fooSource
-    _ <- getHover fooDoc $ Position 4 3
-    closeDoc fooDoc
+    liftIO $ runInDir dir $ do
+      let fooPath = dir </> "Foo.hs"
+      fooSource <- liftIO $ readFileUtf8 fooPath
+      fooDoc <- createDoc fooPath "haskell" fooSource
+      _ <- getHover fooDoc $ Position 4 3
+      closeDoc fooDoc
 
     doc <- openTestDataDoc (dir </> sourceFilePath)
     void (skipManyTill anyMessage message :: Session WorkDoneProgressEndNotification)
