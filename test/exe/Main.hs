@@ -76,6 +76,7 @@ main = do
     , codeActionTests
     , codeLensesTests
     , outlineTests
+    , highlightTests
     , findDefinitionAndHoverTests
     , pluginSimpleTests
     , pluginParsedResultTests
@@ -2697,6 +2698,66 @@ otherCompletionTests = [
       (Position 3 11)
       [("Integer", CiStruct, True, True)]
   ]
+
+highlightTests :: TestTree
+highlightTests = testGroup "highlight"
+  [ testSessionWait "value" $ do
+    doc <- createDoc "A.hs" "haskell" source
+    _ <- waitForDiagnostics
+    highlights <- getHighlights doc (Position 2 2)
+    liftIO $ highlights @?=
+            [ DocumentHighlight (R 1 0 1 3) (Just HkRead)
+            , DocumentHighlight (R 2 0 2 3) (Just HkWrite)
+            , DocumentHighlight (R 3 6 3 9) (Just HkRead)
+            , DocumentHighlight (R 4 22 4 25) (Just HkRead)
+            ]
+  , testSessionWait "type" $ do
+    doc <- createDoc "A.hs" "haskell" source
+    _ <- waitForDiagnostics
+    highlights <- getHighlights doc (Position 1 8)
+    liftIO $ highlights @?=
+            [ DocumentHighlight (R 1 7 1 10) (Just HkRead)
+            , DocumentHighlight (R 2 11 2 14) (Just HkRead)
+            ]
+  , testSessionWait "local" $ do
+    doc <- createDoc "A.hs" "haskell" source
+    _ <- waitForDiagnostics
+    highlights <- getHighlights doc (Position 5 5)
+    liftIO $ highlights @?=
+            [ DocumentHighlight (R 5 4 5 7) (Just HkWrite)
+            , DocumentHighlight (R 5 10 5 13) (Just HkRead)
+            , DocumentHighlight (R 6 12 6 15) (Just HkRead)
+            ]
+  , testSessionWait "record" $ do
+    doc <- createDoc "A.hs" "haskell" recsource
+    _ <- waitForDiagnostics
+    highlights <- getHighlights doc (Position 3 15)
+    liftIO $ highlights @?=
+            [ DocumentHighlight (R 3 4 3 11) (Just HkWrite)
+            , DocumentHighlight (R 3 14 3 20) (Just HkRead)
+            ]
+    highlights <- getHighlights doc (Position 2 17)
+    liftIO $ highlights @?=
+            [ DocumentHighlight (R 2 17 2 23) (Just HkWrite)
+            , DocumentHighlight (R 3 4 3 11) (Just HkRead)
+            ]
+  ]
+  where
+    source = T.unlines
+      ["module Highlight where"
+      ,"foo :: Int"
+      ,"foo = 3 :: Int"
+      ,"bar = foo"
+      ,"  where baz = let x = foo in x"
+      ,"baz arg = arg + x"
+      ,"  where x = arg"
+      ]
+    recsource = T.unlines
+      ["{-# LANGUAGE RecordWildCards #-}"
+      ,"module Highlight where"
+      ,"data Rec = Rec { field1 :: Int, field2 :: Char }"
+      ,"foo Rec{..} = field2 + field1"
+      ]
 
 outlineTests :: TestTree
 outlineTests = testGroup
