@@ -59,7 +59,7 @@ mkDocMap sources rm hmi deps =
     getType n map
       | isTcOcc $ occName n = do
         kind <- lookupKind mod n
-        pure $ (maybe id (M.insert n) kind $ map)
+        pure $ maybe id (M.insert n) kind map
       | otherwise = pure map
     names = rights $ S.toList idents
     idents = M.keysSet rm

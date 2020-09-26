@@ -79,11 +79,12 @@ gotoDefinition
   :: MonadIO m
   => (Module -> MaybeT m (HieFile, FilePath))
   -> IdeOptions
+  -> M.Map ModuleName NormalizedFilePath
   -> HieASTs Type
   -> Position
   -> MaybeT m Location
-gotoDefinition getHieFile ideOpts srcSpans pos
-  = MaybeT $ fmap listToMaybe $ locationsAtPoint getHieFile ideOpts pos srcSpans
+gotoDefinition getHieFile ideOpts imports srcSpans pos
+  = MaybeT $ fmap listToMaybe $ locationsAtPoint getHieFile ideOpts imports pos srcSpans
 
 -- | Synopsis for the name at a given position.
 atPoint
@@ -114,7 +115,9 @@ atPoint IdeOptions{} hf (DKMap dm km) pos = listToMaybe $ pointCommand hf pos ho
         prettyName (Right n, dets) = T.unlines $
           wrapHaskell (showName n <> maybe "" (" :: " <> ) (prettyType <$> identType dets))
           : definedAt n
-          : (catMaybes [T.unlines . spanDocToMarkdown <$> M.lookup n dm, prettyType <$> M.lookup n km])
+          : catMaybes [ prettyType <$> M.lookup n km
+                      , T.unlines . spanDocToMarkdown <$> M.lookup n dm
+                      ]
         prettyName (Left m,_) = showName m
 
         prettyTypes = map (("_ :: "<>) . prettyType) types
@@ -143,12 +146,16 @@ locationsAtPoint
    . MonadIO m
   => (Module -> MaybeT m (HieFile, FilePath))
   -> IdeOptions
+  -> M.Map ModuleName NormalizedFilePath
   -> Position
   -> HieASTs Type
   -> m [Location]
-locationsAtPoint getHieFile _ideOptions pos ast =
-  let ns = concat $ pointCommand ast pos (rights . M.keys . nodeIdentifiers . nodeInfo)
-    in mapMaybeM (nameToLocation getHieFile) ns
+locationsAtPoint getHieFile _ideOptions imports pos ast =
+  let ns = concat $ pointCommand ast pos (M.keys . nodeIdentifiers . nodeInfo)
+      zeroPos = Position 0 0
+      zeroRange = Range zeroPos zeroPos
+      modToLocation m = fmap (\fs -> Location (fromNormalizedUri $ filePathToUri' fs) zeroRange) $ M.lookup m imports
+    in mapMaybeM (either (pure . modToLocation) $ nameToLocation getHieFile) ns
 
 -- | Given a 'Name' attempt to find the location where it is defined.
 nameToLocation :: Monad f => (Module -> MaybeT f (HieFile, String)) -> Name -> f (Maybe Location)

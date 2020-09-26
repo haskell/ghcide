@@ -21,6 +21,7 @@ import Development.IDE.Core.Shake (KnownTargets)
 import           Data.Hashable
 import           Data.Typeable
 import qualified Data.Set as S
+import qualified Data.Map as M
 import           Development.Shake
 import           GHC.Generics                             (Generic)
 
@@ -31,7 +32,7 @@ import           Development.IDE.Spans.Common
 import           Development.IDE.Spans.LocalBindings
 import           Development.IDE.Import.FindImports (ArtifactsLocation)
 import Data.ByteString (ByteString)
-
+import Language.Haskell.LSP.Types (NormalizedFilePath)
 
 -- NOTATION
 --   Foo+ means Foo for the dependencies
@@ -101,10 +102,16 @@ instance Show HiFileResult where
     show = show . hirModSummary
 
 -- | Save the uncompressed AST here, we compress it just before writing to disk
-data HieAstResult = HAR { hieModule :: Module, hieAst :: !(HieASTs Type), refMap :: !RefMap }
+data HieAstResult
+  = HAR
+  { hieModule :: Module
+  , hieAst :: !(HieASTs Type)
+  , refMap :: !RefMap
+  , importMap :: !(M.Map ModuleName NormalizedFilePath) -- ^ Where are the modules imported by this file located?
+  }
  
 instance NFData HieAstResult where
-    rnf (HAR m hf rm) = rnf m `seq` rwhnf hf `seq` rnf rm
+    rnf (HAR m hf rm im) = rnf m `seq` rwhnf hf `seq` rnf rm `seq` rnf im
  
 instance Show HieAstResult where
     show = show . hieModule
@@ -115,6 +122,7 @@ type instance RuleResult TypeCheck = TcModuleResult
 -- | The uncompressed HieAST
 type instance RuleResult GetHieAst = HieAstResult
 
+-- | A IntervalMap telling us what is in scope at each point
 type instance RuleResult GetBindings = Bindings
 
 data DocAndKindMap = DKMap {getDocMap :: !DocMap, getKindMap :: !KindMap}

@@ -59,6 +59,7 @@ import qualified Data.IntMap.Strict as IntMap
 import Data.IntMap.Strict (IntMap)
 import Data.List
 import qualified Data.Set                                 as Set
+import qualified Data.Map as M
 import qualified Data.Text                                as T
 import qualified Data.Text.Encoding                       as T
 import           Development.IDE.GHC.Error
@@ -137,7 +138,7 @@ getAtPoint file pos = fmap join $ runMaybeT $ do
   ide <- ask
   opts <- liftIO $ getIdeOptionsIO ide
 
-  (HAR _ hf _, mapping) <- useE GetHieAst file
+  (hieAst -> hf, mapping) <- useE GetHieAst file
   dkMap <- lift $ maybe (DKMap mempty mempty) fst <$> (runMaybeT $ useE GetDocMap file)
 
   !pos' <- MaybeT (return $ fromCurrentPosition mapping pos)
@@ -148,21 +149,21 @@ getDefinition :: NormalizedFilePath -> Position -> IdeAction (Maybe Location)
 getDefinition file pos = runMaybeT $ do
     ide <- ask
     opts <- liftIO $ getIdeOptionsIO ide
-    (HAR _ hf _, mapping) <- useE GetHieAst file
+    (HAR _ hf _ imports, mapping) <- useE GetHieAst file
     !pos' <- MaybeT (return $ fromCurrentPosition mapping pos)
-    AtPoint.gotoDefinition (getHieFile ide file) opts hf pos'
+    AtPoint.gotoDefinition (getHieFile ide file) opts imports hf pos'
 
 getTypeDefinition :: NormalizedFilePath -> Position -> IdeAction (Maybe [Location])
 getTypeDefinition file pos = runMaybeT $ do
     ide <- ask
     opts <- liftIO $ getIdeOptionsIO ide
-    (HAR _ hf _, mapping) <- useE GetHieAst file
+    (hieAst -> hf, mapping) <- useE GetHieAst file
     !pos' <- MaybeT (return $ fromCurrentPosition mapping pos)
     AtPoint.gotoTypeDefinition (getHieFile ide file) opts hf pos'
 
 highlightAtPoint :: NormalizedFilePath -> Position -> IdeAction (Maybe [DocumentHighlight])
 highlightAtPoint file pos = runMaybeT $ do
-    (HAR _ hf rf,mapping) <- useE GetHieAst file
+    (HAR _ hf rf _,mapping) <- useE GetHieAst file
     !pos' <- MaybeT (return $ fromCurrentPosition mapping pos)
     AtPoint.documentHighlight hf rf pos'
 
@@ -531,7 +532,9 @@ getHieAstsRule =
           (diagsHieGen, masts) <- liftIO $ generateHieAsts hsc (tmrModule tmr)
           pure (diagsHieGen, masts)
       let refmap = generateReferencesMap . getAsts <$> masts
-      pure (diags, HAR (ms_mod  $ tmrModSummary tmr) <$> masts <*> refmap)
+      im <- use GetLocatedImports f
+      let mkImports (fileImports, _) = M.fromList $ mapMaybe (\(m, mfp) -> (unLoc m,) . artifactFilePath <$> mfp)  fileImports
+      pure (diags, HAR (ms_mod  $ tmrModSummary tmr) <$> masts <*> refmap <*> fmap mkImports im)
 
 getBindingsRule :: Rules ()
 getBindingsRule =
@@ -544,7 +547,7 @@ getDocMapRule =
     define $ \GetDocMap file -> do
       hmi <- hirModIface <$> use_ GetModIface file
       hsc <- hscEnv <$> use_ GhcSessionDeps file
-      HAR _ _ rf <- use_ GetHieAst file
+      (refMap -> rf) <- use_ GetHieAst file
 
       deps <- maybe (TransitiveDependencies [] [] []) fst <$> useWithStale GetDependencies file
       let tdeps = transitiveModuleDeps deps

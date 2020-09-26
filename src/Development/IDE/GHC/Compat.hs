@@ -146,8 +146,6 @@ import InstEnv   (tidyClsInstDFun)
 import PatSyn    (PatSyn, tidyPatSynIds)
 #endif
 
-import TcRnTypes
-
 #if MIN_GHC_API_VERSION(8,6,0)
 import Development.IDE.GHC.HieAst (mkHieFile,enrichHie)
 import Development.IDE.GHC.HieBin
