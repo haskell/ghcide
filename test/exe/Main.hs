@@ -2250,7 +2250,11 @@ findDefinitionAndHoverTests = let
   , test  yes    yes    lclL33     lcb           "listcomp lookup"
   , test  yes    yes    mclL36     mcl           "top-level fn 1st clause"
   , test  yes    yes    mclL37     mcl           "top-level fn 2nd clause         #246"
-  , test  yes    broken spaceL37   space        "top-level fn on space #315"
+#if MIN_GHC_API_VERSION(8,10,0)
+  , test  yes    yes    spaceL37   space         "top-level fn on space #315"
+#else
+  , test  yes    broken spaceL37   space         "top-level fn on space #315"
+#endif
   , test  no     yes    docL41     doc           "documentation                     #7"
   , test  no     yes    eitL40     kindE         "kind of Either                  #273"
   , test  no     yes    intL40     kindI         "kind of Int                     #273"
