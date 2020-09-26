@@ -2193,7 +2193,7 @@ findDefinitionAndHoverTests = let
   opL18  = Position 22 22  ;  opp    = [mkR  22 13   22 17]
   aL18   = Position 22 20  ;  apmp   = [mkR  22 10   22 11]
   b'L19  = Position 23 13  ;  bp     = [mkR  23  6   23  7]
-  xvL20  = Position 24  8  ;  xvMsg  = [ExpectExternFail,   ExpectHoverText ["Data.Text.pack", ":: String -> Text"]]
+  xvL20  = Position 24  8  ;  xvMsg  = [ExpectExternFail,   ExpectHoverText ["pack", ":: String -> Text", "Data.Text"]]
   clL23  = Position 27 11  ;  cls    = [mkR  25  0   26 20, ExpectHoverText ["MyClass", "GotoHover.hs:26:1"]]
   clL25  = Position 29  9
   eclL15 = Position 19  8  ;  ecls   = [ExpectExternFail, ExpectHoverText ["Num", "Defined in ‘GHC.Num’"]]
@@ -2227,7 +2227,7 @@ findDefinitionAndHoverTests = let
   mkFindTests
   --      def    hover  look       expect
   [ test  yes    yes    fffL4      fff           "field in record definition"
-  , test  broken broken fffL8      fff           "field in record construction     #71"
+  , test  yes    yes    fffL8      fff           "field in record construction     #71"
   , test  yes    yes    fffL14     fff           "field name used as accessor"          -- 120 in Calculate.hs
   , test  yes    yes    aaaL14     aaa           "top-level name"                       -- 120
   , test  yes    yes    dcL7       tcDC          "data constructor record         #247"
