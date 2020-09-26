@@ -739,6 +739,8 @@ instance ( a ~ GhcPass p
          , ToHie (RScoped (LHsLocalBinds a))
          , ToHie (TScoped (LHsWcType (NoGhcTc a)))
          , ToHie (TScoped (LHsSigWcType (NoGhcTc a)))
+         , ToHie (TScoped (XExprWithTySig (GhcPass p)))
+         , ToHie (TScoped (XAppTypeE (GhcPass p)))
          , Data (HsExpr a)
          , Data (HsSplice a)
          , Data (HsTupArg a)
@@ -771,9 +773,9 @@ instance ( a ~ GhcPass p
         [ toHie a
         , toHie b
         ]
-      HsAppType _sig expr ->
+      HsAppType sig expr ->
         [ toHie expr
-        -- , toHie $ TS (ResolvedScopes []) sig
+        , toHie $ TS (ResolvedScopes []) sig
         ]
       OpApp _ a b c ->
         [ toHie a
@@ -831,9 +833,9 @@ instance ( a ~ GhcPass p
         [ toHie expr
         , toHie $ map (RC RecFieldAssign) upds
         ]
-      ExprWithTySig _ expr ->
+      ExprWithTySig sig expr ->
         [ toHie expr
-        -- , toHie $ TS (ResolvedScopes [mkLScope expr]) sig
+        , toHie $ TS (ResolvedScopes [mkLScope expr]) sig
         ]
       ArithSeq _ _ info ->
         [ toHie info
