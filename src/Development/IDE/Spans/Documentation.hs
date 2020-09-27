@@ -60,7 +60,7 @@ mkDocMap sources rm hmi =
       | otherwise = pure map
     names = rights $ S.toList idents
     idents = M.keysSet rm
-    mod = mi_module $ hm_iface $ hmi
+    mod = mi_module $ hm_iface hmi
 
 lookupKind :: GhcMonad m => Module -> Name -> m (Maybe Type)
 lookupKind mod =

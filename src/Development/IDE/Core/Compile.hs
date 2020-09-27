@@ -223,7 +223,7 @@ generateObjectCode hscEnv tmr = do
               (warnings, dot_o_fp) <-
                 withWarnings "object" $ \tweak -> liftIO $ do
                       _ <- hscGenHardCode session guts
-                                (tweak $ summary)
+                                (tweak summary)
                                 fp
                       compileFile session' StopLn (fp, Just (As False))
               let unlinked = DotO dot_o_fp

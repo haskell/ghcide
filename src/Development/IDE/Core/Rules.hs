@@ -857,11 +857,11 @@ regenerateHiFile sess f objNeeded = do
 
 extractHiFileResult :: HscEnv -> Bool -> Maybe TcModuleResult -> IO (IdeResult HiFileResult)
 extractHiFileResult _hsc _obj Nothing = pure ([],Nothing)
-extractHiFileResult _hsc False (Just tmr) = pure $ ([], Just $! HiFileResult (tmrModSummary tmr) (tmrModInfo tmr))
+extractHiFileResult _hsc False (Just tmr) = pure ([], Just $! HiFileResult (tmrModSummary tmr) (tmrModInfo tmr))
 extractHiFileResult hsc True (Just tmr) = do
   (diags, linkable) <- generateObjectCode hsc tmr
   let hmi = (tmrModInfo tmr) { hm_linkable = linkable }
-  pure $ (diags, Just $! HiFileResult (tmrModSummary tmr) hmi)
+  pure (diags, Just $! HiFileResult (tmrModSummary tmr) hmi)
 
 getClientSettingsRule :: Rules ()
 getClientSettingsRule = defineEarlyCutOffNoFile $ \GetClientSettings -> do
