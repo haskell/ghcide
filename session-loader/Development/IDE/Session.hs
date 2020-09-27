@@ -628,7 +628,7 @@ setOptions (ComponentOptions theOpts compRoot _) dflags = do
           -- also, it can confuse the interface stale check
           dontWriteHieFiles $
           setIgnoreInterfacePragmas $
-          -- setLinkerOptions $
+          setLinkerOptions $
           disableOptimisation $
           setUpTypedHoles $
           makeDynFlagsAbsolute compRoot dflags'
@@ -639,17 +639,15 @@ setOptions (ComponentOptions theOpts compRoot _) dflags = do
     return (final_df, targets)
 
 
-{-
 -- we don't want to generate object code so we compile to bytecode
 -- (HscInterpreted) which implies LinkInMemory
 -- HscInterpreted
 setLinkerOptions :: DynFlags -> DynFlags
 setLinkerOptions df = df {
     ghcLink   = LinkInMemory
-  , hscTarget = HscNothing
+  , hscTarget = HscAsm
   , ghcMode = CompManager
   }
--}
 
 setIgnoreInterfacePragmas :: DynFlags -> DynFlags
 setIgnoreInterfacePragmas df =
