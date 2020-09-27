@@ -501,6 +501,7 @@ setCacheDir logger prefix hscComponents comps dflags = do
     pure $ dflags
           & setHiDir cacheDir
           & setHieDir cacheDir
+          & setODir cacheDir
 
 
 renderCradleError :: NormalizedFilePath -> CradleError -> FileDiagnostic
@@ -624,7 +625,7 @@ setOptions (ComponentOptions theOpts compRoot _) dflags = do
           -- also, it can confuse the interface stale check
           dontWriteHieFiles $
           setIgnoreInterfacePragmas $
-          setLinkerOptions $
+          -- setLinkerOptions $
           disableOptimisation $
           setUpTypedHoles $
           makeDynFlagsAbsolute compRoot dflags'
@@ -635,6 +636,7 @@ setOptions (ComponentOptions theOpts compRoot _) dflags = do
     return (final_df, targets)
 
 
+{-
 -- we don't want to generate object code so we compile to bytecode
 -- (HscInterpreted) which implies LinkInMemory
 -- HscInterpreted
@@ -644,6 +646,7 @@ setLinkerOptions df = df {
   , hscTarget = HscNothing
   , ghcMode = CompManager
   }
+-}
 
 setIgnoreInterfacePragmas :: DynFlags -> DynFlags
 setIgnoreInterfacePragmas df =
@@ -656,6 +659,11 @@ setHiDir :: FilePath -> DynFlags -> DynFlags
 setHiDir f d =
     -- override user settings to avoid conflicts leading to recompilation
     d { hiDir      = Just f}
+
+setODir :: FilePath -> DynFlags -> DynFlags
+setODir f d =
+    -- override user settings to avoid conflicts leading to recompilation
+    d { objectDir = Just f}
 
 getCacheDir :: String -> [String] -> IO FilePath
 getCacheDir prefix opts = getXdgDirectory XdgCache (cacheDir </> prefix ++ "-" ++ opts_hash)

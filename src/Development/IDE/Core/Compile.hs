@@ -18,6 +18,7 @@ module Development.IDE.Core.Compile
   , addRelativeImport
   , mkTcModuleResult
   , generateByteCode
+  , generateObjectCode
   , generateHieAsts
   , writeHieFile
   , writeHiFile
@@ -46,6 +47,9 @@ import Development.IDE.Types.Location
 import Language.Haskell.LSP.Types (DiagnosticTag(..))
 
 import LoadIface (loadModuleInterface)
+import DriverPhases
+import HscTypes
+import DriverPipeline hiding (unP)
 
 import qualified Parser
 import           Lexer
@@ -61,7 +65,7 @@ import qualified Development.IDE.GHC.Compat     as Compat
 import           GhcMonad
 import           GhcPlugins                     as GHC hiding (fst3, (<>))
 import qualified HeaderInfo                     as Hdr
-import           HscMain                        (hscInteractive, hscSimplify)
+import           HscMain                        (hscInteractive, hscSimplify, hscGenHardCode)
 import           MkIface
 import           StringBuffer                   as SB
 import           TcRnMonad (tct_id, TcTyThing(AGlobal, ATcId), initTc, initIfaceLoad, tcg_th_coreplugins, tcg_binds)
@@ -160,15 +164,13 @@ newtype RunSimplifier = RunSimplifier Bool
 compileModule
     :: RunSimplifier
     -> HscEnv
-    -> [(ModSummary, HomeModInfo)]
     -> TcModuleResult
     -> IO (IdeResult (SafeHaskellMode, CgGuts, ModDetails))
-compileModule (RunSimplifier simplify) packageState deps tmr =
+compileModule (RunSimplifier simplify) packageState tmr =
     fmap (either (, Nothing) (second Just)) $
     evalGhcEnv packageState $
         catchSrcErrors "compile" $ do
-            setupEnv (deps ++ [(tmrModSummary tmr, tmrModInfo tmr)])
-
+            setupEnv [(tmrModSummary tmr, tmrModInfo tmr)]
             let tm = tmrModule tmr
             session <- getSession
             (warnings,desugar) <- withWarnings "compile" $ \tweak -> do
@@ -204,6 +206,29 @@ generateByteCode hscEnv deps tmr guts =
           let unlinked = BCOs bytecode sptEntries
           let linkable = LM (ms_hs_date summary) (ms_mod summary) [unlinked]
           pure (map snd warnings, linkable)
+
+
+generateObjectCode :: HscEnv -> TcModuleResult -> IO (IdeResult Linkable)
+generateObjectCode hscEnv tmr = do
+    (compile_diags, Just (_, guts, _)) <- compileModule (RunSimplifier True) hscEnv tmr
+    fmap (either (, Nothing) (second Just)) $
+        evalGhcEnv hscEnv $
+          catchSrcErrors "object" $ do
+              session <- getSession
+              let summary = pm_mod_summary $ tm_parsed_module $ tmrModule tmr
+              let dot_o =  ml_obj_file (ms_location summary)
+              let session' = session { hsc_dflags = (hsc_dflags session) { outputFile = Just dot_o }}
+                  fp = replaceExtension dot_o "s"
+              liftIO $ createDirectoryIfMissing True (takeDirectory fp)
+              (warnings, dot_o_fp) <-
+                withWarnings "object" $ \tweak -> liftIO $ do
+                      _ <- hscGenHardCode session guts
+                                (tweak $ summary)
+                                fp
+                      compileFile session' StopLn (fp, Just (As False))
+              let unlinked = DotO dot_o_fp
+              let linkable = LM (ms_hs_date summary) (ms_mod summary) [unlinked]
+              pure (compile_diags ++ map snd warnings, linkable)
 
 demoteTypeErrorsToWarnings :: ParsedModule -> ParsedModule
 demoteTypeErrorsToWarnings =
@@ -428,20 +453,14 @@ loadModuleHome mod_info e =
       mod_name = moduleName $ mi_module $ hm_iface mod_info
 
 -- | Load module interface.
-loadDepModuleIO :: ModIface -> Maybe Linkable -> HscEnv -> IO HscEnv
-loadDepModuleIO iface linkable hsc = do
-    details <- liftIO $ fixIO $ \details -> do
-        let hsc' = hsc { hsc_HPT = addToHpt (hsc_HPT hsc) mod (HomeModInfo iface details linkable) }
-        initIfaceLoad hsc' (typecheckIface iface)
-    let mod_info = HomeModInfo iface details linkable
+loadDepModuleIO :: HomeModInfo -> HscEnv -> IO HscEnv
+loadDepModuleIO mod_info hsc = do
     return $ loadModuleHome mod_info hsc
-    where
-      mod = moduleName $ mi_module iface
 
-loadDepModule :: GhcMonad m => ModIface -> Maybe Linkable -> m ()
-loadDepModule iface linkable = do
+loadDepModule :: GhcMonad m => HomeModInfo -> m ()
+loadDepModule mod_info = do
   e <- getSession
-  e' <- liftIO $ loadDepModuleIO iface linkable e
+  e' <- liftIO $ loadDepModuleIO mod_info e
   setSession e'
 
 -- | GhcMonad function to chase imports of a module given as a StringBuffer. Returns given module's
@@ -667,12 +686,13 @@ loadInterface
   :: MonadIO m => HscEnv
   -> ModSummary
   -> SourceModified
-  -> m ([FileDiagnostic], Maybe HiFileResult) -- ^ Action to regenerate an interface
+  -> Bool
+  -> (Bool -> m ([FileDiagnostic], Maybe HiFileResult)) -- ^ Action to regenerate an interface
   -> m ([FileDiagnostic], Maybe HiFileResult)
-loadInterface session ms sourceMod regen = do
+loadInterface session ms sourceMod objNeeded regen = do
     res <- liftIO $ checkOldIface session ms sourceMod Nothing
     case res of
-          (UpToDate, Just x)
+          (UpToDate, Just iface)
             -- If the module used TH splices when it was last
             -- compiled, then the recompilation check is not
             -- accurate enough (https://gitlab.haskell.org/ghc/ghc/-/issues/481)
@@ -687,9 +707,28 @@ loadInterface session ms sourceMod regen = do
             -- nothing at all has changed. Stability is just
             -- the same check that make is doing for us in
             -- one-shot mode.
-            | not (mi_used_th x) || SourceUnmodifiedAndStable == sourceMod
-            -> return ([], Just $ HiFileResult ms x)
-          (_reason, _) -> regen
+            | not (mi_used_th iface) || SourceUnmodifiedAndStable == sourceMod
+            -> do
+             linkable <-
+               if objNeeded
+               then liftIO $ findObjectLinkableMaybe (ms_mod ms) (ms_location ms)
+               else pure Nothing
+             let objUpToDate = not objNeeded || case linkable of
+                   Nothing -> False
+                   Just (LM obj_time _ _) -> obj_time > ms_hs_date ms
+             if objUpToDate
+             then do
+               hmi <- liftIO $ mkDetailsFromIface session iface linkable
+               return ([], Just $ HiFileResult ms hmi)
+             else regen objNeeded
+          (_reason, _) -> regen objNeeded
+
+mkDetailsFromIface :: HscEnv -> ModIface -> Maybe Linkable -> IO HomeModInfo
+mkDetailsFromIface session iface linkable = do
+  details <- liftIO $ fixIO $ \details -> do
+    let hsc' = session { hsc_HPT = addToHpt (hsc_HPT session) (moduleName $ mi_module iface) (HomeModInfo iface details linkable) }
+    initIfaceLoad hsc' (typecheckIface iface)
+  return (HomeModInfo iface details linkable)
 
 -- | Non-interactive, batch version of 'InteractiveEval.getDocs'.
 --   The interactive paths create problems in ghc-lib builds

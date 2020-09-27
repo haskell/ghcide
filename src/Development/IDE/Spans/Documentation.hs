@@ -15,6 +15,7 @@ module Development.IDE.Spans.Documentation (
 
 import           Control.Monad
 import           Control.Monad.Extra (findM)
+import           Data.Either
 import           Data.Foldable
 import           Data.List.Extra
 import qualified Data.Map as M
@@ -34,19 +35,17 @@ import           SrcLoc (RealLocated)
 import           GhcMonad
 import           Packages
 import           Name
+import           HscTypes
 import           Language.Haskell.LSP.Types (getUri, filePathToUri)
-import Data.Either
 
 mkDocMap
   :: GhcMonad m
   => [ParsedModule]
   -> RefMap
-  -> ModIface
-  -> [ModIface]
+  -> HomeModInfo
   -> m DocAndKindMap
-mkDocMap sources rm hmi deps =
-  do mapM_ (`loadDepModule` Nothing) (reverse deps)
-     loadDepModule hmi Nothing
+mkDocMap sources rm hmi =
+  do loadDepModule hmi
      d <- foldrM getDocs M.empty names
      k <- foldrM getType M.empty names
      pure $ DKMap d k
@@ -61,7 +60,7 @@ mkDocMap sources rm hmi deps =
       | otherwise = pure map
     names = rights $ S.toList idents
     idents = M.keysSet rm
-    mod = mi_module hmi
+    mod = mi_module $ hm_iface $ hmi
 
 lookupKind :: GhcMonad m => Module -> Name -> m (Maybe Type)
 lookupKind mod =

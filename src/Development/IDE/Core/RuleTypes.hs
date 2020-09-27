@@ -52,6 +52,9 @@ type instance RuleResult GetDependencies = TransitiveDependencies
 
 type instance RuleResult GetModuleGraph = DependencyInformation
 
+-- | Does this module need object code?
+type instance RuleResult NeedsObjectCode = Bool
+
 data GetKnownTargets = GetKnownTargets
   deriving (Show, Generic, Eq, Ord)
 instance Hashable GetKnownTargets
@@ -67,6 +70,7 @@ data TcModuleResult = TcModuleResult
     -- TypecheckedModule will always be Nothing, use the ModIface in the
     -- HomeModInfo instead
     , tmrModInfo    :: HomeModInfo
+    -- ^ Never includes the linkable
     , tmrDeferedError :: !Bool -- ^ Did we defer any type errors for this module?
     , tmrHieAsts :: !(Maybe (HieASTs Type)) -- ^ The HieASTs if we computed them
     }
@@ -83,17 +87,15 @@ data HiFileResult = HiFileResult
     { hirModSummary :: !ModSummary
     -- Bang patterns here are important to stop the result retaining
     -- a reference to a typechecked module
-    , hirModIface :: !ModIface
+    , hirHomeMod :: !HomeModInfo
+    -- ^ Includes the Linkable if we need object files
     }
-
-tmr_hiFileResult :: TcModuleResult -> HiFileResult
-tmr_hiFileResult tmr = HiFileResult modSummary modIface
-  where
-    modIface = hm_iface . tmrModInfo $ tmr
-    modSummary = tmrModSummary tmr
 
 hiFileFingerPrint :: HiFileResult -> ByteString
 hiFileFingerPrint = fingerprintToBS . getModuleHash . hirModIface
+
+hirModIface :: HiFileResult -> ModIface
+hirModIface = hm_iface . hirHomeMod
 
 instance NFData HiFileResult where
     rnf = rwhnf
@@ -195,6 +197,12 @@ data GetLocatedImports = GetLocatedImports
 instance Hashable GetLocatedImports
 instance NFData   GetLocatedImports
 instance Binary   GetLocatedImports
+
+data NeedsObjectCode = NeedsObjectCode
+    deriving (Eq, Show, Typeable, Generic)
+instance Hashable NeedsObjectCode
+instance NFData   NeedsObjectCode
+instance Binary   NeedsObjectCode
 
 data GetDependencyInformation = GetDependencyInformation
     deriving (Eq, Show, Typeable, Generic)

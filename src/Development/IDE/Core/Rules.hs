@@ -545,24 +545,21 @@ getBindingsRule =
 getDocMapRule :: Rules ()
 getDocMapRule =
     define $ \GetDocMap file -> do
-      hmi <- hirModIface <$> use_ GetModIface file
+      hmi <- hirHomeMod <$> use_ GetModIface file
       hsc <- hscEnv <$> use_ GhcSessionDeps file
       (refMap -> rf) <- use_ GetHieAst file
-
-      deps <- maybe (TransitiveDependencies [] [] []) fst <$> useWithStale GetDependencies file
-      let tdeps = transitiveModuleDeps deps
 
 -- When possible, rely on the haddocks embedded in our interface files
 -- This creates problems on ghc-lib, see comment on 'getDocumentationTryGhc'
 #if !defined(GHC_LIB)
       let parsedDeps = []
 #else
+      deps <- maybe (TransitiveDependencies [] [] []) fst <$> useWithStale GetDependencies file
+      let tdeps = transitiveModuleDeps deps
       parsedDeps <- uses_ GetParsedModule tdeps
 #endif
 
-      ifaces <- uses_ GetModIface tdeps
-
-      dkMap <- liftIO $ evalGhcEnv hsc $ mkDocMap parsedDeps rf hmi (map hirModIface ifaces)
+      dkMap <- liftIO $ evalGhcEnv hsc $ mkDocMap parsedDeps rf hmi
       return ([],Just dkMap)
 
 -- Typechecks a module.
@@ -642,10 +639,10 @@ typeCheckRuleDefinition hsc pm isFoi source = do
 generateCore :: RunSimplifier -> NormalizedFilePath -> Action (IdeResult (SafeHaskellMode, CgGuts, ModDetails))
 generateCore runSimplifier file = do
     deps <- use_ GetDependencies file
-    (tm:tms) <- uses_ TypeCheck (file:transitiveModuleDeps deps)
+    (tm:_) <- uses_ TypeCheck (file:transitiveModuleDeps deps)
     setPriority priorityGenerateCore
     packageState <- hscEnv <$> use_ GhcSession file
-    liftIO $ compileModule runSimplifier packageState [(tmrModSummary x, tmrModInfo x) | x <- tms] tm
+    liftIO $ compileModule runSimplifier packageState tm
 
 generateCoreRule :: Rules ()
 generateCoreRule =
@@ -709,37 +706,21 @@ loadGhcSession = do
 ghcSessionDepsDefinition :: NormalizedFilePath -> Action (IdeResult HscEnvEq)
 ghcSessionDepsDefinition file = do
         hsc <- hscEnv <$> use_ GhcSession file
-        (ms,_) <- useWithStale_ GetModSummaryWithoutTimestamps file
         (deps,_) <- useWithStale_ GetDependencies file
         let tdeps = transitiveModuleDeps deps
         ifaces <- uses_ GetModIface tdeps
 
-        -- Figure out whether we need TemplateHaskell or QuasiQuotes support
-        let graph_needs_th_qq = needsTemplateHaskellOrQQ $ hsc_mod_graph hsc
-            file_uses_th_qq   = uses_th_qq $ ms_hspp_opts ms
-            any_uses_th_qq    = graph_needs_th_qq || file_uses_th_qq
-
-        bytecodes <- if any_uses_th_qq
-            then -- If we use TH or QQ, we must obtain the bytecode
-            fmap Just <$> uses_ GenerateByteCode (transitiveModuleDeps deps)
-            else
-            pure $ repeat Nothing
-
         -- Currently GetDependencies returns things in topological order so A comes before B if A imports B.
         -- We need to reverse this as GHC gets very unhappy otherwise and complains about broken interfaces.
         -- Long-term we might just want to change the order returned by GetDependencies
-        let inLoadOrder = reverse (zipWith unpack ifaces bytecodes)
+        let inLoadOrder = reverse (map hirHomeMod ifaces)
 
         (session',_) <- liftIO $ runGhcEnv hsc $ do
             setupFinderCache (map hirModSummary ifaces)
-            mapM_ (uncurry loadDepModule) inLoadOrder
+            mapM_ loadDepModule inLoadOrder
 
         res <- liftIO $ newHscEnvEq "" session' []
         return ([], Just res)
- where
-  unpack HiFileResult{..} bc = (hirModIface, bc)
-  uses_th_qq dflags =
-    xopt LangExt.TemplateHaskell dflags || xopt LangExt.QuasiQuotes dflags
 
 getModIfaceFromDiskRule :: Rules ()
 getModIfaceFromDiskRule = defineEarlyCutoff $ \GetModIfaceFromDisk f -> do
@@ -749,7 +730,8 @@ getModIfaceFromDiskRule = defineEarlyCutoff $ \GetModIfaceFromDisk f -> do
       Nothing -> return (Nothing, (diags_session, Nothing))
       Just session -> do
         sourceModified <- use_ IsHiFileStable f
-        r <- loadInterface (hscEnv session) ms sourceModified (regenerateHiFile session f)
+        needsObj <- use_ NeedsObjectCode f
+        r <- loadInterface (hscEnv session) ms sourceModified needsObj (regenerateHiFile session f)
         case r of
             (diags, Just x) -> do
                 let fp = Just (hiFileFingerPrint x)
@@ -827,23 +809,26 @@ getModIfaceRule = defineEarlyCutoff $ \GetModIface f -> do
   case fileOfInterest of
     IsFOI _ -> do
       -- Never load from disk for files of interest
+      hsc <- hscEnv <$> use_ GhcSession f
       tmr <- use TypeCheck f
-      let !hiFile = extractHiFileResult tmr
+      needsObj <- use_ NeedsObjectCode f
+      (diags, !hiFile) <- liftIO $ extractHiFileResult hsc needsObj tmr
       let fp = hiFileFingerPrint <$> hiFile
-      return (fp, ([], hiFile))
+      return (fp, (diags, hiFile))
     NotFOI -> do
       hiFile <- use GetModIfaceFromDisk f
       let fp = hiFileFingerPrint <$> hiFile
       return (fp, ([], hiFile))
 #else
+    hsc <- hscEnv <$> use_ GhcSession f
     tm <- use TypeCheck f
-    let !hiFile = extractHiFileResult tm
+    !hiFile <- liftIO $ extractHiFileResult hsc False tm
     let fp = hiFileFingerPrint <$> hiFile
     return (fp, ([], tmr_hiFileResult <$> tm))
 #endif
 
-regenerateHiFile :: HscEnvEq -> NormalizedFilePath -> Action ([FileDiagnostic], Maybe HiFileResult)
-regenerateHiFile sess f = do
+regenerateHiFile :: HscEnvEq -> NormalizedFilePath -> Bool -> Action ([FileDiagnostic], Maybe HiFileResult)
+regenerateHiFile sess f objNeeded = do
     let hsc = hscEnv sess
         -- After parsing the module remove all package imports referring to
         -- these packages as we have already dealt with what they map to.
@@ -867,20 +852,38 @@ regenerateHiFile sess f = do
             -- on the parsed module and the typecheck rules
             (diags', tmr) <- typeCheckRuleDefinition hsc pm NotFOI (Just source)
             -- Bang pattern is important to avoid leaking 'tmr'
-            let !res = extractHiFileResult tmr
-            return (diags <> diags', res)
+            (diags'', !res) <- liftIO $ extractHiFileResult hsc objNeeded tmr
+            return (diags <> diags' <> diags'', res)
 
-extractHiFileResult :: Maybe TcModuleResult -> Maybe HiFileResult
-extractHiFileResult Nothing = Nothing
-extractHiFileResult (Just tmr) =
-    -- Bang patterns are important to force the inner fields
-    Just $! tmr_hiFileResult tmr
+extractHiFileResult :: HscEnv -> Bool -> Maybe TcModuleResult -> IO (IdeResult HiFileResult)
+extractHiFileResult _hsc _obj Nothing = pure ([],Nothing)
+extractHiFileResult _hsc False (Just tmr) = pure $ ([], Just $! HiFileResult (tmrModSummary tmr) (tmrModInfo tmr))
+extractHiFileResult hsc True (Just tmr) = do
+  (diags, linkable) <- generateObjectCode hsc tmr
+  let hmi = (tmrModInfo tmr) { hm_linkable = linkable }
+  pure $ (diags, Just $! HiFileResult (tmrModSummary tmr) hmi)
 
 getClientSettingsRule :: Rules ()
 getClientSettingsRule = defineEarlyCutOffNoFile $ \GetClientSettings -> do
   alwaysRerun
   settings <- clientSettings <$> getIdeConfiguration
   return (BS.pack . show . hash $ settings, settings)
+
+needsObjectCodeRule :: Rules ()
+needsObjectCodeRule = defineEarlyCutoff $ \NeedsObjectCode file -> do
+  (ms,_) <- useWithStale_ GetModSummaryWithoutTimestamps file
+  -- A file needs object code if it uses TH or any file that depends on it uses TH
+  res <-
+    if uses_th_qq ms
+    then pure True
+    else do
+      revs <- reverseDependencies file <$> useNoFile_ GetModuleGraph
+      deps <- uses_ GetModSummaryWithoutTimestamps revs
+      pure $ any uses_th_qq deps
+  pure (Just $ BS.pack $ show $ hash res, ([], Just res))
+  where
+    uses_th_qq (ms_hspp_opts -> dflags) =
+      xopt LangExt.TemplateHaskell dflags || xopt LangExt.QuasiQuotes dflags
 
 -- | A rule that wires per-file rules together
 mainRule :: Rules ()
@@ -904,6 +907,7 @@ mainRule = do
     getClientSettingsRule
     getHieAstsRule
     getBindingsRule
+    needsObjectCodeRule
 
 -- | Given the path to a module src file, this rule returns True if the
 -- corresponding `.hi` file is stable, that is, if it is newer
