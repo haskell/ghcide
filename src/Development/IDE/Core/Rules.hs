@@ -822,9 +822,9 @@ getModIfaceRule = defineEarlyCutoff $ \GetModIface f -> do
 #else
     hsc <- hscEnv <$> use_ GhcSession f
     tm <- use TypeCheck f
-    !hiFile <- liftIO $ extractHiFileResult hsc False tm
+    (diags, !hiFile) <- liftIO $ extractHiFileResult hsc False tm
     let fp = hiFileFingerPrint <$> hiFile
-    return (fp, ([], tmr_hiFileResult <$> tm))
+    return (fp, (diags, hiFile))
 #endif
 
 regenerateHiFile :: HscEnvEq -> NormalizedFilePath -> Bool -> Action ([FileDiagnostic], Maybe HiFileResult)
