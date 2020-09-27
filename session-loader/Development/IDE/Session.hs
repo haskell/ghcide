@@ -118,9 +118,12 @@ loadSession dir = do
         -- files in the project so that `knownFiles` can learn about them and
         -- we can generate a complete module graph
     let extendKnownTargets newTargets = do
-          knownTargets <- forM newTargets $ \TargetDetails{..} -> do
-            found <- filterM (IO.doesFileExist . fromNormalizedFilePath) targetLocations
-            return (targetTarget, found)
+          knownTargets <- forM newTargets $ \TargetDetails{..} ->
+            case targetTarget of
+              TargetFile f -> pure (targetTarget, [f])
+              TargetModule _ -> do
+                found <- filterM (IO.doesFileExist . fromNormalizedFilePath) targetLocations
+                return (targetTarget, found)
           modifyVar_ knownTargetsVar $ traverseHashed $ \known -> do
             let known' = HM.unionWith (<>) known $ HM.fromList knownTargets
             when (known /= known') $
