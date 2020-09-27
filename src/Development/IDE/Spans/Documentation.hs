@@ -79,7 +79,7 @@ getDocumentationsTryGhc mod sources names = do
       Left _ -> mapM mkSpanDocText names
       Right res -> zipWithM unwrap res names
   where
-    unwrap (Right (Just docs, _)) n = SpanDocString <$> pure docs <*> getUris n
+    unwrap (Right (Just docs, _)) n = SpanDocString docs <$> getUris n
     unwrap _ n = mkSpanDocText n
 
     mkSpanDocText name =

@@ -93,7 +93,11 @@ import GHC hiding (
     )
 import qualified HeaderInfo as Hdr
 import Avail
+#if MIN_GHC_API_VERSION(8,8,0)
 import Data.List (foldl')
+#else
+import Data.List (foldl', isSuffixOf)
+#endif
 import ErrUtils (ErrorMessages)
 import FastString (FastString)
 import ConLike   (ConLike (PatSynCon))
@@ -126,7 +130,6 @@ import GhcPlugins (Unfolding(BootUnfolding), setIdUnfolding, tidyTopType, setIdT
 import qualified EnumSet
 
 import GhcPlugins (srcErrorMessages, Unfolding(BootUnfolding), setIdUnfolding, tidyTopType, setIdType, globaliseId, isWiredInName, elemNameSet, idName, filterOut)
-import Data.List (isSuffixOf)
 
 import Control.Exception (catch)
 import System.IO
