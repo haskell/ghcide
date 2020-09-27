@@ -221,9 +221,13 @@ generateObjectCode hscEnv tmr = do
                   fp = replaceExtension dot_o "s"
               liftIO $ createDirectoryIfMissing True (takeDirectory fp)
               (warnings, dot_o_fp) <-
-                withWarnings "object" $ \tweak -> liftIO $ do
+                withWarnings "object" $ \_tweak -> liftIO $ do
                       _ <- hscGenHardCode session guts
-                                (tweak summary)
+#if MIN_GHC_API_VERSION(8,10,0)
+                                (ms_location summary)
+#else
+                                (_tweak summary)
+#endif
                                 fp
                       compileFile session' StopLn (fp, Just (As False))
               let unlinked = DotO dot_o_fp
