@@ -8,13 +8,12 @@ module Experiments
 , Config(..)
 , Verbosity(..)
 , CabalStack(..)
+, SetupResult(..)
 , experiments
 , configP
 , defConfig
 , output
 , setup
-, runBench
-, runBenchmarks
 ) where
 import Control.Applicative.Combinators (skipManyTill)
 import Control.Concurrent
@@ -122,20 +121,8 @@ experiments =
 
 ---------------------------------------------------------------------------------------------
 
-examplePackageName :: HasConfig => String
-examplePackageName = name
-  where
-      (name, _, _) = examplePackageUsed ?config
-
-examplePackage :: HasConfig => String
-examplePackage = name <> "-" <> showVersion version
-  where
-      (name, version, _) = examplePackageUsed ?config
-
 exampleModulePath :: HasConfig => FilePath
-exampleModulePath = path
-  where
-      (_,_, path) = examplePackageUsed ?config
+exampleModulePath = exampleModule (example ?config)
 
 examplesPath :: FilePath
 examplesPath = "bench/example"
@@ -153,8 +140,12 @@ data Config = Config
     repetitions :: Maybe Natural,
     ghcide :: FilePath,
     timeoutLsp :: Int,
-    examplePackageUsed :: (String, Version, String)
+    example :: Example
   }
+  deriving (Eq, Show)
+data Example
+    = GetPackage {exampleName, exampleModule :: String, exampleVersion :: Version}
+    | UsePackage {examplePath :: FilePath, exampleModule :: String}
   deriving (Eq, Show)
 
 defConfig :: Config
@@ -184,9 +175,15 @@ configP =
     <*> optional (option auto (long "samples" <> metavar "NAT" <> help "override sampling count"))
     <*> strOption (long "ghcide" <> metavar "PATH" <> help "path to ghcide" <> value "ghcide")
     <*> option auto (long "timeout" <> value 60 <> help "timeout for waiting for a ghcide response")
-    <*> ( (,,) <$> strOption (long "example-package-name" <> value "Cabal")
+    <*> ( GetPackage <$> strOption (long "example-package-name" <> value "Cabal")
+               <*> moduleOption
                <*> option versionP (long "example-package-version" <> value (makeVersion [3,2,0,0]))
-               <*> strOption (long "example-package-module" <> metavar "PATH" <> value "Distribution/Simple.hs"))
+         <|>
+          UsePackage <$> strOption (long "example-path")
+                     <*> moduleOption
+         )
+  where
+      moduleOption = strOption (long "example-module" <> metavar "PATH" <> value "Distribution/Simple.hs")
 
 versionP :: ReadM Version
 versionP = maybeReader $ extract . readP_to_S parseVersion
@@ -231,13 +228,13 @@ bench name defSamples userExperiment =
   where
     experiment () = userExperiment
 
-runBenchmarks :: HasConfig => [Bench] -> IO ()
-runBenchmarks allBenchmarks = do
+runBenchmarksFun :: HasConfig => FilePath -> [Bench] -> IO ()
+runBenchmarksFun dir allBenchmarks = do
   let benchmarks = [ b{samples = fromMaybe (samples b) (repetitions ?config) }
                    | b <- allBenchmarks
                    , select b ]
   results <- forM benchmarks $ \b@Bench{name} ->
-                let run dir = runSessionWithConfig conf (cmd name dir) lspTestCaps dir
+                let run = runSessionWithConfig conf (cmd name dir) lspTestCaps dir
                 in (b,) <$> runBench run b
 
   -- output raw data as CSV
@@ -338,9 +335,13 @@ waitForProgressDone :: Session ()
 waitForProgressDone =
       void(skipManyTill anyMessage message :: Session WorkDoneProgressEndNotification)
 
-runBench :: (?config::Config) => (String -> Session BenchRun -> IO BenchRun) -> Bench -> IO BenchRun
+runBench ::
+  (?config :: Config) =>
+  (Session BenchRun -> IO BenchRun) ->
+  Bench ->
+  IO BenchRun
 runBench runSess Bench {..} = handleAny (\e -> print e >> return badRun)
-  $ runSess dir
+  $ runSess
   $ do
     doc <- openDoc exampleModulePath "haskell"
     (startup, _) <- duration $ do
@@ -383,51 +384,63 @@ runBench runSess Bench {..} = handleAny (\e -> print e >> return badRun)
 
     return BenchRun {..}
   where
-    dir = "bench/example/" <> examplePackage
     gcStats = escapeSpaces (name <> ".benchmark-gcStats")
 
-setup :: HasConfig => IO (IO ())
+data SetupResult = SetupResult {
+    runBenchmarks :: [Bench] -> IO (),
+    cleanUp :: IO ()
+}
+
+setup :: HasConfig => IO SetupResult
 setup = do
   alreadyExists <- doesDirectoryExist examplesPath
   when alreadyExists $ removeDirectoryRecursive examplesPath
-  let path = examplesPath </> examplePackage
-  case buildTool ?config of
-      Cabal -> do
-        callCommand $ "cabal get -v0 " <> examplePackage <> " -d " <> examplesPath
-        writeFile
-            (path </> "hie.yaml")
-            ("cradle: {cabal: {component: " <> show examplePackageName <> "}}")
-        -- Need this in case there is a parent cabal.project somewhere
-        writeFile
-            (path </> "cabal.project")
-            "packages: ."
-        writeFile
-            (path </> "cabal.project.local")
-            ""
-      Stack -> do
-        callCommand $ "stack --silent unpack " <> examplePackage <> " --to " <> examplesPath
-        -- Generate the stack descriptor to match the one used to build ghcide
-        stack_yaml <- fromMaybe "stack.yaml" <$> getEnv "STACK_YAML"
-        stack_yaml_lines <- lines <$> readFile stack_yaml
-        writeFile (path </> stack_yaml)
-                  (unlines $
-                   "packages: [.]" :
-                    [ l
-                    | l <- stack_yaml_lines
-                    , any (`isPrefixOf` l)
-                        ["resolver"
-                        ,"allow-newer"
-                        ,"compiler"]
-                    ]
-                  )
+  dir <- case example ?config of
+      UsePackage{..} -> return examplePath
+      GetPackage{..} -> do
+        let path = examplesPath </> package
+            package = exampleName <> "-" <> showVersion exampleVersion
+        case buildTool ?config of
+            Cabal -> do
+                callCommand $ "cabal get -v0 " <> package <> " -d " <> examplesPath
+                writeFile
+                    (path </> "hie.yaml")
+                    ("cradle: {cabal: {component: " <> exampleName <> "}}")
+                -- Need this in case there is a parent cabal.project somewhere
+                writeFile
+                    (path </> "cabal.project")
+                    "packages: ."
+                writeFile
+                    (path </> "cabal.project.local")
+                    ""
+            Stack -> do
+                callCommand $ "stack --silent unpack " <> package <> " --to " <> examplesPath
+                -- Generate the stack descriptor to match the one used to build ghcide
+                stack_yaml <- fromMaybe "stack.yaml" <$> getEnv "STACK_YAML"
+                stack_yaml_lines <- lines <$> readFile stack_yaml
+                writeFile (path </> stack_yaml)
+                        (unlines $
+                        "packages: [.]" :
+                            [ l
+                            | l <- stack_yaml_lines
+                            , any (`isPrefixOf` l)
+                                ["resolver"
+                                ,"allow-newer"
+                                ,"compiler"]
+                            ]
+                        )
 
-        writeFile
-            (path </> "hie.yaml")
-            ("cradle: {stack: {component: " <> show (examplePackageName <> ":lib") <> "}}")
+                writeFile
+                    (path </> "hie.yaml")
+                    ("cradle: {stack: {component: " <> show (exampleName <> ":lib") <> "}}")
+        return path
 
   whenJust (shakeProfiling ?config) $ createDirectoryIfMissing True
 
-  return $ removeDirectoryRecursive examplesPath
+  let cleanUp = removeDirectoryRecursive examplesPath
+      runBenchmarks = runBenchmarksFun dir
+
+  return SetupResult{..}
 
 --------------------------------------------------------------------------------------------
 
