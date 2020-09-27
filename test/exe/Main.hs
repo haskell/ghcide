@@ -587,8 +587,9 @@ watchedFilesTests = testGroup "watched files"
       -- Expect 1 subscription: we only ever send one
       liftIO $ length watchedFileRegs @?= 1
 
-  , knownBrokenInWindows $ testSession' "non workspace file" $ \sessionDir -> do
-      liftIO $ writeFile (sessionDir </> "hie.yaml") "cradle: {direct: {arguments: [\"-i/tmp\", \"A\", \"WatchedFilesMissingModule\"]}}"
+  , testSession' "non workspace file" $ \sessionDir -> do
+      tmpDir <- liftIO getTemporaryDirectory
+      liftIO $ writeFile (sessionDir </> "hie.yaml") ("cradle: {direct: {arguments: [\"-i" <> tmpDir <> "\", \"A\", \"WatchedFilesMissingModule\"]}}")
       _doc <- createDoc "A.hs" "haskell" "{-# LANGUAGE NoImplicitPrelude#-}\nmodule A where\nimport WatchedFilesMissingModule"
       watchedFileRegs <- getWatchedFilesSubscriptionsUntil @PublishDiagnosticsNotification
 
