@@ -8,7 +8,7 @@ buildTool: stack
 ghcideBench: ghcide-bench
 
 # Output folder for the experiments
-outputFolder: bench-hist
+outputFolder: bench-results
 
 # Example project used to run the experiments
 # Can either be a Hackage package (name,version)

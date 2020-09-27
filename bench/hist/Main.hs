@@ -2,14 +2,14 @@
 
     A Shake script to analyze the performance of ghcide over the git history of the project
 
-    Driven by a config file `bench/hist.yaml` containing the list of Git references to analyze.
+    Driven by a config file `bench/config.yaml` containing the list of Git references to analyze.
 
     Builds each one of them and executes a set of experiments using the ghcide-bench suite.
 
     The results of the benchmarks and the analysis are recorded in the file
     system with the following structure:
 
-    bench-hist
+    bench-results
     ├── <git-reference>                       - one folder per version
     │   ├── <experiment>.benchmark-gcStats    - RTS -s output
     │   ├── <experiment>.csv                  - stats for the experiment
@@ -31,8 +31,8 @@
 
    To build a specific analysis, enumerate the desired file artifacts
 
-   > stack bench --ba "bench-hist/HEAD/results.csv bench-hist/HEAD/edit.diff.svg"
-   > cabal bench --benchmark-options "bench-hist/HEAD/results.csv bench-hist/HEAD/edit.diff.svg"
+   > stack bench --ba "bench-results/HEAD/results.csv bench-results/HEAD/edit.diff.svg"
+   > cabal bench --benchmark-options "bench-results/HEAD/results.csv bench-results/HEAD/edit.diff.svg"
 
  -}
 {-# LANGUAGE DeriveAnyClass    #-}
@@ -62,7 +62,7 @@ import qualified Text.ParserCombinators.ReadP as P
 import Text.Read (Read (..), get, readMaybe, readP_to_Prec)
 
 config :: FilePath
-config = "bench/hist.yaml"
+config = "bench/config.yaml"
 
 -- | Read the config without dependency
 readConfigIO :: FilePath -> IO Config
