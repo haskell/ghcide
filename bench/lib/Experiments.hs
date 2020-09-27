@@ -9,11 +9,13 @@ module Experiments
 , Verbosity(..)
 , CabalStack(..)
 , SetupResult(..)
+, Example(..)
 , experiments
 , configP
 , defConfig
 , output
 , setup
+, exampleToOptions
 ) where
 import Control.Applicative.Combinators (skipManyTill)
 import Control.Concurrent
@@ -24,6 +26,7 @@ import Data.Char (isDigit)
 import Data.List
 import Data.Maybe
 import Data.Version
+import Experiments.Types
 import Language.Haskell.LSP.Test
 import Language.Haskell.LSP.Types
 import Language.Haskell.LSP.Types.Capabilities
@@ -127,26 +130,6 @@ exampleModulePath = exampleModule (example ?config)
 examplesPath :: FilePath
 examplesPath = "bench/example"
 
-data Verbosity = Quiet | Normal | All
-  deriving (Eq, Show)
-data Config = Config
-  { verbosity :: !Verbosity,
-    -- For some reason, the Shake profile files are truncated and won't load
-    shakeProfiling :: !(Maybe FilePath),
-    outputCSV :: !FilePath,
-    buildTool :: !CabalStack,
-    ghcideOptions :: ![String],
-    matches :: ![String],
-    repetitions :: Maybe Natural,
-    ghcide :: FilePath,
-    timeoutLsp :: Int,
-    example :: Example
-  }
-  deriving (Eq, Show)
-data Example
-    = GetPackage {exampleName, exampleModule :: String, exampleVersion :: Version}
-    | UsePackage {examplePath :: FilePath, exampleModule :: String}
-  deriving (Eq, Show)
 
 defConfig :: Config
 Success defConfig = execParserPure defaultPrefs (info configP fullDesc) []
@@ -154,9 +137,6 @@ Success defConfig = execParserPure defaultPrefs (info configP fullDesc) []
 quiet, verbose :: Config -> Bool
 verbose = (== All) . verbosity
 quiet   = (== Quiet) . verbosity
-
-data CabalStack = Cabal | Stack
-  deriving (Eq, Show)
 
 type HasConfig = (?config :: Config)
 
@@ -437,7 +417,9 @@ setup = do
 
   whenJust (shakeProfiling ?config) $ createDirectoryIfMissing True
 
-  let cleanUp = removeDirectoryRecursive examplesPath
+  let cleanUp = case example ?config of
+        GetPackage{} -> removeDirectoryRecursive examplesPath
+        UsePackage{} -> return ()
       runBenchmarks = runBenchmarksFun dir
 
   return SetupResult{..}
