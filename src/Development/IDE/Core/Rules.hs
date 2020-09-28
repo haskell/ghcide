@@ -96,6 +96,10 @@ import Data.Hashable
 import qualified Data.HashSet as HashSet
 import qualified Data.HashMap.Strict as HM
 
+import qualified GHC
+import Control.DeepSeq (rwhnf)
+import Development.IDE.GHC.Warnings (withWarnings)
+
 -- | This is useful for rules to convert rules that can only produce errors or
 -- a result into the more general IdeResult type that supports producing
 -- warnings while also producing a result.
@@ -638,6 +642,22 @@ typeCheckRuleDefinition hsc pm isFoi source = do
       void $ uses_ GetModificationTime (map toNormalizedFilePath' used_files)
     return r
 
+instance NFData DesugaredModule where
+  rnf = rwhnf
+instance Show DesugaredModule where
+  show = const "TODO"
+
+desugarRule :: Rules ()
+desugarRule = define $ \Desugar file -> do
+    tcMod <- tmrModule <$> use_ TypeCheck file
+    hsc <- hscEnv <$> use_ GhcSessionDeps file
+    (hsc', (stuff, dsMod)) <- liftIO $
+        runGhcEnv hsc $
+            -- catchSrcErrors "typecheck" $
+                withWarnings "desugar" $ \tweak ->
+                    GHC.desugarModule tcMod
+    let (warnReasons, diagnostics) = unzip stuff
+    return (diagnostics, Just dsMod)
 
 generateCore :: RunSimplifier -> NormalizedFilePath -> Action (IdeResult (SafeHaskellMode, CgGuts, ModDetails))
 generateCore runSimplifier file = do
@@ -891,6 +911,7 @@ mainRule = do
     reportImportCyclesRule
     getDependenciesRule
     typeCheckRule
+    desugarRule
     getDocMapRule
     generateCoreRule
     generateByteCodeRule

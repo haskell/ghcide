@@ -109,15 +109,17 @@ data HieAstResult
   , refMap :: !RefMap
   , importMap :: !(M.Map ModuleName NormalizedFilePath) -- ^ Where are the modules imported by this file located?
   }
- 
+
 instance NFData HieAstResult where
     rnf (HAR m hf rm im) = rnf m `seq` rwhnf hf `seq` rnf rm `seq` rnf im
- 
+
 instance Show HieAstResult where
     show = show . hieModule
 
 -- | The type checked version of this file, requires TypeCheck+
 type instance RuleResult TypeCheck = TcModuleResult
+
+type instance RuleResult Desugar = DesugaredModule
 
 -- | The uncompressed HieAST
 type instance RuleResult GetHieAst = HieAstResult
@@ -225,6 +227,12 @@ data TypeCheck = TypeCheck
 instance Hashable TypeCheck
 instance NFData   TypeCheck
 instance Binary   TypeCheck
+
+data Desugar = Desugar
+    deriving (Eq, Show, Typeable, Generic)
+instance Hashable Desugar
+instance NFData   Desugar
+instance Binary   Desugar
 
 data GetDocMap = GetDocMap
     deriving (Eq, Show, Typeable, Generic)
