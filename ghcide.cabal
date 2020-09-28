@@ -397,7 +397,8 @@ executable ghcide-bench
         lsp-test >= 0.11.0.2 && < 0.12,
         optparse-applicative,
         process,
-        safe-exceptions
+        safe-exceptions,
+        text
     hs-source-dirs: bench/lib bench/exe
     include-dirs: include
     ghc-options: -threaded -Wall -Wno-name-shadowing
