@@ -15,6 +15,7 @@ module Experiments
 , defConfig
 , output
 , setup
+, runBench
 , exampleToOptions
 ) where
 import Control.Applicative.Combinators (skipManyTill)
@@ -368,6 +369,8 @@ runBench runSess Bench {..} = handleAny (\e -> print e >> return badRun)
 
 data SetupResult = SetupResult {
     runBenchmarks :: [Bench] -> IO (),
+    -- | Path to the setup benchmark example
+    benchDir :: FilePath,
     cleanUp :: IO ()
 }
 
@@ -375,7 +378,7 @@ setup :: HasConfig => IO SetupResult
 setup = do
   alreadyExists <- doesDirectoryExist examplesPath
   when alreadyExists $ removeDirectoryRecursive examplesPath
-  dir <- case example ?config of
+  benchDir <- case example ?config of
       UsePackage{..} -> return examplePath
       GetPackage{..} -> do
         let path = examplesPath </> package
@@ -420,7 +423,7 @@ setup = do
   let cleanUp = case example ?config of
         GetPackage{} -> removeDirectoryRecursive examplesPath
         UsePackage{} -> return ()
-      runBenchmarks = runBenchmarksFun dir
+      runBenchmarks = runBenchmarksFun benchDir
 
   return SetupResult{..}
 
