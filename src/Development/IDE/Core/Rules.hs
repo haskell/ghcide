@@ -638,10 +638,9 @@ typeCheckRuleDefinition hsc pm isFoi source = do
 
 generateCore :: RunSimplifier -> NormalizedFilePath -> Action (IdeResult (SafeHaskellMode, CgGuts, ModDetails))
 generateCore runSimplifier file = do
-    deps <- use_ GetDependencies file
-    (tm:_) <- uses_ TypeCheck (file:transitiveModuleDeps deps)
+    tm <- use_ TypeCheck file
     setPriority priorityGenerateCore
-    packageState <- hscEnv <$> use_ GhcSession file
+    packageState <- hscEnv <$> use_ GhcSessionDeps file
     liftIO $ compileModule runSimplifier packageState tm
 
 generateCoreRule :: Rules ()
@@ -809,10 +808,10 @@ getModIfaceRule = defineEarlyCutoff $ \GetModIface f -> do
   case fileOfInterest of
     IsFOI _ -> do
       -- Never load from disk for files of interest
-      hsc <- hscEnv <$> use_ GhcSession f
       tmr <- use TypeCheck f
       needsObj <- use_ NeedsObjectCode f
-      (diags, !hiFile) <- liftIO $ extractHiFileResult hsc needsObj tmr
+      hsc <- hscEnv <$> use_ GhcSessionDeps f
+      (diags, !hiFile) <- liftIO $ compileToObjCodeIfNeeded hsc needsObj tmr
       let fp = hiFileFingerPrint <$> hiFile
       return (fp, (diags, hiFile))
     NotFOI -> do
@@ -820,9 +819,9 @@ getModIfaceRule = defineEarlyCutoff $ \GetModIface f -> do
       let fp = hiFileFingerPrint <$> hiFile
       return (fp, ([], hiFile))
 #else
-    hsc <- hscEnv <$> use_ GhcSession f
     tm <- use TypeCheck f
-    (diags, !hiFile) <- liftIO $ extractHiFileResult hsc False tm
+    hsc <- hscEnv <$> use_ GhcSessionDeps f
+    (diags, !hiFile) <- liftIO $ compileToObjCodeIfNeeded hsc False tm
     let fp = hiFileFingerPrint <$> hiFile
     return (fp, (diags, hiFile))
 #endif
@@ -852,13 +851,14 @@ regenerateHiFile sess f objNeeded = do
             -- on the parsed module and the typecheck rules
             (diags', tmr) <- typeCheckRuleDefinition hsc pm NotFOI (Just source)
             -- Bang pattern is important to avoid leaking 'tmr'
-            (diags'', !res) <- liftIO $ extractHiFileResult hsc objNeeded tmr
+            (diags'', !res) <- liftIO $ compileToObjCodeIfNeeded hsc objNeeded tmr
             return (diags <> diags' <> diags'', res)
 
-extractHiFileResult :: HscEnv -> Bool -> Maybe TcModuleResult -> IO (IdeResult HiFileResult)
-extractHiFileResult _hsc _obj Nothing = pure ([],Nothing)
-extractHiFileResult _hsc False (Just tmr) = pure ([], Just $! HiFileResult (tmrModSummary tmr) (tmrModInfo tmr))
-extractHiFileResult hsc True (Just tmr) = do
+-- | HscEnv should have deps included already
+compileToObjCodeIfNeeded :: HscEnv -> Bool -> Maybe TcModuleResult -> IO (IdeResult HiFileResult)
+compileToObjCodeIfNeeded _hsc _obj Nothing = pure ([],Nothing)
+compileToObjCodeIfNeeded _hsc False (Just tmr) = pure ([], Just $! HiFileResult (tmrModSummary tmr) (tmrModInfo tmr))
+compileToObjCodeIfNeeded hsc True (Just tmr) = do
   (diags, linkable) <- generateObjectCode hsc tmr
   let hmi = (tmrModInfo tmr) { hm_linkable = linkable }
   pure (diags, Just $! HiFileResult (tmrModSummary tmr) hmi)
@@ -876,10 +876,8 @@ needsObjectCodeRule = defineEarlyCutoff $ \NeedsObjectCode file -> do
   res <-
     if uses_th_qq ms
     then pure True
-    else do
-      revs <- reverseDependencies file <$> useNoFile_ GetModuleGraph
-      deps <- uses_ GetModSummaryWithoutTimestamps revs
-      pure $ any uses_th_qq deps
+    else anyM (use_ NeedsObjectCode) =<<
+           immediateReverseDependencies file <$> useNoFile_ GetModuleGraph
   pure (Just $ BS.pack $ show $ hash res, ([], Just res))
   where
     uses_th_qq (ms_hspp_opts -> dflags) =
