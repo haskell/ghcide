@@ -364,6 +364,7 @@ test-suite ghcide-tests
         Development.IDE.Test
         Development.IDE.Test.Runfiles
         Experiments
+        Experiments.Types
     default-extensions:
         BangPatterns
         DeriveFunctor
