@@ -1701,6 +1701,30 @@ addFunctionConstraintTests = let
     , "eq (Three x y z) (Three x' y' z') = x == x' && y == y' && z == z'"
     ]
 
+  incompleteConstraintSourceCodeWithExtraCharsInContext :: Maybe T.Text -> T.Text
+  incompleteConstraintSourceCodeWithExtraCharsInContext mConstraint =
+    let constraint = maybe "( Eq a )" (\c -> "(Eq a, " <> c <> ")") mConstraint
+     in T.unlines
+    [ "module Testing where"
+    , ""
+    , "data Pair a b = Pair a b"
+    , ""
+    , "eq :: " <> constraint <> " => Pair a b -> Pair a b -> Bool"
+    , "eq (Pair x y) (Pair x' y') = x == x' && y == y'"
+    ]
+  
+  incompleteConstraintSourceCodeWithNewlinesInTypeSignature :: Maybe T.Text -> T.Text
+  incompleteConstraintSourceCodeWithNewlinesInTypeSignature mConstraint =
+    let constraint = maybe "(Eq a)" (\c -> "(Eq a, " <> c <> ")") mConstraint
+     in T.unlines
+    [ "module Testing where"
+    , "data Pair a b = Pair a b"
+    , "eq "
+    , "    :: " <> constraint
+    , "    => Pair a b -> Pair a b -> Bool"
+    , "eq (Pair x y) (Pair x' y') = x == x' && y == y'"
+    ]
+
   check :: T.Text -> T.Text -> T.Text -> TestTree
   check actionTitle originalCode expectedCode = testSession (T.unpack actionTitle) $ do
     doc <- createDoc "Testing.hs" "haskell" originalCode
@@ -1724,6 +1748,14 @@ addFunctionConstraintTests = let
     "Add `Eq c` to the context of the type signature for `eq`"
     (incompleteConstraintSourceCode2 Nothing)
     (incompleteConstraintSourceCode2 $ Just "Eq c")
+  , check
+    "Add `Eq b` to the context of the type signature for `eq`"
+    (incompleteConstraintSourceCodeWithExtraCharsInContext Nothing)
+    (incompleteConstraintSourceCodeWithExtraCharsInContext $ Just "Eq b")
+  , check
+    "Add `Eq b` to the context of the type signature for `eq`"
+    (incompleteConstraintSourceCodeWithNewlinesInTypeSignature Nothing)
+    (incompleteConstraintSourceCodeWithNewlinesInTypeSignature $ Just "Eq b")
   ]
 
 removeRedundantConstraintsTests :: TestTree

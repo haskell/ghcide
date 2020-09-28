@@ -740,6 +740,18 @@ findTypeSignatureName t = matchRegexUnifySpaces t "([^ ]+) :: " <&> head
 
 findTypeSignatureLine :: T.Text -> T.Text -> Int
 findTypeSignatureLine contents typeSignatureName =
+  -- TODO -- issue #1: this code makes a false assumption that type signature always has the form  
+  -- `functionName ::`
+  -- But when type signature looks as follows, the splitOn doesn't split anything
+  --  => length . lines counts # of lines in the whole file
+  --  => the signature is added at the end of file
+  -- ```
+  -- functionName
+  --    :: ( Monad m
+  --       , WithDb env m
+  --       )
+  --    => m ()
+  -- ```
   T.splitOn (typeSignatureName <> " :: ") contents & head & T.lines & length
 
 -- | Suggests a constraint for a type signature for which a constraint is missing.
@@ -774,6 +786,17 @@ suggestFunctionConstraint contents Diagnostic{..} missingConstraint
         typeSignatureFirstChar = T.length $ typeSignatureName <> " :: "
         startOfConstraint = Position typeSignatureLine typeSignatureFirstChar
         endOfConstraint = Position typeSignatureLine $
+        -- Issue #2: The mExistingConstraints is based on type signature from GHC error message,
+        -- whose type signature is normalized. If we base the Range of edit on the length of context in the error message
+        -- BUT the original code has some extra characters in the constraint, some redundant characters appear after applying the fix
+        --
+        -- Example: The signature in code:          `f :: ( Monad m ) => m ()`    
+        --          The signature in error message: `f :: forall (m :: * -> *). Monad m => m ()`
+        -- The context in code           has 13 chars (stuff between `::` and `==`)
+        -- The context in error meessage has  9 chars
+        -- => The result of applying fix will have 13 - 9 = 4 extraneous characters left over from the original code
+        --                                          `f :: (Monad m, MonadIO m) m ) => m ()`
+        --                                                                    ^^^^-extraneous chars
           typeSignatureFirstChar + maybe 0 T.length mExistingConstraints
         range = Range startOfConstraint endOfConstraint
      in [(actionTitle missingConstraint typeSignatureName, [TextEdit range newConstraint])]
