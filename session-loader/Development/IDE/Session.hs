@@ -50,7 +50,6 @@ import HIE.Bios.Environment hiding (getCacheDir)
 import HIE.Bios.Types
 import Hie.Implicit.Cradle (loadImplicitHieCradle)
 import Language.Haskell.LSP.Core
-import Language.Haskell.LSP.Messages
 import Language.Haskell.LSP.Types
 import System.Directory
 import qualified System.Directory.Extra as IO
@@ -104,8 +103,7 @@ loadSession dir = do
   runningCradle <- newVar dummyAs :: IO (Var (Async (IdeResult HscEnvEq,[FilePath])))
 
   return $ do
-    extras@ShakeExtras{logger, eventer, restartShakeSession,
-                       withIndefiniteProgress, ideNc, knownTargetsVar
+    extras@ShakeExtras{logger, restartShakeSession, ideNc, knownTargets, lspEnv
                       } <- getShakeExtras
 
     IdeOptions{ optTesting = IdeTesting optTesting
@@ -271,13 +269,14 @@ loadSession dir = do
 
            cradle <- maybe (loadImplicitHieCradle $ addTrailingPathSeparator dir) loadCradle hieYaml
 
-           when optTesting $ eventer $ notifyCradleLoaded lfp
+           when optTesting $ mRunLspT lspEnv $
+            sendNotification (SCustomMethod "ghcide/cradle/loaded") (toJSON cfp)
 
            -- Display a user friendly progress message here: They probably don't know what a cradle is
            let progMsg = "Setting up " <> T.pack (takeBaseName (cradleRootDir cradle))
                          <> " (for " <> T.pack lfp <> ")"
-           eopts <- withIndefiniteProgress progMsg NotCancellable $
-             cradleToOptsAndLibDir cradle cfp
+           eopts <- mRunLspTCallback lspEnv (withIndefiniteProgress progMsg NotCancellable) $
+              cradleToOptsAndLibDir cradle cfp
 
            logDebug logger $ T.pack ("Session loading result: " <> show eopts)
            case eopts of
@@ -684,16 +683,6 @@ notifyUserImplicitCradle fp =
       "No [cradle](https://github.com/mpickering/hie-bios#hie-bios) found for "
       <> T.pack fp <>
       ".\n Proceeding with [implicit cradle](https://hackage.haskell.org/package/implicit-hie)"
-
-notifyCradleLoaded :: FilePath -> FromServerMessage
-notifyCradleLoaded fp =
-    NotCustomServer $
-    NotificationMessage "2.0" (CustomServerMethod cradleLoadedMethod) $
-    toJSON fp
-
-cradleLoadedMethod :: T.Text
-cradleLoadedMethod = "ghcide/cradle/loaded"
-
 ----------------------------------------------------------------------------------------------------
 
 data PackageSetupException

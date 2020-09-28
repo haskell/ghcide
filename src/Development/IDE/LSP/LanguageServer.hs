@@ -136,40 +136,40 @@ runLanguageServer options userHandlers onInitialConfig onConfigChange getIdeStat
         handleInit :: IO () -> (LspId -> IO ()) -> (LspId -> IO ()) -> Chan (Message config) -> LSP.LspFuncs config -> IO (Maybe err)
         handleInit exitClientMsg clearReqId waitForCancel clientMsgChan lspFuncs@LSP.LspFuncs{..} = do
 
-            ide <- getIdeState getNextReqId sendFunc (makeLSPVFSHandle lspFuncs) clientCapabilities
-                               withProgress withIndefiniteProgress config rootPath
+            -- ide <- getIdeState getNextReqId sendFunc (makeLSPVFSHandle lspFuncs) clientCapabilities
+            --                    withProgress withIndefiniteProgress config rootPath
 
-            _ <- flip forkFinally (const exitClientMsg) $ forever $ do
-                msg <- readChan clientMsgChan
-                -- We dispatch notifications synchronously and requests asynchronously
-                -- This is to ensure that all file edits and config changes are applied before a request is handled
-                case msg of
-                    Notification x@NotificationMessage{_params} act -> do
-                        catch (act lspFuncs ide _params) $ \(e :: SomeException) ->
-                            logError (ideLogger ide) $ T.pack $
-                                "Unexpected exception on notification, please report!\n" ++
-                                "Message: " ++ show x ++ "\n" ++
-                                "Exception: " ++ show e
-                    Response x@RequestMessage{_id, _params} wrap act -> void $ async $
-                        checkCancelled ide clearReqId waitForCancel lspFuncs wrap act x _id _params $
-                            \case
-                              Left e  -> sendFunc $ wrap $ ResponseMessage "2.0" (responseId _id) (Left e)
-                              Right r -> sendFunc $ wrap $ ResponseMessage "2.0" (responseId _id) (Right r)
-                    ResponseAndRequest x@RequestMessage{_id, _params} wrap wrapNewReq act -> void $ async $
-                        checkCancelled ide clearReqId waitForCancel lspFuncs wrap act x _id _params $
-                            \(res, newReq) -> do
-                                case res of
-                                    Left e  -> sendFunc $ wrap $ ResponseMessage "2.0" (responseId _id) (Left e)
-                                    Right r -> sendFunc $ wrap $ ResponseMessage "2.0" (responseId _id) (Right r)
-                                whenJust newReq $ \(rm, newReqParams) -> do
-                                    reqId <- getNextReqId
-                                    sendFunc $ wrapNewReq $ RequestMessage "2.0" reqId rm newReqParams
-                    InitialParams x@RequestMessage{_id, _params} act -> do
-                        catch (act lspFuncs ide _params) $ \(e :: SomeException) ->
-                            logError (ideLogger ide) $ T.pack $
-                                "Unexpected exception on InitializeRequest handler, please report!\n" ++
-                                "Message: " ++ show x ++ "\n" ++
-                                "Exception: " ++ show e
+            -- _ <- flip forkFinally (const exitClientMsg) $ forever $ do
+            --     msg <- readChan clientMsgChan
+            --     -- We dispatch notifications synchronously and requests asynchronously
+            --     -- This is to ensure that all file edits and config changes are applied before a request is handled
+            --     case msg of
+            --         Notification x@NotificationMessage{_params} act -> do
+            --             catch (act lspFuncs ide _params) $ \(e :: SomeException) ->
+            --                 logError (ideLogger ide) $ T.pack $
+            --                     "Unexpected exception on notification, please report!\n" ++
+            --                     "Message: " ++ show x ++ "\n" ++
+            --                     "Exception: " ++ show e
+            --         Response x@RequestMessage{_id, _params} wrap act -> void $ async $
+            --             checkCancelled ide clearReqId waitForCancel lspFuncs wrap act x _id _params $
+            --                 \case
+            --                   Left e  -> sendFunc $ wrap $ ResponseMessage "2.0" (responseId _id) (Left e)
+            --                   Right r -> sendFunc $ wrap $ ResponseMessage "2.0" (responseId _id) (Right r)
+            --         ResponseAndRequest x@RequestMessage{_id, _params} wrap wrapNewReq act -> void $ async $
+            --             checkCancelled ide clearReqId waitForCancel lspFuncs wrap act x _id _params $
+            --                 \(res, newReq) -> do
+            --                     case res of
+            --                         Left e  -> sendFunc $ wrap $ ResponseMessage "2.0" (responseId _id) (Left e)
+            --                         Right r -> sendFunc $ wrap $ ResponseMessage "2.0" (responseId _id) (Right r)
+            --                     whenJust newReq $ \(rm, newReqParams) -> do
+            --                         reqId <- getNextReqId
+            --                         sendFunc $ wrapNewReq $ RequestMessage "2.0" reqId rm newReqParams
+            --         InitialParams x@RequestMessage{_id, _params} act -> do
+            --             catch (act lspFuncs ide _params) $ \(e :: SomeException) ->
+            --                 logError (ideLogger ide) $ T.pack $
+            --                     "Unexpected exception on InitializeRequest handler, please report!\n" ++
+            --                     "Message: " ++ show x ++ "\n" ++
+            --                     "Exception: " ++ show e
             pure Nothing
 
         checkCancelled ide clearReqId waitForCancel lspFuncs@LSP.LspFuncs{..} wrap act msg _id _params k =
@@ -248,3 +248,4 @@ modifyOptions x = x{ LSP.textDocumentSync   = Just $ tweakTDS origTDS
         tweakTDS tds = tds{_openClose=Just True, _change=Just TdSyncIncremental, _save=Just $ SaveOptions Nothing}
         origTDS = fromMaybe tdsDefault $ LSP.textDocumentSync x
         tdsDefault = TextDocumentSyncOptions Nothing Nothing Nothing Nothing Nothing
+

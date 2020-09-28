@@ -33,7 +33,7 @@ import Pair
 import Coercion
 #endif
 
-import Language.Haskell.LSP.Types
+import Language.Haskell.LSP.Types hiding (L, R)
 import Language.Haskell.LSP.Types.Capabilities
 import qualified Language.Haskell.LSP.VFS as VFS
 import Development.IDE.Core.Compile
@@ -142,7 +142,7 @@ showModName = T.pack . moduleNameString
 
 mkCompl :: IdeOptions -> CompItem -> CompletionItem
 mkCompl IdeOptions{..} CI{compKind,insertText, importedFrom,typeText,label,docs} =
-  CompletionItem label kind (List []) ((colon <>) <$> typeText)
+  CompletionItem label kind Nothing ((colon <>) <$> typeText)
     (Just $ CompletionDocMarkup $ MarkupContent MkMarkdown $ T.intercalate sectionSeparator docs')
     Nothing Nothing Nothing Nothing (Just insertText) (Just Snippet)
     Nothing Nothing Nothing Nothing Nothing
@@ -208,13 +208,13 @@ mkNameCompItem origName origMod thingType isInfix docs = CI{..}
 
 mkModCompl :: T.Text -> CompletionItem
 mkModCompl label =
-  CompletionItem label (Just CiModule) (List []) Nothing
+  CompletionItem label (Just CiModule) Nothing Nothing
     Nothing Nothing Nothing Nothing Nothing Nothing Nothing
     Nothing Nothing Nothing Nothing Nothing
 
 mkImportCompl :: T.Text -> T.Text -> CompletionItem
 mkImportCompl enteredQual label =
-  CompletionItem m (Just CiModule) (List []) (Just label)
+  CompletionItem m (Just CiModule) Nothing (Just label)
     Nothing Nothing Nothing Nothing Nothing Nothing Nothing
     Nothing Nothing Nothing Nothing Nothing
   where
@@ -222,13 +222,13 @@ mkImportCompl enteredQual label =
 
 mkExtCompl :: T.Text -> CompletionItem
 mkExtCompl label =
-  CompletionItem label (Just CiKeyword) (List []) Nothing
+  CompletionItem label (Just CiKeyword) Nothing Nothing
     Nothing Nothing Nothing Nothing Nothing Nothing Nothing
     Nothing Nothing Nothing Nothing Nothing
 
 mkPragmaCompl :: T.Text -> T.Text -> CompletionItem
 mkPragmaCompl label insertText =
-  CompletionItem label (Just CiKeyword) (List []) Nothing
+  CompletionItem label (Just CiKeyword) Nothing Nothing
     Nothing Nothing Nothing Nothing Nothing (Just insertText) (Just Snippet)
     Nothing Nothing Nothing Nothing Nothing
 

@@ -3,6 +3,7 @@
 
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE RankNTypes            #-}
+{-# LANGUAGE GADTs                 #-}
 
 module Development.IDE.LSP.Notifications
     ( setHandlersNotifications
@@ -33,6 +34,7 @@ import qualified Data.Text                        as Text
 import           Development.IDE.Core.FileStore   (setSomethingModified, setFileModified, typecheckParents)
 import           Development.IDE.Core.FileExists  (modifyFileExists, watchedGlobs)
 import           Development.IDE.Core.OfInterest
+import Control.Monad.IO.Class
 
 
 whenUriFile :: Uri -> (NormalizedFilePath -> IO ()) -> IO ()

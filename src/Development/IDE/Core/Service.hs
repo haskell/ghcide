@@ -26,7 +26,7 @@ import           Development.IDE.Core.FileExists (fileExistsRules)
 import           Development.IDE.Core.OfInterest
 import Development.IDE.Types.Logger as Logger
 import           Development.Shake
-import qualified Language.Haskell.LSP.Messages as LSP
+import qualified Language.Haskell.LSP.Core as LSP
 import qualified Language.Haskell.LSP.Types as LSP
 import qualified Language.Haskell.LSP.Types.Capabilities as LSP
 
@@ -39,23 +39,16 @@ import Control.Monad
 -- Exposed API
 
 -- | Initialise the Compiler Service.
-initialise :: LSP.ClientCapabilities
-           -> Rules ()
-           -> IO LSP.LspId
-           -> (LSP.FromServerMessage -> IO ())
-           -> WithProgressFunc
-           -> WithIndefiniteProgressFunc
+initialise :: Rules ()
+           -> LSP.LanguageContextEnv ()
            -> Logger
            -> Debouncer LSP.NormalizedUri
            -> IdeOptions
            -> VFSHandle
            -> IO IdeState
-initialise caps mainRule getLspId toDiags wProg wIndefProg logger debouncer options vfs =
+initialise mainRule lspEnv logger debouncer options vfs =
     shakeOpen
-        getLspId
-        toDiags
-        wProg
-        wIndefProg
+        (Just lspEnv)
         logger
         debouncer
         (optShakeProfiling options)
@@ -68,7 +61,7 @@ initialise caps mainRule getLspId toDiags wProg wIndefProg logger debouncer opti
             addIdeGlobal $ GlobalIdeOptions options
             fileStoreRules vfs
             ofInterestRules
-            fileExistsRules caps vfs
+            fileExistsRules (Just lspEnv) vfs
             mainRule
 
 writeProfile :: IdeState -> FilePath -> IO ()

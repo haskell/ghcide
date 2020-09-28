@@ -1,4 +1,7 @@
 packages: .
+					~/hie-lsp/haskell-lsp
+					~/hie-lsp/haskell-lsp-types
+					~/hie-lsp/haskell-lsp/lsp-test
 
 test-show-details: direct
 

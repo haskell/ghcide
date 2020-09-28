@@ -56,7 +56,8 @@ import qualified System.Posix.Error as Posix
 
 import qualified Development.IDE.Types.Logger as L
 
-import Language.Haskell.LSP.Core
+import Language.Haskell.LSP.Core hiding (getVirtualFile)
+import qualified Language.Haskell.LSP.Core as LSP
 import Language.Haskell.LSP.VFS
 
 -- | haskell-lsp manages the VFS internally and automatically so we cannot use
@@ -87,9 +88,9 @@ makeVFSHandle = do
                     Just content -> Map.insert uri (VirtualFile nextVersion 0 (Rope.fromText content)) vfs
         }
 
-makeLSPVFSHandle :: LspFuncs c -> VFSHandle
-makeLSPVFSHandle lspFuncs = VFSHandle
-    { getVirtualFile = getVirtualFileFunc lspFuncs
+makeLSPVFSHandle :: LanguageContextEnv c -> VFSHandle
+makeLSPVFSHandle lspEnv = VFSHandle
+    { getVirtualFile = \uri -> runReaderT (runLspT $ LSP.getVirtualFile uri) lspEnv
     , setVirtualFileContents = Nothing
    }
 
