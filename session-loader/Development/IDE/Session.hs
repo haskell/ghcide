@@ -103,7 +103,7 @@ loadSession dir = do
   runningCradle <- newVar dummyAs :: IO (Var (Async (IdeResult HscEnvEq,[FilePath])))
 
   return $ do
-    extras@ShakeExtras{logger, restartShakeSession, ideNc, knownTargets, lspEnv
+    extras@ShakeExtras{logger, restartShakeSession, ideNc, knownTargetsVar, lspEnv
                       } <- getShakeExtras
 
     IdeOptions{ optTesting = IdeTesting optTesting
@@ -265,7 +265,8 @@ loadSession dir = do
            lfp <- flip makeRelative cfp <$> getCurrentDirectory
            logInfo logger $ T.pack ("Consulting the cradle for " <> show lfp)
 
-           when (isNothing hieYaml) $ eventer $ notifyUserImplicitCradle lfp
+           -- TODO
+           -- when (isNothing hieYaml) $ eventer $ notifyUserImplicitCradle lfp
 
            cradle <- maybe (loadImplicitHieCradle $ addTrailingPathSeparator dir) loadCradle hieYaml
 
@@ -676,13 +677,14 @@ getCacheDir prefix opts = getXdgDirectory XdgCache (cacheDir </> prefix ++ "-" +
 cacheDir :: String
 cacheDir = "ghcide"
 
-notifyUserImplicitCradle:: FilePath -> FromServerMessage
-notifyUserImplicitCradle fp =
-    NotShowMessage $
-    NotificationMessage "2.0" WindowShowMessage $ ShowMessageParams MtWarning $
-      "No [cradle](https://github.com/mpickering/hie-bios#hie-bios) found for "
-      <> T.pack fp <>
-      ".\n Proceeding with [implicit cradle](https://hackage.haskell.org/package/implicit-hie)"
+-- TODO
+-- notifyUserImplicitCradle:: FilePath -> FromServerMessage
+-- notifyUserImplicitCradle fp =
+--     NotShowMessage $
+--     NotificationMessage "2.0" WindowShowMessage $ ShowMessageParams MtWarning $
+--       "No [cradle](https://github.com/mpickering/hie-bios#hie-bios) found for "
+--       <> T.pack fp <>
+--       ".\n Proceeding with [implicit cradle](https://hackage.haskell.org/package/implicit-hie)"
 ----------------------------------------------------------------------------------------------------
 
 data PackageSetupException

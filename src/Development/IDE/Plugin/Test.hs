@@ -1,9 +1,11 @@
 {-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE DerivingStrategies #-}
 -- | A plugin that adds custom messages for use in tests
 module Development.IDE.Plugin.Test (TestRequest(..), plugin) where
 
 import Control.Monad.STM
+import Control.Monad.IO.Class
 import Data.Aeson
 import Data.Aeson.Types
 import Development.IDE.Core.Service
@@ -33,37 +35,29 @@ data TestRequest
 plugin :: Plugin c
 plugin = Plugin {
     pluginRules = return (),
-    pluginHandler = PartialHandlers $ \WithMessage{..} x -> return x {
-        customRequestHandler = withResponse RspCustomServer requestHandler'
-    }
+    pluginHandlers = \ide m -> case m of
+      -- TODO
+      SCustomMethod m -> undefined -- Just $ requestHandler ide
+      _ -> Nothing
 }
-  where
-      requestHandler' lsp ide req
-        | Just customReq <- parseMaybe parseJSON req
-        = requestHandler lsp ide customReq
-        | otherwise
-        = return $ Left
-        $ ResponseError InvalidRequest "Cannot parse request" Nothing
 
-requestHandler :: LspFuncs c
-                -> IdeState
+requestHandler ::  IdeState
                 -> TestRequest
-                -> IO (Either ResponseError Value)
-requestHandler lsp _ (BlockSeconds secs) = do
-    sendFunc lsp $ NotCustomServer $
-        NotificationMessage "2.0" (CustomServerMethod "ghcide/blocking/request") $
-        toJSON secs
-    sleep secs
+                -> LspM c (Either ResponseError Value)
+requestHandler _ (BlockSeconds secs) = do
+    sendNotification (SCustomMethod "ghcide/blocking/request") $
+      toJSON secs
+    liftIO $ sleep secs
     return (Right Null)
-requestHandler _ s (GetInterfaceFilesDir fp) = do
+requestHandler s (GetInterfaceFilesDir fp) = liftIO $ do
     let nfp = toNormalizedFilePath fp
     sess <- runAction "Test - GhcSession" s $ use_ GhcSession nfp
     let hiPath = hiDir $ hsc_dflags $ hscEnv sess
     return $ Right (toJSON hiPath)
-requestHandler _ s GetShakeSessionQueueCount = do
+requestHandler s GetShakeSessionQueueCount = liftIO $ do
     n <- atomically $ countQueue $ actionQueue $ shakeExtras s
     return $ Right (toJSON n)
-requestHandler _ s WaitForShakeQueue = do
+requestHandler s WaitForShakeQueue = liftIO $ do
     atomically $ do
         n <- countQueue $ actionQueue $ shakeExtras s
         when (n>0) retry

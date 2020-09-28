@@ -1,4 +1,6 @@
 {-# LANGUAGE CPP          #-}
+{-# LANGUAGE DataKinds    #-}
+{-# LANGUAGE RankNTypes   #-}
 {-# LANGUAGE TypeFamilies #-}
 #include "ghc-api-version.h"
 
@@ -8,7 +10,6 @@ module Development.IDE.Plugin.Completions
     , getCompletionsLSP
     ) where
 
-import Language.Haskell.LSP.Messages
 import Language.Haskell.LSP.Types
 import qualified Language.Haskell.LSP.Core as LSP
 import qualified Language.Haskell.LSP.VFS as VFS
@@ -29,7 +30,6 @@ import Development.IDE.Core.Shake
 import Development.IDE.GHC.Compat (hsmodExports, ParsedModule(..), ModSummary (ms_hspp_buf))
 
 import Development.IDE.GHC.Util
-import Development.IDE.LSP.Server
 import Control.Monad.Trans.Except (runExceptT)
 import HscTypes (HscEnv(hsc_dflags))
 import Data.Maybe
@@ -128,17 +128,16 @@ instance Binary   NonLocalCompletions
 
 -- | Generate code actions.
 getCompletionsLSP
-    :: LSP.LspFuncs cofd
-    -> IdeState
+    :: IdeState
     -> CompletionParams
-    -> IO (Either ResponseError CompletionResponseResult)
-getCompletionsLSP lsp ide
+    -> LSP.LspM c (Either ResponseError (ResponseParams TextDocumentCompletion))
+getCompletionsLSP ide
   CompletionParams{_textDocument=TextDocumentIdentifier uri
                   ,_position=position
                   ,_context=completionContext} = do
-    contents <- LSP.getVirtualFileFunc lsp $ toNormalizedUri uri
+    contents <- LSP.getVirtualFile $ toNormalizedUri uri
     fmap Right $ case (contents, uriToFilePath' uri) of
-      (Just cnts, Just path) -> do
+      (Just cnts, Just path) -> liftIO $ do
         let npath = toNormalizedFilePath' path
         (ideOpts, compls) <- runIdeAction "Completion" (shakeExtras ide) $ do
             opts <- liftIO $ getIdeOptionsIO $ shakeExtras ide
@@ -151,16 +150,17 @@ getCompletionsLSP lsp ide
             pfix <- VFS.getCompletionPrefix position cnts
             case (pfix, completionContext) of
               (Just (VFS.PosPrefixInfo _ "" _ _), Just CompletionContext { _triggerCharacter = Just "."})
-                -> return (Completions $ List [])
+                -> return (InL $ List [])
               (Just pfix', _) -> do
                   -- TODO pass the real capabilities here (or remove the logic for snippets)
                 let fakeClientCapabilities = ClientCapabilities Nothing Nothing Nothing Nothing
-                Completions . List <$> getCompletions ideOpts cci' parsedMod bindMap pfix' fakeClientCapabilities (WithSnippets True)
-              _ -> return (Completions $ List [])
-          _ -> return (Completions $ List [])
-      _ -> return (Completions $ List [])
+                InL . List <$> getCompletions ideOpts cci' parsedMod bindMap pfix' fakeClientCapabilities (WithSnippets True)
+              _ -> return (InL $ List  [])
+          _ -> return (InL $ List [])
+      _ -> return (InL $ List [])
 
-setHandlersCompletion :: PartialHandlers c
-setHandlersCompletion = PartialHandlers $ \WithMessage{..} x -> return x{
-    LSP.completionHandler = withResponse RspCompletion getCompletionsLSP
-    }
+setHandlersCompletion :: IdeState -> LSP.Handlers c
+setHandlersCompletion ide STextDocumentCompletion = Just $ \(RequestMessage _ _ _ params) k ->
+  k =<< getCompletionsLSP ide params
+setHandlersCompletion _ _ = Nothing
+

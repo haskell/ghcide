@@ -582,9 +582,8 @@ shakeRestart IdeState{..} acts =
 notifyTestingLogMessage :: ShakeExtras -> T.Text -> IO ()
 notifyTestingLogMessage extras msg = do
     (IdeTesting isTestMode) <- optTesting <$> getIdeOptionsIO extras
-    let notif = LSP.NotLogMessage $ LSP.NotificationMessage "2.0" LSP.WindowLogMessage
-                                  $ LSP.LogMessageParams LSP.MtLog msg
-    when isTestMode $ eventer extras notif
+    let notif = LSP.LogMessageParams LSP.MtLog msg
+    when isTestMode $ mRunLspT (lspEnv extras) $ LSP.sendNotification LSP.SWindowLogMessage notif
 
 
 -- | Enqueue an action in the existing 'ShakeSession'.

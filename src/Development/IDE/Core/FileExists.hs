@@ -22,6 +22,7 @@ import           Development.IDE.Core.IdeConfiguration
 import           Development.IDE.Core.Shake
 import           Development.IDE.Types.Location
 import           Development.IDE.Types.Options
+import           Development.IDE.Types.Logger
 import           Development.Shake
 import           Development.Shake.Classes
 import           GHC.Generics
@@ -174,7 +175,6 @@ fileExistsRules lspEnv vfs = do
     then fileExistsRulesFast globs vfs
     else do
       logger <- logger <$> getShakeExtrasRules
-      liftIO $ logDebug logger "Warning: Client does not support watched files. Falling back to OS polling"
       fileExistsRulesSlow vfs
 
 -- Requires an lsp client that provides WatchedFiles notifications, but assumes that this has already been checked.

@@ -1,9 +1,9 @@
-
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE GADTs      #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-module Development.IDE.Plugin(Plugin(..),makeLspCommandId,getPid) where
+module Development.IDE.Plugin where
 
 import Control.Applicative
 import Data.Default
@@ -33,16 +33,16 @@ instance Monoid (Plugin c) where
     mempty = def
 
 
--- codeActionPlugin :: (IdeState -> TextDocumentIdentifier -> Range -> CodeActionContext -> LSP.LspM c (Either ResponseError [Command |? CodeAction])) -> Plugin c
--- codeActionPlugin = codeActionPluginWithRules mempty
+codeActionPlugin :: (IdeState -> TextDocumentIdentifier -> Range -> CodeActionContext -> LSP.LspM c (Either ResponseError [Command |? CodeAction])) -> Plugin c
+codeActionPlugin = codeActionPluginWithRules mempty
 
--- codeActionPluginWithRules :: Rules () -> (IdeState -> TextDocumentIdentifier -> Range -> CodeActionContext -> LSP.LspM c (Either ResponseError [Command |? CodeAction])) -> Plugin c
--- codeActionPluginWithRules rr f = Plugin rr handlers
---     where
---       handlers :: IdeState -> LSP.Handlers c
---       handlers state STextDocumentCodeAction = Just $ \(RequestMessage _ _ _ params) _ -> g state params
---       handlers _ _ = Nothing
---       g state (CodeActionParams _ _ a b c) = fmap List <$> f state a b c
+codeActionPluginWithRules :: forall c. Rules () -> (IdeState -> TextDocumentIdentifier -> Range -> CodeActionContext -> LSP.LspM c (Either ResponseError [Command |? CodeAction])) -> Plugin c
+codeActionPluginWithRules rr f = Plugin rr handlers
+  where
+    handlers :: IdeState -> LSP.Handlers c
+    handlers state STextDocumentCodeAction = Just $ \(RequestMessage _ _ _ params) k -> k =<< g state params
+    handlers _ _ = Nothing
+    g state (CodeActionParams _ _ a b c) = fmap List <$> f state a b c
 
 -- | Prefix to uniquely identify commands sent to the client.  This
 -- has two parts
