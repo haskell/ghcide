@@ -168,11 +168,11 @@ suggestAction dflags packageExports ideOptions parsedModule text diag = concat
     , suggestFixConstructorImport text diag
     , suggestModuleTypo diag
     , suggestReplaceIdentifier text diag
-    , suggestConstraint text diag
     , removeRedundantConstraints text diag
     , suggestAddTypeAnnotationToSatisfyContraints text diag
     ] ++ concat
-    [  suggestNewDefinition ideOptions pm text diag
+    [  suggestConstraint pm text diag  
+    ++ suggestNewDefinition ideOptions pm text diag
     ++ suggestRemoveRedundantImport pm text diag
     ++ suggestNewImport packageExports pm diag
     ++ suggestDeleteUnusedBinding pm text diag
@@ -662,12 +662,12 @@ suggestSignature isQuickFix Diagnostic{_range=_range@Range{..},..}
 suggestSignature _ _ = []
 
 -- | Suggests a constraint for a declaration for which a constraint is missing.
-suggestConstraint :: Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
-suggestConstraint mContents diag@Diagnostic {..}
+suggestConstraint :: ParsedModule -> Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
+suggestConstraint parsedModule mContents diag@Diagnostic {..}
   | Just contents <- mContents
   , Just missingConstraint <- findMissingConstraint _message
   = let codeAction = if _message =~ ("the type signature for:" :: String)
-                        then suggestFunctionConstraint
+                        then suggestFunctionConstraint parsedModule
                         else suggestInstanceConstraint
      in codeAction contents diag missingConstraint
   | otherwise = []
@@ -740,23 +740,11 @@ findTypeSignatureName t = matchRegexUnifySpaces t "([^ ]+) :: " <&> head
 
 findTypeSignatureLine :: T.Text -> T.Text -> Int
 findTypeSignatureLine contents typeSignatureName =
-  -- TODO -- issue #1: this code makes a false assumption that type signature always has the form  
-  -- `functionName ::`
-  -- But when type signature looks as follows, the splitOn doesn't split anything
-  --  => length . lines counts # of lines in the whole file
-  --  => the signature is added at the end of file
-  -- ```
-  -- functionName
-  --    :: ( Monad m
-  --       , WithDb env m
-  --       )
-  --    => m ()
-  -- ```
   T.splitOn (typeSignatureName <> " :: ") contents & head & T.lines & length
 
 -- | Suggests a constraint for a type signature for which a constraint is missing.
-suggestFunctionConstraint :: T.Text -> Diagnostic -> T.Text -> [(T.Text, [TextEdit])]
-suggestFunctionConstraint contents Diagnostic{..} missingConstraint
+suggestFunctionConstraint :: ParsedModule -> T.Text -> Diagnostic -> T.Text -> [(T.Text, [TextEdit])]
+suggestFunctionConstraint ParsedModule{pm_parsed_source = L _ HsModule{hsmodDecls}} contents Diagnostic{..} missingConstraint
 -- Suggests a constraint for a type signature with any number of existing constraints.
 -- • No instance for (Eq a) arising from a use of ‘==’
 --   Possible fix:
@@ -782,26 +770,29 @@ suggestFunctionConstraint contents Diagnostic{..} missingConstraint
   | Just typeSignatureName <- findTypeSignatureName _message
   = let mExistingConstraints = findExistingConstraints _message
         newConstraint = buildNewConstraints missingConstraint mExistingConstraints
+        -- TODO cleanup the previous way of finding the context
         typeSignatureLine = findTypeSignatureLine contents typeSignatureName
         typeSignatureFirstChar = T.length $ typeSignatureName <> " :: "
         startOfConstraint = Position typeSignatureLine typeSignatureFirstChar
         endOfConstraint = Position typeSignatureLine $
-        -- Issue #2: The mExistingConstraints is based on type signature from GHC error message,
-        -- whose type signature is normalized. If we base the Range of edit on the length of context in the error message
-        -- BUT the original code has some extra characters in the constraint, some redundant characters appear after applying the fix
-        --
-        -- Example: The signature in code:          `f :: ( Monad m ) => m ()`    
-        --          The signature in error message: `f :: forall (m :: * -> *). Monad m => m ()`
-        -- The context in code           has 13 chars (stuff between `::` and `==`)
-        -- The context in error meessage has  9 chars
-        -- => The result of applying fix will have 13 - 9 = 4 extraneous characters left over from the original code
-        --                                          `f :: (Monad m, MonadIO m) m ) => m ()`
-        --                                                                    ^^^^-extraneous chars
           typeSignatureFirstChar + maybe 0 T.length mExistingConstraints
         range = Range startOfConstraint endOfConstraint
-     in [(actionTitle missingConstraint typeSignatureName, [TextEdit range newConstraint])]
+        betterRange = fromMaybe range (findRangeOfContextForFunctionNamed typeSignatureName)
+     in [(actionTitle missingConstraint typeSignatureName, [TextEdit betterRange newConstraint])]
   | otherwise = []
     where
+      -- TODO return Range of first char in the type signature if it doesn't have context
+      
+      findRangeOfContextForFunctionNamed :: T.Text -> Maybe Range 
+      findRangeOfContextForFunctionNamed typeSignatureName = listToMaybe $ catMaybes
+          [ srcSpanToRange $ getLoc locatedContext 
+          | L _ (SigD _ (TypeSig _ identifiers (HsWC _ (HsIB _ (L _ (HsQualTy _ locatedContext _ )))))) <- hsmodDecls
+          , any (`isSameName` (T.unpack typeSignatureName)) $ fmap unLoc identifiers
+          ]
+    
+      isSameName :: IdP GhcPs -> String -> Bool
+      isSameName x name = showSDocUnsafe (ppr x) == name
+
       findExistingConstraints :: T.Text -> Maybe T.Text
       findExistingConstraints message =
         if message =~ ("from the context:" :: String)
