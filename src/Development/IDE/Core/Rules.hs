@@ -876,8 +876,8 @@ needsObjectCodeRule = defineEarlyCutoff $ \NeedsObjectCode file -> do
   res <-
     if uses_th_qq ms
     then pure True
-    else anyM (use_ NeedsObjectCode) =<<
-           immediateReverseDependencies file <$> useNoFile_ GetModuleGraph
+    else anyM (use_ NeedsObjectCode) . immediateReverseDependencies file
+           =<< useNoFile_ GetModuleGraph
   pure (Just $ BS.pack $ show $ hash res, ([], Just res))
   where
     uses_th_qq (ms_hspp_opts -> dflags) =
