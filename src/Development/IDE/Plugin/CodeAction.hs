@@ -667,9 +667,9 @@ suggestConstraint parsedModule mContents diag@Diagnostic {..}
   | Just contents <- mContents
   , Just missingConstraint <- findMissingConstraint _message
   = let codeAction = if _message =~ ("the type signature for:" :: String)
-                        then suggestFunctionConstraint parsedModule
-                        else suggestInstanceConstraint
-     in codeAction contents diag missingConstraint
+                        then suggestFunctionConstraint parsedModule 
+                        else suggestInstanceConstraint contents
+     in codeAction diag missingConstraint
   | otherwise = []
     where
       findMissingConstraint :: T.Text -> Maybe T.Text
@@ -742,10 +742,9 @@ findTypeSignatureLine :: T.Text -> T.Text -> Int
 findTypeSignatureLine contents typeSignatureName =
   T.splitOn (typeSignatureName <> " :: ") contents & head & T.lines & length
 
--- | Suggests a constraint for a type signature for which a constraint is missing.
-suggestFunctionConstraint :: ParsedModule -> T.Text -> Diagnostic -> T.Text -> [(T.Text, [TextEdit])]
-suggestFunctionConstraint ParsedModule{pm_parsed_source = L _ HsModule{hsmodDecls}} contents Diagnostic{..} missingConstraint
--- Suggests a constraint for a type signature with any number of existing constraints.
+-- | Suggests a constraint for a type signature with any number of existing constraints.
+suggestFunctionConstraint :: ParsedModule -> Diagnostic -> T.Text -> [(T.Text, [TextEdit])]
+suggestFunctionConstraint ParsedModule{pm_parsed_source = L _ HsModule{hsmodDecls}} Diagnostic{..} missingConstraint
 -- • No instance for (Eq a) arising from a use of ‘==’
 --   Possible fix:
 --     add (Eq a) to the context of
@@ -770,25 +769,25 @@ suggestFunctionConstraint ParsedModule{pm_parsed_source = L _ HsModule{hsmodDecl
   | Just typeSignatureName <- findTypeSignatureName _message
   = let mExistingConstraints = findExistingConstraints _message
         newConstraint = buildNewConstraints missingConstraint mExistingConstraints
-        -- TODO cleanup the previous way of finding the context
-        typeSignatureLine = findTypeSignatureLine contents typeSignatureName
-        typeSignatureFirstChar = T.length $ typeSignatureName <> " :: "
-        startOfConstraint = Position typeSignatureLine typeSignatureFirstChar
-        endOfConstraint = Position typeSignatureLine $
-          typeSignatureFirstChar + maybe 0 T.length mExistingConstraints
-        range = Range startOfConstraint endOfConstraint
-        betterRange = fromMaybe range (findRangeOfContextForFunctionNamed typeSignatureName)
-     in [(actionTitle missingConstraint typeSignatureName, [TextEdit betterRange newConstraint])]
+     in case findRangeOfContextForFunctionNamed typeSignatureName of 
+       Just range -> [(actionTitle missingConstraint typeSignatureName, [TextEdit range newConstraint])]
+       Nothing -> []
   | otherwise = []
     where
-      -- TODO return Range of first char in the type signature if it doesn't have context
-      
       findRangeOfContextForFunctionNamed :: T.Text -> Maybe Range 
-      findRangeOfContextForFunctionNamed typeSignatureName = listToMaybe $ catMaybes
-          [ srcSpanToRange $ getLoc locatedContext 
-          | L _ (SigD _ (TypeSig _ identifiers (HsWC _ (HsIB _ (L _ (HsQualTy _ locatedContext _ )))))) <- hsmodDecls
-          , any (`isSameName` (T.unpack typeSignatureName)) $ fmap unLoc identifiers
-          ]
+      findRangeOfContextForFunctionNamed typeSignatureName = do
+          locatedType <- listToMaybe 
+              [ locatedType
+              | L _ (SigD _ (TypeSig _ identifiers (HsWC _ (HsIB _ locatedType)))) <- hsmodDecls
+              , any (`isSameName` T.unpack typeSignatureName) $ fmap unLoc identifiers
+              ]
+          srcSpanToRange $ case locatedType of
+            -- The type signature has explicit Context
+            L _ (HsQualTy _ (L contextSrcSpan _ ) _) -> contextSrcSpan
+            -- No explicit context, return SrcSpan at the start of type sig where we can write the Context
+            L typeSigSrcSpan _ ->
+                let start = srcSpanStart typeSigSrcSpan
+                in mkSrcSpan start start
     
       isSameName :: IdP GhcPs -> String -> Bool
       isSameName x name = showSDocUnsafe (ppr x) == name
