@@ -2269,7 +2269,7 @@ checkFileCompiles fp =
 
 pluginSimpleTests :: TestTree
 pluginSimpleTests =
-  testSessionWait "simple plugin" $ do
+  knownBrokenInWindowsAndGHC10 $ testSessionWait "simple plugin" $ do
     let content =
           T.unlines
             [ "{-# OPTIONS_GHC -fplugin GHC.TypeLits.KnownNat.Solver #-}"
@@ -2292,7 +2292,7 @@ pluginSimpleTests =
 
 pluginParsedResultTests :: TestTree
 pluginParsedResultTests =
-  testSessionWait "parsedResultAction plugin" $ do
+  knownBrokenInWindowsAndGHC10 $ testSessionWait "parsedResultAction plugin" $ do
     let content =
           T.unlines
             [ "{-# LANGUAGE DuplicateRecordFields, TypeApplications, FlexibleContexts, DataKinds, MultiParamTypeClasses, TypeSynonymInstances, FlexibleInstances #-}"
@@ -2951,11 +2951,15 @@ expectFailCabal _ = id
 expectFailCabal = expectFailBecause
 #endif
 
-knownBrokenInWindows :: TestTree -> TestTree
-knownBrokenInWindows = expectFailWindows "known broken in windows"
-
 expectFailWindows :: String -> TestTree -> TestTree
 expectFailWindows = if isWindows then expectFailBecause else flip const
+
+knownBrokenInWindowsAndGHC10 :: TestTree -> TestTree
+#if MIN_GHC_API_VERSION(8,10,0)
+knownBrokenInWindowsAndGHC10 = expectFailWindows "known broken in windows for ghc-8.10"
+#else
+knownBrokenInWindowsAndGHC10 = id
+#endif
 
 data Expect
   = ExpectRange Range -- Both gotoDef and hover should report this range
