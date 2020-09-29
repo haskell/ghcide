@@ -2954,12 +2954,10 @@ expectFailCabal = expectFailBecause
 ignoreInWindowsBecause :: String -> TestTree -> TestTree
 ignoreInWindowsBecause = if isWindows then ignoreTestBecause else flip const
 
-expectFailWindows :: String -> TestTree -> TestTree
-expectFailWindows = if isWindows then expectFailBecause else flip const
-
 knownBrokenInWindowsAndGHC10 :: TestTree -> TestTree
 #if MIN_GHC_API_VERSION(8,10,0)
 knownBrokenInWindowsAndGHC10 = expectFailWindows "known broken in windows for ghc-8.10"
+  where expectFailWindows = if isWindows then expectFailBecause else flip const
 #else
 knownBrokenInWindowsAndGHC10 = id
 #endif
