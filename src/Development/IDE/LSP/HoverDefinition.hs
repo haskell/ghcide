@@ -8,13 +8,14 @@
 
 -- | Display information on hover.
 module Development.IDE.LSP.HoverDefinition
-    ( setIDEHandlers
+    ( setIdeHandlers
     -- * For haskell-language-server
     , hover
     , gotoDefinition
     , gotoTypeDefinition
     ) where
 
+import Control.Monad.IO.Class
 import           Development.IDE.Core.Rules
 import           Development.IDE.Core.Shake
 import           Development.IDE.LSP.Server
@@ -25,10 +26,10 @@ import           Language.Haskell.LSP.Types
 
 import qualified Data.Text as T
 
-gotoDefinition :: IdeState -> TextDocumentPositionParams -> IO (Either ResponseError (ResponseParams TextDocumentDefinition))
-hover          :: IdeState -> TextDocumentPositionParams -> IO (Either ResponseError (Maybe Hover))
-gotoTypeDefinition :: IdeState -> TextDocumentPositionParams -> IO (Either ResponseError (ResponseParams TextDocumentTypeDefinition))
-documentHighlight :: IdeState -> TextDocumentPositionParams -> IO (Either ResponseError (List DocumentHighlight))
+gotoDefinition :: IdeState -> TextDocumentPositionParams -> LSP.LspM c (Either ResponseError (ResponseParams TextDocumentDefinition))
+hover          :: IdeState -> TextDocumentPositionParams -> LSP.LspM c (Either ResponseError (Maybe Hover))
+gotoTypeDefinition :: IdeState -> TextDocumentPositionParams -> LSP.LspM c (Either ResponseError (ResponseParams TextDocumentTypeDefinition))
+documentHighlight :: IdeState -> TextDocumentPositionParams -> LSP.LspM c (Either ResponseError (List DocumentHighlight))
 gotoDefinition = request "Definition" getDefinition (InR $ InL $ List []) InL
 gotoTypeDefinition = request "TypeDefinition" getTypeDefinition (InR $ InL $ List []) (InR . InL . List)
 hover          = request "Hover"      getAtPoint     Nothing      foundHover
@@ -39,15 +40,16 @@ foundHover (mbRange, contents) =
   Just $ Hover (HoverContents $ MarkupContent MkMarkdown $ T.intercalate sectionSeparator contents) mbRange
 
 setIdeHandlers :: IdeState -> LSP.Handlers c
-setIdeHandlers ide STextDocumentDefinition = Just $ \(RequestMessage _ _ _ params) k ->
-  k =<< gotoDefinition ide params
-setIdeHandlers ide STextDocumentHover = Just $ \(RequestMessage _ _ _ params) k ->
-  k =<< hover ide params
-setIdeHandlers ide STextDocumentTypeDefinition = Just $ \(RequestMessage _ _ _ params) k ->
-  k =<< gotoTypeDefinition ide params
-setIdeHandlers ide STextDocumentDocumentHighlight = Just $ \(RequestMessage _ _ _ params) k ->
-  k =<< documentHighlight ide params
-setIdeHandlers _ _ = Nothing
+setIdeHandlers ide = mconcat
+  [ LSP.requestHandler STextDocumentDefinition $ \(RequestMessage _ _ _ DefinitionParams{..}) k ->
+      k =<< gotoDefinition ide TextDocumentPositionParams{..}
+  , LSP.requestHandler STextDocumentHover $ \(RequestMessage _ _ _ HoverParams{..}) k ->
+      k =<< hover ide TextDocumentPositionParams{..}
+  , LSP.requestHandler STextDocumentTypeDefinition $ \(RequestMessage _ _ _ TypeDefinitionParams{..}) k ->
+      k =<< gotoTypeDefinition ide TextDocumentPositionParams{..}
+  , LSP.requestHandler STextDocumentDocumentHighlight $ \(RequestMessage _ _ _ DocumentHighlightParams{..}) k ->
+      k =<< documentHighlight ide TextDocumentPositionParams{..}
+  ]
 
 -- | Respond to and log a hover or go-to-definition request
 request
@@ -57,8 +59,8 @@ request
   -> (a -> b)
   -> IdeState
   -> TextDocumentPositionParams
-  -> IO (Either ResponseError b)
-request label getResults notFound found ide (TextDocumentPositionParams (TextDocumentIdentifier uri) pos) = do
+  -> LSP.LspM c (Either ResponseError b)
+request label getResults notFound found ide (TextDocumentPositionParams (TextDocumentIdentifier uri) pos) = liftIO $ do
     mbResult <- case uriToFilePath' uri of
         Just path -> logAndRunRequest label getResults ide pos path
         Nothing   -> pure Nothing

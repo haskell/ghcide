@@ -1,4 +1,3 @@
-{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE GADTs      #-}
 {-# LANGUAGE TypeOperators #-}
@@ -15,7 +14,7 @@ import           Language.Haskell.LSP.Types
 import Development.IDE.Compat
 import Development.IDE.Core.Rules
 import qualified Language.Haskell.LSP.Core as LSP
-
+import           Language.Haskell.LSP.Core (requestHandler)
 
 data Plugin c = Plugin
     {pluginRules :: Rules ()
@@ -23,11 +22,10 @@ data Plugin c = Plugin
     }
 
 instance Default (Plugin c) where
-    def = Plugin mempty def
+    def = Plugin mempty mempty
 
 instance Semigroup (Plugin c) where
-    Plugin x1 h1 <> Plugin x2 h2 = Plugin (x1<>x2) $ \state method ->
-        h2 state method <|> h1 state method
+    Plugin x1 h1 <> Plugin x2 h2 = Plugin (x1<>x2) (h1 <> h2)
 
 instance Monoid (Plugin c) where
     mempty = def
@@ -40,8 +38,7 @@ codeActionPluginWithRules :: forall c. Rules () -> (IdeState -> TextDocumentIden
 codeActionPluginWithRules rr f = Plugin rr handlers
   where
     handlers :: IdeState -> LSP.Handlers c
-    handlers state STextDocumentCodeAction = Just $ \(RequestMessage _ _ _ params) k -> k =<< g state params
-    handlers _ _ = Nothing
+    handlers state = requestHandler STextDocumentCodeAction $ \(RequestMessage _ _ _ params) k -> k =<< g state params
     g state (CodeActionParams _ _ a b c) = fmap List <$> f state a b c
 
 -- | Prefix to uniquely identify commands sent to the client.  This

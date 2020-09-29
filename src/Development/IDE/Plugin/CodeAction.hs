@@ -35,7 +35,6 @@ import Development.IDE.Core.Service
 import Development.IDE.Core.Shake
 import Development.IDE.GHC.Error
 import Development.IDE.GHC.Util
-import Development.IDE.LSP.Server
 import Development.IDE.Plugin.CodeAction.PositionIndexed
 import Development.IDE.Plugin.CodeAction.RuleTypes
 import Development.IDE.Plugin.CodeAction.Rules
@@ -46,7 +45,7 @@ import Development.Shake (Rules)
 import qualified Data.HashMap.Strict as Map
 import qualified Language.Haskell.LSP.Core as LSP
 import Language.Haskell.LSP.VFS
-import Language.Haskell.LSP.Types hiding (L)
+import Language.Haskell.LSP.Types
 import qualified Data.Rope.UTF16 as Rope
 import Data.Aeson.Types (toJSON, fromJSON, Value(..), Result(..))
 import Data.Char
@@ -1085,11 +1084,12 @@ matchRegex message regex = case message =~~ regex of
     Nothing -> Nothing
 
 setHandlersCodeLens :: IdeState -> LSP.Handlers c
-setHandlersCodeLens ide STextDocumentCodeLens = Just $ \(RequestMessage _ _ _ params) k ->
-  k =<< codeLens ide params
-setHandlersCodeLens ide SWorkspaceExecuteCommand = Just $ \(RequestMessage _ _ _ params) k ->
-  k =<< commandHandler ide params
-setHandlersCodeLens _ _ = Nothing
+setHandlersCodeLens ide = mconcat
+  [ LSP.requestHandler STextDocumentCodeLens $ \(RequestMessage _ _ _ params) k ->
+      k =<< codeLens ide params
+  , LSP.requestHandler SWorkspaceExecuteCommand $ \(RequestMessage _ _ _ params) k ->
+      k =<< commandHandler ide params
+  ]
 
 filterNewlines :: T.Text -> T.Text
 filterNewlines = T.concat  . T.lines

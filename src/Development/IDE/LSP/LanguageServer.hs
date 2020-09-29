@@ -36,8 +36,6 @@ import Development.IDE.LSP.Notifications
 import Development.IDE.LSP.Outline
 import Development.IDE.Types.Logger
 import Development.IDE.Core.FileStore
-import Language.Haskell.LSP.Core (LspFuncs(..))
-import Language.Haskell.LSP.Messages
 
 runLanguageServer
     :: forall config. (Show config)

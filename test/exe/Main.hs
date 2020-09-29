@@ -3457,7 +3457,7 @@ asyncTests = testGroup "async"
             liftIO $ [ _title | CACodeAction CodeAction{_title} <- actions] @=? ["add signature: foo :: a -> a"]
     , testSession "request" $ do
             -- Execute a custom request that will block for 1000 seconds
-            void $ sendRequest (CustomClientMethod "test") $ BlockSeconds 1000
+            void $ sendRequest (CustomClientMethod "ghcide/blocking/request") $ BlockSeconds 1000
             -- Load a file and check for code actions. Will only work if the request is run asynchronously
             doc <- createDoc "A.hs" "haskell" $ T.unlines
               [ "{-# OPTIONS -Wmissing-signatures #-}"

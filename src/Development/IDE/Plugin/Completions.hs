@@ -160,7 +160,6 @@ getCompletionsLSP ide
       _ -> return (InL $ List [])
 
 setHandlersCompletion :: IdeState -> LSP.Handlers c
-setHandlersCompletion ide STextDocumentCompletion = Just $ \(RequestMessage _ _ _ params) k ->
+setHandlersCompletion ide = LSP.requestHandler STextDocumentCompletion $ \(RequestMessage _ _ _ params) k ->
   k =<< getCompletionsLSP ide params
-setHandlersCompletion _ _ = Nothing
 

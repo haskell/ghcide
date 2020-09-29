@@ -12,6 +12,7 @@ module Development.IDE.LSP.Notifications
 
 import           Development.IDE.LSP.Server
 import qualified Language.Haskell.LSP.Core        as LSP
+import           Language.Haskell.LSP.Core (notificationHandler)
 import           Language.Haskell.LSP.Types
 import qualified Language.Haskell.LSP.Types       as LSP
 import qualified Language.Haskell.LSP.Types.Capabilities as LSP
@@ -43,84 +44,85 @@ getParams :: NotificationMessage m -> MessageParams m
 getParams (NotificationMessage _ _ params) = params
 
 setHandlersNotifications :: IdeState -> LSP.Handlers c
-setHandlersNotifications ide LSP.STextDocumentDidOpen = Just $
-  \(getParams  -> DidOpenTextDocumentParams TextDocumentItem{_uri,_version}) -> liftIO $ do
-  updatePositionMapping ide (VersionedTextDocumentIdentifier _uri (Just _version)) (List [])
-  whenUriFile _uri $ \file -> do
-      -- We don't know if the file actually exists, or if the contents match those on disk
-      -- For example, vscode restores previously unsaved contents on open
-      modifyFilesOfInterest ide (M.insert file Modified)
-      setFileModified ide False file
-      logInfo (ideLogger ide) $ "Opened text document: " <> getUri _uri
-
-setHandlersNotifications ide LSP.STextDocumentDidChange = Just $
-  \(getParams  -> DidChangeTextDocumentParams identifier@VersionedTextDocumentIdentifier{_uri} changes) -> liftIO $ do
-    updatePositionMapping ide identifier changes
-    whenUriFile _uri $ \file -> do
-      modifyFilesOfInterest ide (M.insert file Modified)
-      setFileModified ide False file
-    logInfo (ideLogger ide) $ "Modified text document: " <> getUri _uri
-
-setHandlersNotifications ide LSP.STextDocumentDidSave = Just $
-  \(getParams  -> DidSaveTextDocumentParams TextDocumentIdentifier{_uri} _) -> liftIO $ do
-    whenUriFile _uri $ \file -> do
-        modifyFilesOfInterest ide (M.insert file OnDisk)
-        setFileModified ide True file
-    logInfo (ideLogger ide) $ "Saved text document: " <> getUri _uri
-
-setHandlersNotifications ide LSP.STextDocumentDidClose = Just $
-    \(getParams  -> DidCloseTextDocumentParams TextDocumentIdentifier{_uri}) -> liftIO $ do
+setHandlersNotifications ide = mconcat
+  [ notificationHandler LSP.STextDocumentDidOpen $
+      \(getParams  -> DidOpenTextDocumentParams TextDocumentItem{_uri,_version}) -> liftIO $ do
+      updatePositionMapping ide (VersionedTextDocumentIdentifier _uri (Just _version)) (List [])
       whenUriFile _uri $ \file -> do
-          modifyFilesOfInterest ide (M.delete file)
-          -- Refresh all the files that depended on this
-          IdeOptions{optCheckParents} <- getIdeOptionsIO $ shakeExtras ide
-          when (optCheckParents >= CheckOnClose) $ typecheckParents ide file
-          logInfo (ideLogger ide) $ "Closed text document: " <> getUri _uri
+          -- We don't know if the file actually exists, or if the contents match those on disk
+          -- For example, vscode restores previously unsaved contents on open
+          modifyFilesOfInterest ide (M.insert file Modified)
+          setFileModified ide False file
+          logInfo (ideLogger ide) $ "Opened text document: " <> getUri _uri
 
-setHandlersNotifications ide LSP.SWorkspaceDidChangeWatchedFiles = Just $
-  \(getParams  -> DidChangeWatchedFilesParams fileEvents) -> liftIO $ do
-    -- See Note [File existence cache and LSP file watchers] which explains why we get these notifications and
-    -- what we do with them
-    let events =
-            mapMaybe
-                (\(FileEvent uri ev) ->
-                    (, ev /= FcDeleted) . toNormalizedFilePath'
-                    <$> LSP.uriToFilePath uri
-                )
-                ( F.toList fileEvents )
-    let msg = Text.pack $ show events
-    logInfo (ideLogger ide) $ "Files created or deleted: " <> msg
-    modifyFileExists ide events
-    setSomethingModified ide
+  , notificationHandler LSP.STextDocumentDidChange $
+      \(getParams  -> DidChangeTextDocumentParams identifier@VersionedTextDocumentIdentifier{_uri} changes) -> liftIO $ do
+        updatePositionMapping ide identifier changes
+        whenUriFile _uri $ \file -> do
+          modifyFilesOfInterest ide (M.insert file Modified)
+          setFileModified ide False file
+        logInfo (ideLogger ide) $ "Modified text document: " <> getUri _uri
 
-setHandlersNotifications ide LSP.SWorkspaceDidChangeWorkspaceFolders = Just $
-  \(getParams -> DidChangeWorkspaceFoldersParams events) -> liftIO $ do
-    let add       = S.union
-        substract = flip S.difference
-    modifyWorkspaceFolders ide
-      $ add       (foldMap (S.singleton . parseWorkspaceFolder) (_added   events))
-      . substract (foldMap (S.singleton . parseWorkspaceFolder) (_removed events))
+  , notificationHandler LSP.STextDocumentDidSave $
+      \(getParams  -> DidSaveTextDocumentParams TextDocumentIdentifier{_uri} _) -> liftIO $ do
+        whenUriFile _uri $ \file -> do
+            modifyFilesOfInterest ide (M.insert file OnDisk)
+            setFileModified ide True file
+        logInfo (ideLogger ide) $ "Saved text document: " <> getUri _uri
 
-setHandlersNotifications ide LSP.SWorkspaceDidChangeConfiguration = Just $
-  \(getParams -> DidChangeConfigurationParams cfg) -> liftIO $ do
-    let msg = Text.pack $ show cfg
-    logInfo (ideLogger ide) $ "Configuration changed: " <> msg
-    modifyClientSettings ide (const $ Just cfg)
-    setSomethingModified ide
+  , notificationHandler LSP.STextDocumentDidClose $
+        \(getParams  -> DidCloseTextDocumentParams TextDocumentIdentifier{_uri}) -> liftIO $ do
+          whenUriFile _uri $ \file -> do
+              modifyFilesOfInterest ide (M.delete file)
+              -- Refresh all the files that depended on this
+              IdeOptions{optCheckParents} <- getIdeOptionsIO $ shakeExtras ide
+              when (optCheckParents >= CheckOnClose) $ typecheckParents ide file
+              logInfo (ideLogger ide) $ "Closed text document: " <> getUri _uri
 
-setHandlersNotifications ide LSP.SInitialized = Just $ \_ -> do
-  clientCapabilities <- LSP.getClientCapabilities
-  let watchSupported = case () of
-        _ | LSP.ClientCapabilities{_workspace} <- clientCapabilities
-          , Just LSP.WorkspaceClientCapabilities{_didChangeWatchedFiles} <- _workspace
-          , Just LSP.DidChangeWatchedFilesClientCapabilities{_dynamicRegistration} <- _didChangeWatchedFiles
-          , Just True <- _dynamicRegistration
-            -> True
-          | otherwise -> False
+  , notificationHandler LSP.SWorkspaceDidChangeWatchedFiles $
+      \(getParams  -> DidChangeWatchedFilesParams fileEvents) -> liftIO $ do
+        -- See Note [File existence cache and LSP file watchers] which explains why we get these notifications and
+        -- what we do with them
+        let events =
+                mapMaybe
+                    (\(FileEvent uri ev) ->
+                        (, ev /= FcDeleted) . toNormalizedFilePath'
+                        <$> LSP.uriToFilePath uri
+                    )
+                    ( F.toList fileEvents )
+        let msg = Text.pack $ show events
+        logInfo (ideLogger ide) $ "Files created or deleted: " <> msg
+        modifyFileExists ide events
+        setSomethingModified ide
 
-  if watchSupported
-  then registerWatcher
-  else liftIO $ logDebug (ideLogger ide) "Warning: Client does not support watched files. Falling back to OS polling"
+  , notificationHandler LSP.SWorkspaceDidChangeWorkspaceFolders $
+      \(getParams -> DidChangeWorkspaceFoldersParams events) -> liftIO $ do
+        let add       = S.union
+            substract = flip S.difference
+        modifyWorkspaceFolders ide
+          $ add       (foldMap (S.singleton . parseWorkspaceFolder) (_added   events))
+          . substract (foldMap (S.singleton . parseWorkspaceFolder) (_removed events))
+
+  , notificationHandler LSP.SWorkspaceDidChangeConfiguration $
+      \(getParams -> DidChangeConfigurationParams cfg) -> liftIO $ do
+        let msg = Text.pack $ show cfg
+        logInfo (ideLogger ide) $ "Configuration changed: " <> msg
+        modifyClientSettings ide (const $ Just cfg)
+        setSomethingModified ide
+
+  , notificationHandler LSP.SInitialized $ \_ -> do
+      clientCapabilities <- LSP.getClientCapabilities
+      let watchSupported = case () of
+            _ | LSP.ClientCapabilities{_workspace} <- clientCapabilities
+              , Just LSP.WorkspaceClientCapabilities{_didChangeWatchedFiles} <- _workspace
+              , Just LSP.DidChangeWatchedFilesClientCapabilities{_dynamicRegistration} <- _didChangeWatchedFiles
+              , Just True <- _dynamicRegistration
+                -> True
+              | otherwise -> False
+      if watchSupported
+      then registerWatcher
+      else liftIO $ logDebug (ideLogger ide) "Warning: Client does not support watched files. Falling back to OS polling"
+  ]
     where
         registerWatcher = do
             opts <- liftIO $ getIdeOptionsIO $ shakeExtras ide
@@ -145,4 +147,3 @@ setHandlersNotifications ide LSP.SInitialized = Just $ \_ -> do
               watchers = [ watcher glob | glob <- watchedGlobs opts ]
 
             void $ LSP.sendRequest SClientRegisterCapability regParams undefined
-setHandlersNotifications _ _ = Nothing
