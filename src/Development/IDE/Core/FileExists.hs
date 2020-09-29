@@ -10,7 +10,6 @@ module Development.IDE.Core.FileExists
 where
 
 import           Control.Concurrent.Extra
-import           Control.Exception
 import           Control.Monad.Extra
 import           Data.Binary
 import qualified Data.ByteString               as BS
@@ -22,7 +21,6 @@ import           Development.IDE.Core.IdeConfiguration
 import           Development.IDE.Core.Shake
 import           Development.IDE.Types.Location
 import           Development.IDE.Types.Options
-import           Development.IDE.Types.Logger
 import           Development.Shake
 import           Development.Shake.Classes
 import           GHC.Generics
@@ -31,6 +29,7 @@ import           Language.Haskell.LSP.Types
 import           Language.Haskell.LSP.Types.Capabilities
 import qualified System.Directory as Dir
 import qualified System.FilePath.Glob as Glob
+import UnliftIO.Exception
 
 {- Note [File existence cache and LSP file watchers]
 Some LSP servers provide the ability to register file watches with the client, which will then notify
@@ -173,9 +172,7 @@ fileExistsRules lspEnv vfs = do
 
   if supportsWatchedFiles
     then fileExistsRulesFast globs vfs
-    else do
-      logger <- logger <$> getShakeExtrasRules
-      fileExistsRulesSlow vfs
+    else fileExistsRulesSlow vfs
 
 -- Requires an lsp client that provides WatchedFiles notifications, but assumes that this has already been checked.
 fileExistsRulesFast :: [String] -> VFSHandle -> Rules ()

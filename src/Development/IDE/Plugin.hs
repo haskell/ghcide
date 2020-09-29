@@ -4,11 +4,9 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 module Development.IDE.Plugin where
 
-import Control.Applicative
 import Data.Default
 import qualified Data.Text as T
 import Development.Shake
-import Development.IDE.LSP.Server
 
 import           Language.Haskell.LSP.Types
 import Development.IDE.Compat

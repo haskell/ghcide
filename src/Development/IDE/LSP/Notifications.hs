@@ -10,7 +10,6 @@ module Development.IDE.LSP.Notifications
     ( setHandlersNotifications
     ) where
 
-import           Development.IDE.LSP.Server
 import qualified Language.Haskell.LSP.Core        as LSP
 import           Language.Haskell.LSP.Core (notificationHandler)
 import           Language.Haskell.LSP.Types

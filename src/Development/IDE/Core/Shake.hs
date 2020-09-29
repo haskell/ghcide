@@ -100,7 +100,6 @@ import           Control.Concurrent.Async
 import           Control.Concurrent.Extra
 import           Control.Concurrent.STM (readTVar, writeTVar, newTVarIO, atomically)
 import           Control.DeepSeq
-import           Control.Exception.Extra
 import           System.Time.Extra
 import           Data.Typeable
 import qualified Language.Haskell.LSP.Core as LSP
@@ -126,7 +125,9 @@ import PrelInfo
 import Data.Int (Int64)
 import qualified Data.HashSet as HSet
 
-import Control.Monad.Trans.Control
+import           Control.Exception.Extra hiding (bracket_)
+import UnliftIO.Exception (bracket_)
+
 
 -- information we stash inside the shakeExtra field
 data ShakeExtras = ShakeExtras
@@ -479,11 +480,10 @@ shakeOpen lspEnv logger debouncer
                 void $ LSP.sendRequest LSP.SWindowWorkDoneProgressCreate
                     LSP.WorkDoneProgressCreateParams { _token = u } $ const (pure ())
                     
-                control $ \runInBase ->
-                    bracket_
-                        (runInBase $ start u)
-                        (runInBase $ stop u)
-                        (runInBase $ loop u Nothing)
+                bracket_
+                  (start u)
+                  (stop u)
+                  (loop u Nothing)
                 where
                     start id = LSP.sendNotification LSP.SProgress $
                         LSP.ProgressParams
@@ -509,16 +509,16 @@ shakeOpen lspEnv logger debouncer
                         let done = length $ filter (== 0) $ HMap.elems current
                         let todo = HMap.size current
                         let next = Just $ T.pack $ show done <> "/" <> show todo
-                        control $ \runInBase -> when (next /= prev) $
-                            runInBase $ LSP.sendNotification LSP.SProgress $
-                                LSP.ProgressParams
-                                    { _token = id
-                                    , _value = LSP.Report $ LSP.WorkDoneProgressReportParams
-                                    { _cancellable = Nothing
-                                    , _message = next
-                                    , _percentage = Nothing
-                                    }
-                                    }
+                        when (next /= prev) $
+                          LSP.sendNotification LSP.SProgress $
+                          LSP.ProgressParams
+                              { _token = id
+                              , _value = LSP.Report $ LSP.WorkDoneProgressReportParams
+                                { _cancellable = Nothing
+                                , _message = next
+                                , _percentage = Nothing
+                                }
+                              }
                         loop id next
 
 shakeProfile :: IdeState -> FilePath -> IO ()

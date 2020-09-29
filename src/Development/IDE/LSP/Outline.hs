@@ -13,7 +13,6 @@ module Development.IDE.LSP.Outline
 where
 
 import qualified Language.Haskell.LSP.Core     as LSP
-import qualified Language.Haskell.LSP.Types as LSP
 import           Language.Haskell.LSP.Types
 import           Control.Monad.IO.Class
 import           Data.Functor

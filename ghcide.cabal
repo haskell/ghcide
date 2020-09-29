@@ -73,7 +73,7 @@ library
         unordered-containers >= 0.2.10.0,
         utf8-string,
         hslogger,
-        monad-control
+        unliftio
     if flag(ghc-lib)
       build-depends:
         ghc-lib >= 8.8,

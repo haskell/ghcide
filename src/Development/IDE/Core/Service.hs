@@ -40,7 +40,7 @@ import Control.Monad
 
 -- | Initialise the Compiler Service.
 initialise :: Rules ()
-           -> LSP.LanguageContextEnv ()
+           -> Maybe (LSP.LanguageContextEnv ())
            -> Logger
            -> Debouncer LSP.NormalizedUri
            -> IdeOptions
@@ -48,7 +48,7 @@ initialise :: Rules ()
            -> IO IdeState
 initialise mainRule lspEnv logger debouncer options vfs =
     shakeOpen
-        (Just lspEnv)
+        lspEnv
         logger
         debouncer
         (optShakeProfiling options)
@@ -61,7 +61,7 @@ initialise mainRule lspEnv logger debouncer options vfs =
             addIdeGlobal $ GlobalIdeOptions options
             fileStoreRules vfs
             ofInterestRules
-            fileExistsRules (Just lspEnv) vfs
+            fileExistsRules lspEnv vfs
             mainRule
 
 writeProfile :: IdeState -> FilePath -> IO ()
