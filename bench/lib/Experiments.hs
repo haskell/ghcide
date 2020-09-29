@@ -1,5 +1,6 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE ImpredicativeTypes #-}
@@ -82,7 +83,7 @@ experiments =
         isJust <$> getHover doc ?identifierP,
       ---------------------------------------------------------------------------------------
       bench "getDefinition" 10 $ \doc ->
-        not . null <$> getDefinitions doc ?identifierP,
+        either (not . null) (not . null) . toEither <$> getDefinitions doc ?identifierP,
       ---------------------------------------------------------------------------------------
       bench "documentSymbols" 100 $
         fmap (either (not . null) (not . null)) . getDocumentSymbols,
@@ -311,8 +312,9 @@ badRun :: BenchRun
 badRun = BenchRun 0 0 0 0 0 False 0 0
 
 waitForProgressDone :: Session ()
-waitForProgressDone =
-      void(skipManyTill anyMessage message :: Session WorkDoneProgressEndNotification)
+waitForProgressDone = void $ skipManyTill anyMessage $ satisfyMaybe $ \case
+  FromServerMess SProgress (NotificationMessage _ _ (ProgressParams _ (End _))) -> Just ()
+  _ -> pure ()
 
 runBench ::
   (?config :: Config) =>

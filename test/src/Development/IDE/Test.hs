@@ -15,6 +15,7 @@ module Development.IDE.Test
   , standardizeQuotes
   ) where
 
+import qualified Data.Aeson as A
 import Control.Applicative.Combinators
 import Control.Lens hiding (List)
 import Control.Monad
@@ -67,22 +68,23 @@ expectNoMoreDiagnostics timeout = do
     -- Send a dummy message to provoke a response from the server.
     -- This guarantees that we have at least one message to
     -- process, so message won't block or timeout.
-    void $ sendRequest (CustomClientMethod "non-existent-method") ()
-    handleMessages
+    let m = SCustomMethod "non-existent-method"
+    i <- sendRequest m A.Null
+    handleMessages m i
   where
-    handleMessages = handleDiagnostic <|> handleCustomMethodResponse <|> ignoreOthers
+    handleMessages m i = handleDiagnostic <|> handleCustomMethodResponse m i <|> ignoreOthers m i
     handleDiagnostic = do
-        diagsNot <- LspTest.message :: Session PublishDiagnosticsNotification
+        diagsNot <- LspTest.message STextDocumentPublishDiagnostics
         let fileUri = diagsNot ^. params . uri
             actual = diagsNot ^. params . diagnostics
         liftIO $ assertFailure $
             "Got unexpected diagnostics for " <> show fileUri <>
             " got " <> show actual
-    handleCustomMethodResponse =
+    handleCustomMethodResponse m i =
         -- the CustomClientMethod triggers a RspCustomServer
         -- handle that and then exit
-        void (LspTest.message :: Session CustomResponse)
-    ignoreOthers = void anyMessage >> handleMessages
+        void (LspTest.responseForId m i)
+    ignoreOthers m i = void anyMessage >> handleMessages m i
 
 expectDiagnostics :: [(FilePath, [(DiagnosticSeverity, Cursor, T.Text)])] -> Session ()
 expectDiagnostics
@@ -122,7 +124,7 @@ canonicalizeUri :: Uri -> IO Uri
 canonicalizeUri uri = filePathToUri <$> canonicalizePath (fromJust (uriToFilePath uri))
 
 diagnostic :: Session PublishDiagnosticsNotification
-diagnostic = LspTest.message
+diagnostic = LspTest.message STextDocumentPublishDiagnostics
 
 standardizeQuotes :: T.Text -> T.Text
 standardizeQuotes msg = let

@@ -34,7 +34,6 @@ import Development.IDE.Types.Location
 import Development.Shake (getDirectoryFilesIO)
 import qualified Experiments as Bench
 import Language.Haskell.LSP.Test
-import Language.Haskell.LSP.Messages
 import Language.Haskell.LSP.Types
 import Language.Haskell.LSP.Types.Capabilities
 import qualified Language.Haskell.LSP.Types.Lens as Lsp (diagnostics, params, message)
@@ -57,7 +56,7 @@ import Test.Tasty.HUnit
 import Test.Tasty.QuickCheck
 import System.Time.Extra
 import Development.IDE.Plugin.CodeAction (typeSignatureCommandId, blockCommandId)
-import Development.IDE.Plugin.Test (TestRequest(BlockSeconds,GetInterfaceFilesDir))
+import Development.IDE.Plugin.Test (BlockSeconds(..),GetInterfaceFilesDir(..))
 
 main :: IO ()
 main = do
