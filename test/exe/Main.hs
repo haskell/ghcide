@@ -2308,7 +2308,7 @@ pluginParsedResultTests =
 cppTests :: TestTree
 cppTests =
   testGroup "cpp"
-    [ knownBrokenInWindows $ testCase "cpp-error" $ do
+    [ ignoreInWindowsBecause "Throw a lsp session time out in windows for ghc-8.8" $ testCase "cpp-error" $ do
         let content =
               T.unlines
                 [ "{-# LANGUAGE CPP #-}",
@@ -2950,6 +2950,9 @@ expectFailCabal _ = id
 #else
 expectFailCabal = expectFailBecause
 #endif
+
+ignoreInWindowsBecause :: String -> TestTree -> TestTree
+ignoreInWindowsBecause = if isWindows then ignoreTestBecause else flip const
 
 expectFailWindows :: String -> TestTree -> TestTree
 expectFailWindows = if isWindows then expectFailBecause else flip const
