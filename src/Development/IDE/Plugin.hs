@@ -11,12 +11,12 @@ import Development.Shake
 import           Language.Haskell.LSP.Types
 import Development.IDE.Compat
 import Development.IDE.Core.Rules
+import Development.IDE.LSP.Server
 import qualified Language.Haskell.LSP.Core as LSP
-import           Language.Haskell.LSP.Core (requestHandler)
 
 data Plugin c = Plugin
     {pluginRules :: Rules ()
-    ,pluginHandlers :: IdeState -> LSP.Handlers c
+    ,pluginHandlers :: ReactorChan c -> LSP.Handlers c
     }
 
 instance Default (Plugin c) where
@@ -35,8 +35,8 @@ codeActionPlugin = codeActionPluginWithRules mempty
 codeActionPluginWithRules :: forall c. Rules () -> (IdeState -> TextDocumentIdentifier -> Range -> CodeActionContext -> LSP.LspM c (Either ResponseError [Command |? CodeAction])) -> Plugin c
 codeActionPluginWithRules rr f = Plugin rr handlers
   where
-    handlers :: IdeState -> LSP.Handlers c
-    handlers state = requestHandler STextDocumentCodeAction $ \(RequestMessage _ _ _ params) k -> k =<< g state params
+    handlers :: ReactorChan c -> LSP.Handlers c
+    handlers chan = requestHandler chan STextDocumentCodeAction $ \state (RequestMessage _ _ _ params) k -> k =<< g state params
     g state (CodeActionParams _ _ a b c) = fmap List <$> f state a b c
 
 -- | Prefix to uniquely identify commands sent to the client.  This

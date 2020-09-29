@@ -24,6 +24,7 @@ import           Data.Text                      ( Text
 import qualified Data.Text                     as T
 import           Development.IDE.Core.Rules
 import           Development.IDE.Core.Shake
+import           Development.IDE.LSP.Server
 import           Development.IDE.GHC.Compat
 import           Development.IDE.GHC.Error      ( realSrcSpanToRange )
 import           Development.IDE.Types.Location
@@ -32,8 +33,8 @@ import           Outputable                     ( Outputable
                                                 , showSDocUnsafe
                                                 )
 
-setHandlersOutline :: IdeState -> LSP.Handlers c
-setHandlersOutline ide = LSP.requestHandler STextDocumentDocumentSymbol $ \(RequestMessage _ _ _ params) k ->
+setHandlersOutline :: ReactorChan c -> LSP.Handlers c
+setHandlersOutline c = requestHandler c STextDocumentDocumentSymbol $ \ide (RequestMessage _ _ _ params) k ->
   k =<< moduleOutline ide params
 
 moduleOutline

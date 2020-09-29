@@ -203,7 +203,7 @@ library
       other-modules:
         Development.IDE.GHC.HieAst
         Development.IDE.GHC.HieBin
-    ghc-options: -Wall -Wno-name-shadowing -Wincomplete-uni-patterns
+    ghc-options: -Wall -Wno-name-shadowing -Wincomplete-uni-patterns -Wno-unticked-promoted-constructors
 
 executable ghcide-test-preprocessor
     default-language: Haskell2010

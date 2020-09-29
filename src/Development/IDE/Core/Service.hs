@@ -19,7 +19,7 @@ module Development.IDE.Core.Service(
     ) where
 
 import Data.Maybe
-import Development.IDE.Types.Options (IdeOptions(..))
+import Development.IDE.Types.Options (IdeOptions(..), LspConfig)
 import Development.IDE.Core.Debouncer
 import           Development.IDE.Core.FileStore  (VFSHandle, fileStoreRules)
 import           Development.IDE.Core.FileExists (fileExistsRules)
@@ -28,7 +28,6 @@ import Development.IDE.Types.Logger as Logger
 import           Development.Shake
 import qualified Language.Haskell.LSP.Core as LSP
 import qualified Language.Haskell.LSP.Types as LSP
-import qualified Language.Haskell.LSP.Types.Capabilities as LSP
 
 import           Development.IDE.Core.Shake
 import Control.Monad
@@ -40,7 +39,7 @@ import Control.Monad
 
 -- | Initialise the Compiler Service.
 initialise :: Rules ()
-           -> Maybe (LSP.LanguageContextEnv ())
+           -> Maybe (LSP.LanguageContextEnv LspConfig)
            -> Logger
            -> Debouncer LSP.NormalizedUri
            -> IdeOptions

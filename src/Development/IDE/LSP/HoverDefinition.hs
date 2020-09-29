@@ -39,15 +39,15 @@ foundHover :: (Maybe Range, [T.Text]) -> Maybe Hover
 foundHover (mbRange, contents) =
   Just $ Hover (HoverContents $ MarkupContent MkMarkdown $ T.intercalate sectionSeparator contents) mbRange
 
-setIdeHandlers :: IdeState -> LSP.Handlers c
-setIdeHandlers ide = mconcat
-  [ LSP.requestHandler STextDocumentDefinition $ \(RequestMessage _ _ _ DefinitionParams{..}) k ->
+setIdeHandlers :: ReactorChan c -> LSP.Handlers c
+setIdeHandlers chan = mconcat
+  [ requestHandler chan STextDocumentDefinition $ \ide (RequestMessage _ _ _ DefinitionParams{..}) k ->
       k =<< gotoDefinition ide TextDocumentPositionParams{..}
-  , LSP.requestHandler STextDocumentHover $ \(RequestMessage _ _ _ HoverParams{..}) k ->
+  , requestHandler chan STextDocumentHover $ \ide (RequestMessage _ _ _ HoverParams{..}) k ->
       k =<< hover ide TextDocumentPositionParams{..}
-  , LSP.requestHandler STextDocumentTypeDefinition $ \(RequestMessage _ _ _ TypeDefinitionParams{..}) k ->
+  , requestHandler chan STextDocumentTypeDefinition $ \ide (RequestMessage _ _ _ TypeDefinitionParams{..}) k ->
       k =<< gotoTypeDefinition ide TextDocumentPositionParams{..}
-  , LSP.requestHandler STextDocumentDocumentHighlight $ \(RequestMessage _ _ _ DocumentHighlightParams{..}) k ->
+  , requestHandler chan STextDocumentDocumentHighlight $ \ide (RequestMessage _ _ _ DocumentHighlightParams{..}) k ->
       k =<< documentHighlight ide TextDocumentPositionParams{..}
   ]
 

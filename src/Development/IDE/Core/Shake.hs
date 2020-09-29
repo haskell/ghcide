@@ -132,7 +132,7 @@ import UnliftIO.Exception (bracket_)
 -- information we stash inside the shakeExtra field
 data ShakeExtras = ShakeExtras
     { --eventer :: LSP.FromServerMessage -> IO ()
-     lspEnv :: Maybe (LSP.LanguageContextEnv ())
+     lspEnv :: Maybe (LSP.LanguageContextEnv LspConfig)
     ,debouncer :: Debouncer NormalizedUri
     ,logger :: Logger
     ,globals :: Var (HMap.HashMap TypeRep Dynamic)
@@ -400,7 +400,7 @@ seqValue v b = case v of
     Failed -> b
 
 -- | Open a 'IdeState', should be shut using 'shakeShut'.
-shakeOpen :: Maybe (LSP.LanguageContextEnv ())
+shakeOpen :: Maybe (LSP.LanguageContextEnv LspConfig)
           -> Logger
           -> Debouncer NormalizedUri
           -> Maybe FilePath
@@ -674,13 +674,13 @@ instantiateDelayedAction (DelayedAction _ s p a) = do
       d' = DelayedAction (Just u) s p a'
   return (b, d')
 
-mRunLspT :: Applicative m => Maybe (LSP.LanguageContextEnv ()) -> LSP.LspT () m () -> m ()
+mRunLspT :: Applicative m => Maybe (LSP.LanguageContextEnv c ) -> LSP.LspT c  m () -> m ()
 mRunLspT (Just lspEnv) f = runReaderT (LSP.runLspT f) lspEnv
 mRunLspT Nothing _ = pure ()
 
 mRunLspTCallback :: Monad m
-                 => Maybe (LSP.LanguageContextEnv ())
-                 -> (LSP.LspT () m a -> LSP.LspT () m a)
+                 => Maybe (LSP.LanguageContextEnv c)
+                 -> (LSP.LspT c m a -> LSP.LspT c m a)
                  -> m a
                  -> m a
 mRunLspTCallback (Just lspEnv) f g = runReaderT (LSP.runLspT (f (lift g))) lspEnv

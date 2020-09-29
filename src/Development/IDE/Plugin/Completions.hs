@@ -27,6 +27,7 @@ import Development.IDE.Types.Options
 import Development.IDE.Core.Compile
 import Development.IDE.Core.RuleTypes
 import Development.IDE.Core.Shake
+import Development.IDE.LSP.Server
 import Development.IDE.GHC.Compat (hsmodExports, ParsedModule(..), ModSummary (ms_hspp_buf))
 
 import Development.IDE.GHC.Util
@@ -159,7 +160,7 @@ getCompletionsLSP ide
           _ -> return (InL $ List [])
       _ -> return (InL $ List [])
 
-setHandlersCompletion :: IdeState -> LSP.Handlers c
-setHandlersCompletion ide = LSP.requestHandler STextDocumentCompletion $ \(RequestMessage _ _ _ params) k ->
+setHandlersCompletion :: ReactorChan c -> LSP.Handlers c
+setHandlersCompletion chan = requestHandler chan STextDocumentCompletion $ \ide (RequestMessage _ _ _ params) k ->
   k =<< getCompletionsLSP ide params
 

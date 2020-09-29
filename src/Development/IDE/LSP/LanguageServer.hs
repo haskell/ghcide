@@ -15,7 +15,6 @@ module Development.IDE.LSP.LanguageServer
     ) where
 
 import           Language.Haskell.LSP.Types
-import           Language.Haskell.LSP.Types.Capabilities
 import           Development.IDE.LSP.Server
 import qualified Development.IDE.GHC.Util as Ghcide
 import qualified Language.Haskell.LSP.Control as LSP
@@ -23,7 +22,6 @@ import qualified Language.Haskell.LSP.Core as LSP
 import           Language.Haskell.LSP.Core (LspM)
 import Control.Concurrent.Extra (newBarrier, signalBarrier, waitBarrier)
 import Control.Concurrent.STM
-import Data.Default
 import Data.Maybe
 import qualified Data.Set as Set
 import qualified Data.Text as T
@@ -44,15 +42,11 @@ import Development.IDE.LSP.Outline
 import Development.IDE.Types.Logger
 import Development.IDE.Core.FileStore
 
-data ReactorMessage c
-  = ReactorNotification (LspM c ())
-  | forall m. ReactorRequest SomeLspId (LspM c ()) (ResponseError -> LspM c ())
-
 runLanguageServer
     :: forall config. (Show config)
     => LSP.Options
-    -> (IdeState -> LSP.Handlers config)
-    -> (Maybe (LSP.LanguageContextEnv config) -> VFSHandle -> Maybe FilePath -> IO IdeState)
+    -> (ReactorChan config -> LSP.Handlers config)
+    -> (LSP.LanguageContextEnv config -> VFSHandle -> Maybe FilePath -> IO IdeState)
     -> IO ()
 runLanguageServer options userHandlers getIdeState = do
     -- Move stdout to another file descriptor and duplicate stderr
@@ -97,15 +91,19 @@ runLanguageServer options userHandlers getIdeState = do
             cancelled <- readTVar cancelledRequests
             unless (reqId `Set.member` cancelled) retry
 
-    -- These handlers han
     let ideHandlers = mconcat
           [ setIdeHandlers
           , setHandlersOutline
           , userHandlers
           , setHandlersNotifications -- absolutely critical, join them with user notifications
           ]
+
+    -- Send everything over a channel, since you need to wait until after initialise before
+    -- LspFuncs is available
+    clientMsgChan :: Chan (ReactorMessage config) <- newChan
+
     let asyncHandlers = mconcat
-          [ makeAsync ideHandlers
+          [ ideHandlers clientMsgChan
           , cancelHandler cancelRequest
           , exitHandler exit
           ]
@@ -113,12 +111,8 @@ runLanguageServer options userHandlers getIdeState = do
           -- out of order to be useful. Existing handlers are run afterwards.
 
 
-    -- Send everything over a channel, since you need to wait until after initialise before
-    -- LspFuncs is available
-    clientMsgChan :: Chan (ReactorMessage config) <- newChan
-
     let initializeCallbacks = LSP.InitializeCallbacks
-            { LSP.onConfigurationChange = undefined
+            { LSP.onConfigurationChange = const (pure $ Left "non supported")
             , LSP.doInitialize = handleInit exit clearReqId waitForCancel clientMsgChan
             }
 
@@ -133,15 +127,13 @@ runLanguageServer options userHandlers getIdeState = do
         ]
 
     where
-        makeAsync = undefined -- TODO
-
         handleInit
           :: IO () -> (SomeLspId -> IO ()) -> (SomeLspId -> IO ()) -> Chan (ReactorMessage config)
           -> RequestMessage Initialize -> LspM config (Maybe err)
         handleInit exitClientMsg clearReqId waitForCancel clientMsgChan (RequestMessage _ _ _ params) = do
             env <- LSP.LspT ask
             root <- LSP.getRootPath
-            ide <- liftIO $ getIdeState (Just env) (makeLSPVFSHandle env) root
+            ide <- liftIO $ getIdeState env (makeLSPVFSHandle env) root
 
             let initConfig = parseConfiguration params
             liftIO $ logInfo (ideLogger ide) $ T.pack $ "Registering ide configuration: " <> show initConfig
@@ -153,12 +145,12 @@ runLanguageServer options userHandlers getIdeState = do
                 -- This is to ensure that all file edits and config changes are applied before a request is handled
                 case msg of
                     ReactorNotification act -> do
-                      catch act $ \(e :: SomeException) ->
+                      catch (act ide) $ \(e :: SomeException) ->
                          liftIO $ logError (ideLogger ide) $ T.pack $
                            "Unexpected exception on notification, please report!\n" ++
                            "Exception: " ++ show e
                     ReactorRequest _id act k -> void $ async $
-                      checkCancelled ide clearReqId waitForCancel _id act k
+                      checkCancelled ide clearReqId waitForCancel _id (act ide) k
             pure Nothing
 
         checkCancelled

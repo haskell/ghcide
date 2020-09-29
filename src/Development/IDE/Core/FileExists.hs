@@ -149,7 +149,7 @@ watchedGlobs opts = [ "**/*." ++ extIncBoot | ext <- optExtensions opts, extIncB
 -- | Installs the 'getFileExists' rules.
 --   Provides a fast implementation if client supports dynamic watched files.
 --   Creates a global state as a side effect in that case.
-fileExistsRules :: Maybe (LanguageContextEnv ()) -> VFSHandle -> Rules ()
+fileExistsRules :: Maybe (LanguageContextEnv c) -> VFSHandle -> Rules ()
 fileExistsRules lspEnv vfs = do
   supportsWatchedFiles <- case lspEnv of
     Just lspEnv' -> liftIO $ flip runReaderT lspEnv' $ runLspT $ do

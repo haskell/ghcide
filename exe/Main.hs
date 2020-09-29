@@ -101,9 +101,10 @@ main = do
             t <- t
             hPutStrLn stderr $ "Started LSP server in " ++ showDuration t
             sessionLoader <- loadSession $ fromMaybe dir rootPath
-            config <- undefined -- fromMaybe defaultLspConfig <$> LSgetConfig -- TODO
+            config <- maybe defaultLspConfig id <$> (flip LSP.runReaderT env $ LSP.runLspT LSP.getConfig)
+            caps <- flip LSP.runReaderT env $ LSP.runLspT LSP.getClientCapabilities
             let options = (defaultIdeOptions sessionLoader)
-                    { optReportProgress = clientSupportsProgress undefined -- TODO
+                    { optReportProgress = clientSupportsProgress caps
                     , optShakeProfiling = argsShakeProfiling
                     , optTesting        = IdeTesting argsTesting
                     , optThreads        = argsThreads
@@ -112,7 +113,7 @@ main = do
                     }
                 logLevel = if argsVerbose then minBound else Info
             debouncer <- newAsyncDebouncer
-            initialise (mainRule >> pluginRules plugins) env (logger logLevel) debouncer options vfs
+            initialise (mainRule >> pluginRules plugins) (Just env) (logger logLevel) debouncer options vfs
     else do
         -- GHC produces messages with UTF8 in them, so make sure the terminal doesn't error
         hSetEncoding stdout utf8
@@ -137,7 +138,6 @@ main = do
         vfs <- makeVFSHandle
         debouncer <- newAsyncDebouncer
         let logLevel = if argsVerbose then minBound else Info
-            dummyWithProg _ _ f = f (const (pure ()))
         sessionLoader <- loadSession dir
         ide <- initialise mainRule Nothing (logger logLevel) debouncer (defaultIdeOptions sessionLoader) vfs
 

@@ -41,6 +41,7 @@ import Development.IDE.Plugin.CodeAction.Rules
 import Development.IDE.Types.Exports
 import Development.IDE.Types.Location
 import Development.IDE.Types.Options
+import Development.IDE.LSP.Server
 import Development.Shake (Rules)
 import qualified Data.HashMap.Strict as Map
 import qualified Language.Haskell.LSP.Core as LSP
@@ -146,7 +147,7 @@ commandHandler _ideState ExecuteCommandParams{..}
     | T.isSuffixOf typeSignatureCommandId _command
     , Just (List [edit]) <- _arguments
     , Success wedit <- fromJSON edit
-    = do void $ LSP.sendRequest SWorkspaceApplyEdit (ApplyWorkspaceEditParams (Just _command) wedit) undefined -- TODO
+    = do void $ LSP.sendRequest SWorkspaceApplyEdit (ApplyWorkspaceEditParams (Just _command) wedit) (const $ pure ())
          return (Right Null)
     | otherwise
     = return (Right Null)
@@ -1083,11 +1084,11 @@ matchRegex message regex = case message =~~ regex of
     Just (_ :: T.Text, _ :: T.Text, _ :: T.Text, bindings) -> Just bindings
     Nothing -> Nothing
 
-setHandlersCodeLens :: IdeState -> LSP.Handlers c
-setHandlersCodeLens ide = mconcat
-  [ LSP.requestHandler STextDocumentCodeLens $ \(RequestMessage _ _ _ params) k ->
+setHandlersCodeLens :: ReactorChan c -> LSP.Handlers c
+setHandlersCodeLens chan = mconcat
+  [ requestHandler chan STextDocumentCodeLens $ \ide (RequestMessage _ _ _ params) k ->
       k =<< codeLens ide params
-  , LSP.requestHandler SWorkspaceExecuteCommand $ \(RequestMessage _ _ _ params) k ->
+  , requestHandler chan SWorkspaceExecuteCommand $ \ide (RequestMessage _ _ _ params) k ->
       k =<< commandHandler ide params
   ]
 

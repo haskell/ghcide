@@ -13,10 +13,11 @@ import Development.IDE.Core.Shake
 import Development.IDE.GHC.Compat
 import Development.IDE.GHC.Util (HscEnvEq(hscEnv))
 import Development.IDE.Plugin
+import Development.IDE.LSP.Server
 import Development.IDE.Types.Action
 import GHC.Generics (Generic)
 import GhcPlugins (HscEnv(hsc_dflags))
-import Language.Haskell.LSP.Core
+import Language.Haskell.LSP.Core hiding (requestHandler, notificationHandler)
 import Language.Haskell.LSP.Types
 import System.Time.Extra
 import Development.IDE.Core.RuleTypes
@@ -44,28 +45,28 @@ plugin = Plugin {
     pluginHandlers = customRequestHandler
 }
 
-customRequestHandler ::  IdeState -> Handlers c
-customRequestHandler s = mconcat
-  [ requestHandler (SCustomMethod "ghcide/blocking/request") $ \(RequestMessage _ _ _ params) k -> case fromJSON params of
+customRequestHandler ::  ReactorChan c -> Handlers c
+customRequestHandler c = mconcat
+  [ requestHandler c (SCustomMethod "ghcide/blocking/request") $ \s (RequestMessage _ _ _ params) k -> case fromJSON params of
       Success (BlockSeconds secs) -> do
         sendNotification (SCustomMethod "ghcide/blocking/request") $
           toJSON secs
         liftIO $ sleep secs
         k (Right Null)
       Error err -> k (Left $ ResponseError InvalidParams (T.pack err) Nothing)
-  , requestHandler (SCustomMethod "hidir") $ \(RequestMessage _ _ _ params) k -> case fromJSON params of
+  , requestHandler c (SCustomMethod "hidir") $ \s (RequestMessage _ _ _ params) k -> case fromJSON params of
       Success (GetInterfaceFilesDir fp) -> do
         let nfp = toNormalizedFilePath fp
         sess <- liftIO $ runAction "Test - GhcSession" s $ use_ GhcSession nfp
         let hiPath = hiDir $ hsc_dflags $ hscEnv sess
         k $ Right (toJSON hiPath)
       Error err -> k (Left $ ResponseError InvalidParams (T.pack err) Nothing)
-  , requestHandler (SCustomMethod "hidir") $ \(RequestMessage _ _ _ params) k -> case fromJSON params of
+  , requestHandler c (SCustomMethod "hidir") $ \s (RequestMessage _ _ _ params) k -> case fromJSON params of
       Success GetShakeSessionQueueCount -> do
         n <- liftIO $ atomically $ countQueue $ actionQueue $ shakeExtras s
         k $ Right (toJSON n)
       Error err -> k (Left $ ResponseError InvalidParams (T.pack err) Nothing)
-  , requestHandler (SCustomMethod "ghcide/waitforqueue") $ \(RequestMessage _ _ _ params) k -> case fromJSON params of
+  , requestHandler c (SCustomMethod "ghcide/waitforqueue") $ \s (RequestMessage _ _ _ params) k -> case fromJSON params of
       Success WaitForShakeQueue -> do
         liftIO $ atomically $ do
             n <- countQueue $ actionQueue $ shakeExtras s
