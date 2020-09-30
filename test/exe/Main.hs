@@ -2303,7 +2303,7 @@ pluginParsedResultTests =
             , "display c = c.name"
             ]
     _ <- createDoc "Testing.hs" "haskell" content
-    expectNoMoreDiagnostics 1
+    expectNoMoreDiagnostics 2
 
 cppTests :: TestTree
 cppTests =
