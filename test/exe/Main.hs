@@ -2292,7 +2292,7 @@ pluginSimpleTests =
 
 pluginParsedResultTests :: TestTree
 pluginParsedResultTests =
-  testSessionWait "parsedResultAction plugin" $ do
+  knownBrokenInWindowsAndGHC10 $ testSessionWait "parsedResultAction plugin" $ do
     let content =
           T.unlines
             [ "{-# LANGUAGE DuplicateRecordFields, TypeApplications, FlexibleContexts, DataKinds, MultiParamTypeClasses, TypeSynonymInstances, FlexibleInstances #-}"
