@@ -86,9 +86,9 @@ data IdeOptions = IdeOptions
     --   features such as diagnostics and go-to-definition, in
     --   situations in which they would become unavailable because of
     --   the presence of type errors, holes or unbound variables.
-  , optCheckProject :: CheckProject
+  , optCheckProject :: IO CheckProject
     -- ^ Whether to typecheck the entire project on load
-  , optCheckParents :: CheckParents
+  , optCheckParents :: IO CheckParents
     -- ^ When to typecheck reverse dependencies of a file
   , optHaddockParse :: OptHaddockParse
     -- ^ Whether to return result of parsing module with Opt_Haddock.
@@ -118,13 +118,13 @@ data CheckParents
 
 data LspConfig
   = LspConfig
-  { checkParents :: CheckParents
-  , checkProject :: CheckProject
+  { checkParents :: Maybe CheckParents
+  , checkProject :: Maybe CheckProject
   } deriving stock (Eq, Ord, Show, Generic)
     deriving anyclass (FromJSON, ToJSON, Hashable, NFData)
 
 defaultLspConfig :: LspConfig
-defaultLspConfig = LspConfig CheckOnSaveAndClose (CheckProject True)
+defaultLspConfig = LspConfig (Just CheckOnSaveAndClose) (Just $ CheckProject True)
 
 data IdePreprocessedSource = IdePreprocessedSource
   { preprocWarnings :: [(GHC.SrcSpan, String)]
@@ -158,8 +158,8 @@ defaultIdeOptions session = IdeOptions
     ,optKeywords = haskellKeywords
     ,optDefer = IdeDefer True
     ,optTesting = IdeTesting False
-    ,optCheckProject = checkProject defaultLspConfig
-    ,optCheckParents = checkParents defaultLspConfig
+    ,optCheckProject = pure $ CheckProject True
+    ,optCheckParents = pure $ CheckOnSaveAndClose
     ,optHaddockParse = HaddockParse
     ,optCustomDynFlags = id
     }

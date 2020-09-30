@@ -31,6 +31,7 @@ import System.Time.Extra
 import Test.Tasty.HUnit
 import System.Directory (canonicalizePath)
 import Data.Maybe (fromJust)
+import Development.IDE.Plugin.Test
 
 
 -- | (0-based line number, 0-based column number)
@@ -68,8 +69,8 @@ expectNoMoreDiagnostics timeout = do
     -- Send a dummy message to provoke a response from the server.
     -- This guarantees that we have at least one message to
     -- process, so message won't block or timeout.
-    let m = SCustomMethod "non-existent-method"
-    i <- sendRequest m A.Null
+    let m = SCustomMethod "ghcide/queue/count"
+    i <- sendRequest m $ A.toJSON GetShakeSessionQueueCount
     handleMessages m i
   where
     handleMessages m i = handleDiagnostic <|> handleCustomMethodResponse m i <|> ignoreOthers m i

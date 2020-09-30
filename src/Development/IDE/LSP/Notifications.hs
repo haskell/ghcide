@@ -74,8 +74,8 @@ setHandlersNotifications = mconcat
           whenUriFile _uri $ \file -> do
               modifyFilesOfInterest ide (M.delete file)
               -- Refresh all the files that depended on this
-              IdeOptions{optCheckParents} <- getIdeOptionsIO $ shakeExtras ide
-              when (optCheckParents >= CheckOnClose) $ typecheckParents ide file
+              checkParents <- optCheckParents =<< getIdeOptionsIO (shakeExtras ide)
+              when (checkParents >= CheckOnClose) $ typecheckParents ide file
               logInfo (ideLogger ide) $ "Closed text document: " <> getUri _uri
 
   , notificationHandler LSP.SWorkspaceDidChangeWatchedFiles $

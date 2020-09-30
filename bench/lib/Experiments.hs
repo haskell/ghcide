@@ -26,7 +26,7 @@ import Control.Concurrent
 import Control.Exception.Safe
 import Control.Monad.Extra
 import Control.Monad.IO.Class
-import Data.Aeson (Value(Null))
+import Data.Aeson (Value(Null), toJSON)
 import Data.Char (isDigit)
 import Data.List
 import Data.Maybe
@@ -204,9 +204,7 @@ benchWithSetup name samples benchSetup experiment = Bench {..}
 
 bench :: String -> Natural -> (HasPositions => Experiment) -> Bench
 bench name defSamples userExperiment =
-  benchWithSetup name defSamples (const $ pure ()) experiment
-  where
-    experiment () = userExperiment
+  benchWithSetup name defSamples (const $ pure ()) (const userExperiment)
 
 runBenchmarksFun :: HasConfig => FilePath -> [Bench] -> IO ()
 runBenchmarksFun dir allBenchmarks = do
@@ -364,8 +362,9 @@ runBench runSess b = handleAny (\e -> print e >> return badRun)
               else do
                 output (showDuration t)
                 -- Wait for the delayed actions to finish
-                waitId <- sendRequest (CustomClientMethod "test") WaitForShakeQueue
-                (td, resp) <- duration $ skipManyTill anyMessage $ responseForId waitId
+                let m = SCustomMethod "ghcide/blocking/queue"
+                waitId <- sendRequest m (toJSON WaitForShakeQueue)
+                (td, resp) <- duration $ skipManyTill anyMessage $ responseForId m waitId
                 case resp of
                     ResponseMessage{_result=Right Null} -> do
                       loop (userWaits+t) (delayedWork+td) (n -1)

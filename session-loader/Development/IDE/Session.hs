@@ -107,7 +107,7 @@ loadSession dir = do
                       } <- getShakeExtras
 
     IdeOptions{ optTesting = IdeTesting optTesting
-              , optCheckProject = CheckProject checkProject
+              , optCheckProject = getCheckProject
               , optCustomDynFlags
               , optExtensions
               } <- getIdeOptions
@@ -247,6 +247,7 @@ loadSession dir = do
           restartShakeSession [kick]
 
           -- Typecheck all files in the project on startup
+          CheckProject checkProject <- getCheckProject
           unless (null cs || not checkProject) $ do
                 cfps' <- liftIO $ filterM (IO.doesFileExist . fromNormalizedFilePath) (concatMap targetLocations cs)
                 void $ shakeEnqueue extras $ mkDelayedAction "InitialLoad" Debug $ void $ do

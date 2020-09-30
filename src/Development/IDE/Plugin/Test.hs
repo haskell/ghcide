@@ -47,14 +47,14 @@ plugin = Plugin {
 
 customRequestHandler ::  Handlers (ServerM c)
 customRequestHandler = mconcat
-  [ requestHandler (SCustomMethod "ghcide/blocking/request") $ \s (RequestMessage _ _ _ params) k -> case fromJSON params of
+  [ requestHandler (SCustomMethod "ghcide/blocking/request") $ \_s (RequestMessage _ _ _ params) k -> case fromJSON params of
       Success (BlockSeconds secs) -> do
-        sendNotification (SCustomMethod "ghcide/blocking/request") $
+        sendNotification (SCustomMethod "ghcide/blocking/notification") $
           toJSON secs
         liftIO $ sleep secs
         k (Right Null)
       Error err -> k (Left $ ResponseError InvalidParams (T.pack err) Nothing)
-  , requestHandler (SCustomMethod "hidir") $ \s (RequestMessage _ _ _ params) k -> case fromJSON params of
+  , requestHandler (SCustomMethod "ghcide/hidir") $ \s (RequestMessage _ _ _ params) k -> case fromJSON params of
       Success (GetInterfaceFilesDir fp) -> do
         let nfp = toNormalizedFilePath fp
         sess <- liftIO $ runAction "Test - GhcSession" s $ use_ GhcSession nfp

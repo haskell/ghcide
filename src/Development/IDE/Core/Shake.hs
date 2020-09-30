@@ -150,15 +150,10 @@ data ShakeExtras = ShakeExtras
     ,inProgress :: Var (HMap.HashMap NormalizedFilePath Int)
     -- ^ How many rules are running for each file
     ,progressUpdate :: ProgressEvent -> IO ()
-    -- -- ^ The generator for unique Lsp identifiers
     ,ideTesting :: IdeTesting
     -- ^ Whether to enable additional lsp messages used by the test suite for checking invariants
     ,session :: MVar ShakeSession
     -- ^ Used in the GhcSession rule to forcefully restart the session after adding a new component
-    -- ,withProgress           :: WithProgressFunc
-    -- -- ^ Report progress about some long running operation (on top of the progress shown by 'lspShakeProgress')
-    -- ,withIndefiniteProgress :: WithIndefiniteProgressFunc
-    -- -- ^ Same as 'withProgress', but for processes that do not report the percentage complete
     ,restartShakeSession :: [DelayedAction ()] -> IO ()
     ,ideNc :: IORef NameCache
     -- | A mapping of module name to known target (or candidate targets, if missing)

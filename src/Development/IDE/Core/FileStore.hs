@@ -220,7 +220,8 @@ setFileModified :: IdeState
                 -> IO ()
 setFileModified state saved nfp = do
     ideOptions <- getIdeOptionsIO $ shakeExtras state
-    let checkParents = case optCheckParents ideOptions of
+    doCheckParents <- optCheckParents ideOptions
+    let checkParents = case doCheckParents of
           AlwaysCheck -> True
           CheckOnSaveAndClose -> saved
           _ -> False

@@ -8,7 +8,6 @@ module Main(main) where
 import Arguments
 import Control.Concurrent.Extra
 import Control.Monad.Extra
-import Control.Lens ( (^.) )
 import Data.Default
 import Data.List.Extra
 import Data.Maybe
@@ -85,24 +84,27 @@ main = do
         options = def { LSP.executeCommandCommands = Just [command]
                       , LSP.completionTriggerCharacters = Just "."
                       }
+        onConfigurationChange _ide v = pure $ case J.fromJSON v of
+          J.Error err -> Left $ T.pack err
+          J.Success a -> Right a
 
     if argLSP then do
         t <- offsetTime
         hPutStrLn stderr "Starting LSP server..."
         hPutStrLn stderr "If you are seeing this in a terminal, you probably should have run ghcide WITHOUT the --lsp option!"
-        runLanguageServer options (pluginHandlers plugins) $ \env vfs rootPath -> do
+        runLanguageServer options onConfigurationChange (pluginHandlers plugins) $ \env vfs rootPath -> do
             t <- t
             hPutStrLn stderr $ "Started LSP server in " ++ showDuration t
             sessionLoader <- loadSession $ fromMaybe dir rootPath
-            config <- maybe defaultLspConfig id <$> (LSP.runLspT env LSP.getConfig)
+            let config = maybe defaultLspConfig id <$> (LSP.runLspT env LSP.getConfig)
             caps <- LSP.runLspT env LSP.getClientCapabilities
             let options = (defaultIdeOptions sessionLoader)
                     { optReportProgress = clientSupportsProgress caps
                     , optShakeProfiling = argsShakeProfiling
                     , optTesting        = IdeTesting argsTesting
                     , optThreads        = argsThreads
-                    , optCheckParents   = checkParents config
-                    , optCheckProject   = checkProject config
+                    , optCheckParents   = fromMaybe CheckOnSaveAndClose . checkParents <$> config
+                    , optCheckProject   = fromMaybe (CheckProject True) . checkProject <$> config
                     }
                 logLevel = if argsVerbose then minBound else Info
             debouncer <- newAsyncDebouncer

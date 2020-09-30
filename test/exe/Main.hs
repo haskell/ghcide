@@ -3,9 +3,13 @@
 
 {-# LANGUAGE AllowAmbiguousTypes   #-}
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE ImplicitParams  #-}
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE PolyKinds #-}
 #include "ghc-api-version.h"
 
 module Main (main) where
@@ -16,6 +20,7 @@ import qualified Control.Lens as Lens
 import Control.Monad
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson (FromJSON, Value, toJSON)
+import qualified Data.Aeson as J
 import qualified Data.Binary as Binary
 import Data.Foldable
 import Data.List.Extra
@@ -58,16 +63,33 @@ import System.Time.Extra
 import Development.IDE.Plugin.CodeAction (typeSignatureCommandId, blockCommandId)
 import Development.IDE.Plugin.Test (BlockSeconds(..),GetInterfaceFilesDir(..))
 
+
+waitForProgressBegin :: Session ()
+waitForProgressBegin = void $ skipManyTill anyMessage $ satisfyMaybe $ \case
+  FromServerMess SProgress (NotificationMessage _ _ (ProgressParams _ (Begin _))) -> Just ()
+  _ -> pure ()
+
+waitForProgressReport :: Session ()
+waitForProgressReport = void $ skipManyTill anyMessage $ satisfyMaybe $ \case
+  FromServerMess SProgress (NotificationMessage _ _ (ProgressParams _ (Report _))) -> Just ()
+  _ -> pure ()
+waitForProgressDone :: Session ()
+waitForProgressDone = void $ skipManyTill anyMessage $ satisfyMaybe $ \case
+  FromServerMess SProgress (NotificationMessage _ _ (ProgressParams _ (End _))) -> Just ()
+  _ -> pure ()
+
+
+
 main :: IO ()
 main = do
   -- We mess with env vars so run single-threaded.
   defaultMainWithRerun $ testGroup "ghcide"
     [ testSession "open close" $ do
         doc <- createDoc "Testing.hs" "haskell" ""
-        void (skipManyTill anyMessage message :: Session WorkDoneProgressCreateRequest)
-        void (skipManyTill anyMessage message :: Session WorkDoneProgressBeginNotification)
+        waitForProgressBegin
+        waitForProgressReport
         closeDoc doc
-        void (skipManyTill anyMessage message :: Session WorkDoneProgressEndNotification)
+        waitForProgressDone
     , initializeResponseTests
     , completionTests
     , cppTests
@@ -109,46 +131,44 @@ initializeResponseTests = withResource acquire release tests where
   tests getInitializeResponse =
     testGroup "initialize response capabilities"
     [ chk "   text doc sync"             _textDocumentSync  tds
-    , chk "   hover"                         _hoverProvider (Just True)
-    , chk "   completion"               _completionProvider (Just $ CompletionOptions (Just False) (Just ["."]) Nothing)
+    , chk "   hover"                         _hoverProvider (Just $ InL True)
+    , chk "   completion"               _completionProvider (Just $ CompletionOptions Nothing (Just ["."]) Nothing (Just False))
     , chk "NO signature help"        _signatureHelpProvider  Nothing
-    , chk "   goto definition"          _definitionProvider (Just True)
-    , chk "   goto type definition" _typeDefinitionProvider (Just $ GotoOptionsStatic True)
-    -- BUG in lsp-test, this test fails, just change the accepted response
-    -- for now
-    , chk "NO goto implementation"  _implementationProvider (Just $ GotoOptionsStatic True)
-    , chk "NO find references"          _referencesProvider  Nothing
-    , chk "   doc highlight"     _documentHighlightProvider  (Just True)
-    , chk "   doc symbol"           _documentSymbolProvider  (Just True)
-    , chk "NO workspace symbol"    _workspaceSymbolProvider  Nothing
-    , chk "   code action"             _codeActionProvider $ Just $ CodeActionOptionsStatic True
-    , chk "   code lens"                 _codeLensProvider $ Just $ CodeLensOptions Nothing
-    , chk "NO doc formatting"   _documentFormattingProvider  Nothing
+    , chk "   goto definition"          _definitionProvider (Just $ InL True)
+    , chk "   goto type definition" _typeDefinitionProvider (Just $ InL True)
+    , chk "NO goto implementation"  _implementationProvider (Just $ InL False)
+    , chk "NO find references"          _referencesProvider (Just $ InL False)
+    , chk "   doc highlight"     _documentHighlightProvider (Just $ InL True)
+    , chk "   doc symbol"           _documentSymbolProvider (Just $ InL True)
+    , chk "NO workspace symbol"    _workspaceSymbolProvider (Just False)
+    , chk "   code action"             _codeActionProvider  (Just $ InL True)
+    , chk "   code lens"                 _codeLensProvider  (Just $ CodeLensOptions (Just False) (Just False))
+    , chk "NO doc formatting"   _documentFormattingProvider (Just $ InL False)
     , chk "NO doc range formatting"
-                           _documentRangeFormattingProvider  Nothing
+                           _documentRangeFormattingProvider (Just $ InL False)
     , chk "NO doc formatting on typing"
-                          _documentOnTypeFormattingProvider  Nothing
-    , chk "NO renaming"                     _renameProvider (Just $ RenameOptionsStatic False)
+                          _documentOnTypeFormattingProvider Nothing
+    , chk "NO renaming"                     _renameProvider (Just $ InL False)
     , chk "NO doc link"               _documentLinkProvider  Nothing
-    , chk "NO color"                         _colorProvider (Just $ ColorOptionsStatic False)
-    , chk "NO folding range"          _foldingRangeProvider (Just $ FoldingRangeOptionsStatic False)
-    , che "   execute command"      _executeCommandProvider (Just $ ExecuteCommandOptions $ List [typeSignatureCommandId, blockCommandId])
-    , chk "   workspace"                         _workspace (Just $ WorkspaceOptions (Just WorkspaceFolderOptions{_supported = Just True, _changeNotifications = Just ( WorkspaceFolderChangeNotificationsBool True )}))
+    , chk "NO color"                         _colorProvider (Just $ InL False)
+    , chk "NO folding range"          _foldingRangeProvider (Just $ InL False)
+    , che "   execute command"      _executeCommandProvider (Just $ ExecuteCommandOptions Nothing $ List [typeSignatureCommandId, blockCommandId])
+    , chk "   workspace"                         _workspace (Just $ WorkspaceServerCapabilities (Just WorkspaceFoldersServerCapabilities{_supported = Just True, _changeNotifications = Just ( InR True )}))
     , chk "NO experimental"                   _experimental  Nothing
     ] where
 
-      tds = Just (TDSOptions (TextDocumentSyncOptions
+      tds = Just (InL (TextDocumentSyncOptions
                               { _openClose = Just True
                               , _change    = Just TdSyncIncremental
                               , _willSave  = Nothing
                               , _willSaveWaitUntil = Nothing
-                              , _save = Just (SaveOptions {_includeText = Nothing})}))
+                              , _save = Just (InR $ SaveOptions {_includeText = Nothing})}))
 
-      chk :: (Eq a, Show a) => TestName -> (InitializeResponseCapabilitiesInner -> a) -> a -> TestTree
+      chk :: (Eq a, Show a) => TestName -> (ServerCapabilities -> a) -> a -> TestTree
       chk title getActual expected =
         testCase title $ getInitializeResponse >>= \ir -> expected @=? (getActual . innerCaps) ir
 
-      che :: TestName -> (InitializeResponseCapabilitiesInner -> Maybe ExecuteCommandOptions) -> Maybe ExecuteCommandOptions -> TestTree
+      che :: TestName -> (ServerCapabilities -> Maybe ExecuteCommandOptions) -> Maybe ExecuteCommandOptions -> TestTree
       che title getActual _expected = testCase title doTest
         where
             doTest = do
@@ -157,8 +177,8 @@ initializeResponseTests = withResource acquire release tests where
                 True @=? T.isSuffixOf "typesignature.add" command
 
 
-  innerCaps :: InitializeResponse -> InitializeResponseCapabilitiesInner
-  innerCaps (ResponseMessage _ _ (Right (InitializeResponseCapabilities c))) = c
+  innerCaps :: InitializeResponse -> ServerCapabilities
+  innerCaps (ResponseMessage _ _ (Right (InitializeResult c _))) = c
   innerCaps  _ = error "this test only expects inner capabilities"
 
   acquire :: IO InitializeResponse
@@ -184,8 +204,8 @@ diagnosticTests = testGroup "diagnostics"
   , testSessionWait "introduce syntax error" $ do
       let content = T.unlines [ "module Testing where" ]
       doc <- createDoc "Testing.hs" "haskell" content
-      void $ skipManyTill anyMessage (message :: Session WorkDoneProgressCreateRequest)
-      void $ skipManyTill anyMessage (message :: Session WorkDoneProgressBeginNotification)
+      void $ skipManyTill anyMessage (message SWindowWorkDoneProgressCreate)
+      waitForProgressBegin
       let change = TextDocumentContentChangeEvent
             { _range = Just (Range (Position 0 15) (Position 0 18))
             , _rangeLength = Nothing
@@ -456,9 +476,9 @@ diagnosticTests = testGroup "diagnostics"
               in filePathToUri (joinDrive (lower drive) suffix)
           let itemA = TextDocumentItem uriA "haskell" 0 aContent
           let a = TextDocumentIdentifier uriA
-          sendNotification TextDocumentDidOpen (DidOpenTextDocumentParams itemA)
-          diagsNot <- skipManyTill anyMessage diagnostic
-          let PublishDiagnosticsParams fileUri diags = _params (diagsNot :: PublishDiagnosticsNotification)
+          sendNotification STextDocumentDidOpen (DidOpenTextDocumentParams itemA)
+          NotificationMessage{_params = diagsNot} <- skipManyTill anyMessage diagnostic
+          let PublishDiagnosticsParams fileUri _ diags = diagsNot
           -- Check that if we put a lower-case drive in for A.A
           -- the diagnostics for A.B will also be lower-case.
           liftIO $ fileUri @?= uriB
@@ -581,7 +601,7 @@ watchedFilesTests = testGroup "watched files"
   [ testSession' "workspace files" $ \sessionDir -> do
       liftIO $ writeFile (sessionDir </> "hie.yaml") "cradle: {direct: {arguments: [\"-isrc\", \"A\", \"WatchedFilesMissingModule\"]}}"
       _doc <- createDoc "A.hs" "haskell" "{-#LANGUAGE NoImplicitPrelude #-}\nmodule A where\nimport WatchedFilesMissingModule"
-      watchedFileRegs <- getWatchedFilesSubscriptionsUntil @PublishDiagnosticsNotification
+      watchedFileRegs <- getWatchedFilesSubscriptionsUntil STextDocumentPublishDiagnostics
 
       -- Expect 1 subscription: we only ever send one
       liftIO $ length watchedFileRegs @?= 1
@@ -590,7 +610,7 @@ watchedFilesTests = testGroup "watched files"
       tmpDir <- liftIO getTemporaryDirectory
       liftIO $ writeFile (sessionDir </> "hie.yaml") ("cradle: {direct: {arguments: [\"-i" <> tmpDir <> "\", \"A\", \"WatchedFilesMissingModule\"]}}")
       _doc <- createDoc "A.hs" "haskell" "{-# LANGUAGE NoImplicitPrelude#-}\nmodule A where\nimport WatchedFilesMissingModule"
-      watchedFileRegs <- getWatchedFilesSubscriptionsUntil @PublishDiagnosticsNotification
+      watchedFileRegs <- getWatchedFilesSubscriptionsUntil STextDocumentPublishDiagnostics
 
       -- Expect 1 subscription: we only ever send one
       liftIO $ length watchedFileRegs @?= 1
@@ -657,7 +677,7 @@ renameActionTests = testGroup "rename actions"
       doc <- createDoc "Testing.hs" "haskell" content
       _ <- waitForDiagnostics
       actionsOrCommands <- getCodeActions doc (Range (Position 3 12) (Position 3 20))
-      [fixTypo] <- pure [action | CACodeAction action@CodeAction{ _title = actionTitle } <- actionsOrCommands, "monus" `T.isInfixOf` actionTitle ]
+      [fixTypo] <- pure [action | InR action@CodeAction{ _title = actionTitle } <- actionsOrCommands, "monus" `T.isInfixOf` actionTitle ]
       executeCodeAction fixTypo
       contentAfterAction <- documentContents doc
       let expectedContentAfterAction = T.unlines
@@ -680,7 +700,7 @@ typeWildCardActionTests = testGroup "type wildcard actions"
       doc <- createDoc "Testing.hs" "haskell" content
       _ <- waitForDiagnostics
       actionsOrCommands <- getCodeActions doc (Range (Position 2 1) (Position 2 10))
-      let [addSignature] = [action | CACodeAction action@CodeAction { _title = actionTitle } <- actionsOrCommands
+      let [addSignature] = [action | InR action@CodeAction { _title = actionTitle } <- actionsOrCommands
                                    , "Use type signature" `T.isInfixOf` actionTitle
                            ]
       executeCodeAction addSignature
@@ -700,7 +720,7 @@ typeWildCardActionTests = testGroup "type wildcard actions"
       doc <- createDoc "Testing.hs" "haskell" content
       _ <- waitForDiagnostics
       actionsOrCommands <- getCodeActions doc (Range (Position 2 1) (Position 2 10))
-      let [addSignature] = [action | CACodeAction action@CodeAction { _title = actionTitle } <- actionsOrCommands
+      let [addSignature] = [action | InR action@CodeAction { _title = actionTitle } <- actionsOrCommands
                                     , "Use type signature" `T.isInfixOf` actionTitle
                               ]
       executeCodeAction addSignature
@@ -723,7 +743,7 @@ typeWildCardActionTests = testGroup "type wildcard actions"
       doc <- createDoc "Testing.hs" "haskell" content
       _ <- waitForDiagnostics
       actionsOrCommands <- getCodeActions doc (Range (Position 4 1) (Position 4 10))
-      let [addSignature] = [action | CACodeAction action@CodeAction { _title = actionTitle } <- actionsOrCommands
+      let [addSignature] = [action | InR action@CodeAction { _title = actionTitle } <- actionsOrCommands
                                     , "Use type signature" `T.isInfixOf` actionTitle
                               ]
       executeCodeAction addSignature
@@ -755,7 +775,7 @@ removeImportTests = testGroup "remove import actions"
             ]
       docB <- createDoc "ModuleB.hs" "haskell" contentB
       _ <- waitForDiagnostics
-      [CACodeAction action@CodeAction { _title = actionTitle }]
+      [InR action@CodeAction { _title = actionTitle }]
           <- getCodeActions docB (Range (Position 2 0) (Position 2 5))
       liftIO $ "Remove import" @=? actionTitle
       executeCodeAction action
@@ -781,7 +801,7 @@ removeImportTests = testGroup "remove import actions"
             ]
       docB <- createDoc "ModuleB.hs" "haskell" contentB
       _ <- waitForDiagnostics
-      [CACodeAction action@CodeAction { _title = actionTitle }]
+      [InR action@CodeAction { _title = actionTitle }]
           <- getCodeActions docB (Range (Position 2 0) (Position 2 5))
       liftIO $ "Remove import" @=? actionTitle
       executeCodeAction action
@@ -810,7 +830,7 @@ removeImportTests = testGroup "remove import actions"
             ]
       docB <- createDoc "ModuleB.hs" "haskell" contentB
       _ <- waitForDiagnostics
-      [CACodeAction action@CodeAction { _title = actionTitle }]
+      [InR action@CodeAction { _title = actionTitle }]
           <- getCodeActions docB (Range (Position 2 0) (Position 2 5))
       liftIO $ "Remove stuffA, stuffC from import" @=? actionTitle
       executeCodeAction action
@@ -839,7 +859,7 @@ removeImportTests = testGroup "remove import actions"
             ]
       docB <- createDoc "ModuleB.hs" "haskell" contentB
       _ <- waitForDiagnostics
-      [CACodeAction action@CodeAction { _title = actionTitle }]
+      [InR action@CodeAction { _title = actionTitle }]
           <- getCodeActions docB (Range (Position 2 0) (Position 2 5))
       liftIO $ "Remove !!, <?> from import" @=? actionTitle
       executeCodeAction action
@@ -867,7 +887,7 @@ removeImportTests = testGroup "remove import actions"
             ]
       docB <- createDoc "ModuleB.hs" "haskell" contentB
       _ <- waitForDiagnostics
-      [CACodeAction action@CodeAction { _title = actionTitle }]
+      [InR action@CodeAction { _title = actionTitle }]
           <- getCodeActions docB (Range (Position 2 0) (Position 2 5))
       liftIO $ "Remove A from import" @=? actionTitle
       executeCodeAction action
@@ -894,7 +914,7 @@ removeImportTests = testGroup "remove import actions"
             ]
       docB <- createDoc "ModuleB.hs" "haskell" contentB
       _ <- waitForDiagnostics
-      [CACodeAction action@CodeAction { _title = actionTitle }]
+      [InR action@CodeAction { _title = actionTitle }]
           <- getCodeActions docB (Range (Position 2 0) (Position 2 5))
       liftIO $ "Remove A, E, F from import" @=? actionTitle
       executeCodeAction action
@@ -918,7 +938,7 @@ removeImportTests = testGroup "remove import actions"
             ]
       docB <- createDoc "ModuleB.hs" "haskell" contentB
       _ <- waitForDiagnostics
-      [CACodeAction action@CodeAction { _title = actionTitle }]
+      [InR action@CodeAction { _title = actionTitle }]
           <- getCodeActions docB (Range (Position 2 0) (Position 2 5))
       liftIO $ "Remove import" @=? actionTitle
       executeCodeAction action
@@ -1058,8 +1078,8 @@ extendImportTests = testGroup "extend import actions"
       _docA <- createDoc "ModuleA.hs" "haskell" contentA
       docB <- createDoc "ModuleB.hs" "haskell" contentB
       _ <- waitForDiagnostics
-      CACodeAction action@CodeAction { _title = actionTitle } : _
-                  <- sortOn (\(CACodeAction CodeAction{_title=x}) -> x) <$>
+      InR action@CodeAction { _title = actionTitle } : _
+                  <- sortOn (\(InR CodeAction{_title=x}) -> x) <$>
                      getCodeActions docB range
       liftIO $ expectedAction @=? actionTitle
       executeCodeAction action
@@ -1117,7 +1137,7 @@ suggestImportTests = testGroup "suggest import actions"
           cradle = "cradle: {direct: {arguments: [-hide-all-packages, -package, base, -package, text, -package-env, -, A, Bar, Foo, GotoHover]}}"
       liftIO $ writeFileUTF8 (dir </> "hie.yaml") cradle
       doc <- createDoc "Test.hs" "haskell" before
-      void (skipManyTill anyMessage message :: Session WorkDoneProgressEndNotification)
+      waitForProgressDone
       _diags <- waitForDiagnostics
       -- there isn't a good way to wait until the whole project is checked atm
       when waitForCheckProject $ liftIO $ sleep 0.5
@@ -1131,7 +1151,7 @@ suggestImportTests = testGroup "suggest import actions"
              contentAfterAction <- documentContents doc
              liftIO $ after @=? contentAfterAction
           else
-              liftIO $ [_title | CACodeAction CodeAction{_title} <- actions, _title == newImp ] @?= []
+              liftIO $ [_title | InR CodeAction{_title} <- actions, _title == newImp ] @?= []
 
 
 addExtensionTests :: TestTree
@@ -1181,8 +1201,8 @@ addExtensionTests = testGroup "add language extension actions"
       template initialContent range expectedAction expectedContents = do
         doc <- createDoc "Module.hs" "haskell" initialContent
         _ <- waitForDiagnostics
-        CACodeAction action@CodeAction { _title = actionTitle } : _
-                    <- sortOn (\(CACodeAction CodeAction{_title=x}) -> x) <$>
+        InR action@CodeAction { _title = actionTitle } : _
+                    <- sortOn (\(InR CodeAction{_title=x}) -> x) <$>
                        getCodeActions doc range
         liftIO $ expectedAction @=? actionTitle
         executeCodeAction action
@@ -1204,8 +1224,8 @@ insertNewDefinitionTests = testGroup "insert new definition actions"
             ]
       docB <- createDoc "ModuleB.hs" "haskell" (T.unlines $ txtB ++ txtB')
       _ <- waitForDiagnostics
-      CACodeAction action@CodeAction { _title = actionTitle } : _
-                  <- sortOn (\(CACodeAction CodeAction{_title=x}) -> x) <$>
+      InR action@CodeAction { _title = actionTitle } : _
+                  <- sortOn (\(InR CodeAction{_title=x}) -> x) <$>
                      getCodeActions docB (R 1 0 1 50)
       liftIO $ actionTitle @?= "Define select :: [Bool] -> Bool"
       executeCodeAction action
@@ -1228,8 +1248,8 @@ insertNewDefinitionTests = testGroup "insert new definition actions"
             ]
       docB <- createDoc "ModuleB.hs" "haskell" (T.unlines $ txtB ++ txtB')
       _ <- waitForDiagnostics
-      CACodeAction action@CodeAction { _title = actionTitle } : _
-                  <- sortOn (\(CACodeAction CodeAction{_title=x}) -> x) <$>
+      InR action@CodeAction { _title = actionTitle } : _
+                  <- sortOn (\(InR CodeAction{_title=x}) -> x) <$>
                      getCodeActions docB (R 1 0 1 50)
       liftIO $ actionTitle @?= "Define select :: [Bool] -> Bool"
       executeCodeAction action
@@ -1510,8 +1530,8 @@ fixConstructorImportTests = testGroup "fix import actions"
       _docA <- createDoc "ModuleA.hs" "haskell" contentA
       docB  <- createDoc "ModuleB.hs" "haskell" contentB
       _diags <- waitForDiagnostics
-      CACodeAction action@CodeAction { _title = actionTitle } : _
-                  <- sortOn (\(CACodeAction CodeAction{_title=x}) -> x) <$>
+      InR action@CodeAction { _title = actionTitle } : _
+                  <- sortOn (\(InR CodeAction{_title=x}) -> x) <$>
                      getCodeActions docB range
       liftIO $ expectedAction @=? actionTitle
       executeCodeAction action
@@ -1530,7 +1550,7 @@ importRenameActionTests = testGroup "import rename actions"
       doc <- createDoc "Testing.hs" "haskell" content
       _ <- waitForDiagnostics
       actionsOrCommands <- getCodeActions doc (Range (Position 2 8) (Position 2 16))
-      let [changeToMap] = [action | CACodeAction action@CodeAction{ _title = actionTitle } <- actionsOrCommands, ("Data." <> modname) `T.isInfixOf` actionTitle ]
+      let [changeToMap] = [action | InR action@CodeAction{ _title = actionTitle } <- actionsOrCommands, ("Data." <> modname) `T.isInfixOf` actionTitle ]
       executeCodeAction changeToMap
       contentAfterAction <- documentContents doc
       let expectedContentAfterAction = T.unlines
@@ -2054,7 +2074,7 @@ exportUnusedTests = testGroup "export unused actions"
             contentAfterAction <- documentContents doc
             liftIO $ content @=? contentAfterAction
           Nothing ->
-            liftIO $ [_title | CACodeAction CodeAction{_title} <- actions, _title == expectedAction ] @?= []
+            liftIO $ [_title | InR CodeAction{_title} <- actions, _title == expectedAction ] @?= []
 
 addSigLensesTests :: TestTree
 addSigLensesTests = let
@@ -2073,7 +2093,7 @@ addSigLensesTests = let
     doc <- createDoc "Sigs.hs" "haskell" originalCode
     [CodeLens {_command = Just c}] <- getCodeLenses doc
     executeCommand c
-    modifiedCode <- getDocumentEdit doc
+    modifiedCode <- skipManyTill anyMessage $ getDocumentEdit doc
     liftIO $ expectedCode @=? modifiedCode
   in
   testGroup "add signature"
@@ -2092,8 +2112,11 @@ addSigLensesTests = let
         ]
     ]
 
-checkDefs :: [Location] -> Session [Expect] -> Session ()
-checkDefs defs mkExpectations = traverse_ check =<< mkExpectations where
+linkToLocation :: [LocationLink] -> [Location]
+linkToLocation = map (\LocationLink{_targetUri,_targetRange} -> Location _targetUri _targetRange)
+
+checkDefs :: [Location] |? [LocationLink] -> Session [Expect] -> Session ()
+checkDefs (either id linkToLocation . toEither -> defs) mkExpectations = traverse_ check =<< mkExpectations where
 
   check (ExpectRange expectedRange) = do
     assertNDefinitionsFound 1 defs
@@ -2120,7 +2143,7 @@ canonicalizeLocation (Location uri range) = Location <$> canonicalizeUri uri <*>
 
 findDefinitionAndHoverTests :: TestTree
 findDefinitionAndHoverTests = let
-
+  tst :: (TextDocumentIdentifier -> Position -> Session a, a -> Session [Expect] -> Session ()) -> Position -> Session [Expect] -> String -> TestTree
   tst (get, check) pos targetRange title = testSessionWithExtraFiles "hover" title $ \dir -> do
 
     -- Dirty the cache to check that definitions work even in the presence of iface files
@@ -2132,7 +2155,7 @@ findDefinitionAndHoverTests = let
       closeDoc fooDoc
 
     doc <- openTestDataDoc (dir </> sourceFilePath)
-    void (skipManyTill anyMessage message :: Session WorkDoneProgressEndNotification)
+    waitForProgressDone
     found <- get doc pos
     check found targetRange
 
@@ -2725,7 +2748,7 @@ highlightTests = testGroup "highlight"
     doc <- createDoc "A.hs" "haskell" source
     _ <- waitForDiagnostics
     highlights <- getHighlights doc (Position 2 2)
-    liftIO $ highlights @?=
+    liftIO $ highlights @?= List
             [ DocumentHighlight (R 1 0 1 3) (Just HkRead)
             , DocumentHighlight (R 2 0 2 3) (Just HkWrite)
             , DocumentHighlight (R 3 6 3 9) (Just HkRead)
@@ -2735,7 +2758,7 @@ highlightTests = testGroup "highlight"
     doc <- createDoc "A.hs" "haskell" source
     _ <- waitForDiagnostics
     highlights <- getHighlights doc (Position 1 8)
-    liftIO $ highlights @?=
+    liftIO $ highlights @?= List
             [ DocumentHighlight (R 1 7 1 10) (Just HkRead)
             , DocumentHighlight (R 2 11 2 14) (Just HkRead)
             ]
@@ -2743,7 +2766,7 @@ highlightTests = testGroup "highlight"
     doc <- createDoc "A.hs" "haskell" source
     _ <- waitForDiagnostics
     highlights <- getHighlights doc (Position 5 5)
-    liftIO $ highlights @?=
+    liftIO $ highlights @?= List
             [ DocumentHighlight (R 5 4 5 7) (Just HkWrite)
             , DocumentHighlight (R 5 10 5 13) (Just HkRead)
             , DocumentHighlight (R 6 12 6 15) (Just HkRead)
@@ -2752,7 +2775,7 @@ highlightTests = testGroup "highlight"
     doc <- createDoc "A.hs" "haskell" recsource
     _ <- waitForDiagnostics
     highlights <- getHighlights doc (Position 3 15)
-    liftIO $ highlights @?=
+    liftIO $ highlights @?= List
       -- Span is just the .. on 8.10, but Rec{..} before
 #if MIN_GHC_API_VERSION(8,10,0)
             [ DocumentHighlight (R 3 8 3 10) (Just HkWrite)
@@ -2762,7 +2785,7 @@ highlightTests = testGroup "highlight"
             , DocumentHighlight (R 3 14 3 20) (Just HkRead)
             ]
     highlights <- getHighlights doc (Position 2 17)
-    liftIO $ highlights @?=
+    liftIO $ highlights @?= List
             [ DocumentHighlight (R 2 17 2 23) (Just HkWrite)
       -- Span is just the .. on 8.10, but Rec{..} before
 #if MIN_GHC_API_VERSION(8,10,0)
@@ -3082,13 +3105,13 @@ loadCradleOnlyonce = testGroup "load cradle only once"
         implicit dir = test dir
         test _dir = do
             doc <- createDoc "B.hs" "haskell" "module B where\nimport Data.Foo"
-            msgs <- someTill (skipManyTill anyMessage cradleLoadedMessage) (skipManyTill anyMessage (message @PublishDiagnosticsNotification))
+            msgs <- someTill (skipManyTill anyMessage cradleLoadedMessage) (skipManyTill anyMessage (message STextDocumentPublishDiagnostics))
             liftIO $ length msgs @?= 1
             changeDoc doc [TextDocumentContentChangeEvent Nothing Nothing "module B where\nimport Data.Maybe"]
-            msgs <- manyTill (skipManyTill anyMessage cradleLoadedMessage) (skipManyTill anyMessage (message @PublishDiagnosticsNotification))
+            msgs <- manyTill (skipManyTill anyMessage cradleLoadedMessage) (skipManyTill anyMessage (message STextDocumentPublishDiagnostics))
             liftIO $ length msgs @?= 0
             _ <- createDoc "A.hs" "haskell" "module A where\nimport LoadCradleBar"
-            msgs <- manyTill (skipManyTill anyMessage cradleLoadedMessage) (skipManyTill anyMessage (message @PublishDiagnosticsNotification))
+            msgs <- manyTill (skipManyTill anyMessage cradleLoadedMessage) (skipManyTill anyMessage (message STextDocumentPublishDiagnostics))
             liftIO $ length msgs @?= 0
 
 
@@ -3128,10 +3151,8 @@ dependentFileTest = testGroup "addDependentFile"
         expectDiagnostics [("Foo.hs", [])]
 
 
-cradleLoadedMessage :: Session FromServerMessage
-cradleLoadedMessage = satisfy $ \case
-        NotCustomServer (NotificationMessage _ (CustomServerMethod m) _) -> m == cradleLoadedMethod
-        _ -> False
+cradleLoadedMessage :: Session (ServerMessage (CustomMethod :: Method FromServer Notification))
+cradleLoadedMessage = customNotification cradleLoadedMethod
 
 cradleLoadedMethod :: T.Text
 cradleLoadedMethod = "ghcide/cradle/loaded"
@@ -3259,7 +3280,7 @@ ifaceErrorTest = testCase "iface-error-test-1" $ withoutStackEnv $ runWithExtraF
     -- Change y from Int to B
     changeDoc bdoc [TextDocumentContentChangeEvent Nothing Nothing $ T.unlines ["module B where", "y :: Bool", "y = undefined"]]
     -- save so that we can that the error propogates to A
-    sendNotification TextDocumentDidSave (DidSaveTextDocumentParams bdoc)
+    sendNotification STextDocumentDidSave (DidSaveTextDocumentParams bdoc Nothing)
 
     -- Check that the error propogates to A
     expectDiagnostics
@@ -3267,10 +3288,10 @@ ifaceErrorTest = testCase "iface-error-test-1" $ withoutStackEnv $ runWithExtraF
 
 
     -- Check that we wrote the interfaces for B when we saved
-    lid <- sendRequest (CustomClientMethod "hidir") $ GetInterfaceFilesDir bPath
-    res <- skipManyTill anyMessage $ responseForId lid
+    lid <- sendRequest (SCustomMethod "ghcide/hidir") $ toJSON $ GetInterfaceFilesDir bPath
+    res <- skipManyTill anyMessage $ responseForId (SCustomMethod "ghcide/hidir") lid
     liftIO $ case res of
-      ResponseMessage{_result=Right hidir} -> do
+      ResponseMessage{_result=Right (J.fromJSON -> J.Success hidir)} -> do
         hi_exists <- doesFileExist $ hidir </> "B.hi"
         assertBool ("Couldn't find B.hi in " ++ hidir) hi_exists
       _ -> assertFailure $ "Got malformed response for CustomMessage hidir: " ++ show res
@@ -3444,8 +3465,8 @@ asyncTests = testGroup "async"
     [
       testSession "command" $ do
             -- Execute a command that will block forever
-            let req = ExecuteCommandParams blockCommandId Nothing Nothing
-            void $ sendRequest WorkspaceExecuteCommand req
+            let req = ExecuteCommandParams Nothing blockCommandId Nothing
+            void $ sendRequest SWorkspaceExecuteCommand req
             -- Load a file and check for code actions. Will only work if the command is run asynchronously
             doc <- createDoc "A.hs" "haskell" $ T.unlines
               [ "{-# OPTIONS -Wmissing-signatures #-}"
@@ -3453,10 +3474,10 @@ asyncTests = testGroup "async"
               ]
             void waitForDiagnostics
             actions <- getCodeActions doc (Range (Position 1 0) (Position 1 0))
-            liftIO $ [ _title | CACodeAction CodeAction{_title} <- actions] @=? ["add signature: foo :: a -> a"]
+            liftIO $ [ _title | InR CodeAction{_title} <- actions] @=? ["add signature: foo :: a -> a"]
     , testSession "request" $ do
             -- Execute a custom request that will block for 1000 seconds
-            void $ sendRequest (CustomClientMethod "ghcide/blocking/request") $ BlockSeconds 1000
+            void $ sendRequest (SCustomMethod "ghcide/blocking/request") $ toJSON $ BlockSeconds 1000
             -- Load a file and check for code actions. Will only work if the request is run asynchronously
             doc <- createDoc "A.hs" "haskell" $ T.unlines
               [ "{-# OPTIONS -Wmissing-signatures #-}"
@@ -3464,24 +3485,20 @@ asyncTests = testGroup "async"
               ]
             void waitForDiagnostics
             actions <- getCodeActions doc (Range (Position 0 0) (Position 0 0))
-            liftIO $ [ _title | CACodeAction CodeAction{_title} <- actions] @=? ["add signature: foo :: a -> a"]
+            liftIO $ [ _title | InR CodeAction{_title} <- actions] @=? ["add signature: foo :: a -> a"]
     ]
 
 
 clientSettingsTest :: TestTree
 clientSettingsTest = testGroup "client settings handling"
-    [
-        testSession "ghcide does not support update config" $ do
-            sendNotification WorkspaceDidChangeConfiguration (DidChangeConfigurationParams (toJSON ("" :: String)))
-            logNot <- skipManyTill anyMessage loggingNotification
-            isMessagePresent "Updating Not supported" [getLogMessage logNot]
-    ,   testSession "ghcide restarts shake session on config changes" $ do
-            sendNotification WorkspaceDidChangeConfiguration (DidChangeConfigurationParams (toJSON ("" :: String)))
+    [ testSession "ghcide restarts shake session on config changes" $ do
+            sendNotification SWorkspaceDidChangeConfiguration (DidChangeConfigurationParams (toJSON ("" :: String)))
             nots <- skipManyTill anyMessage $ count 3 loggingNotification
             isMessagePresent "Restarting build session" (map getLogMessage nots)
 
     ]
-  where getLogMessage (NotLogMessage (NotificationMessage _ _ (LogMessageParams _ msg))) = msg
+  where getLogMessage :: FromServerMessage -> T.Text
+        getLogMessage (FromServerMess SWindowLogMessage (NotificationMessage _ _ (LogMessageParams _ msg))) = msg
         getLogMessage _ = ""
 
         isMessagePresent expectedMsg actualMsgs = liftIO $
@@ -3510,23 +3527,20 @@ testSessionWait name = testSession name .
       -- Experimentally, 0.5s seems to be long enough to wait for any final diagnostics to appear.
       ( >> expectNoMoreDiagnostics 0.5)
 
-pickActionWithTitle :: T.Text -> [CAResult] -> IO CodeAction
+pickActionWithTitle :: T.Text -> [a |? CodeAction] -> IO CodeAction
 pickActionWithTitle title actions = do
   assertBool ("Found no matching actions for " <> show title <> " in " <> show titles) (not $ null matches)
   return $ head matches
   where
     titles =
         [ actionTitle
-        | CACodeAction CodeAction { _title = actionTitle } <- actions
+        | InR CodeAction { _title = actionTitle } <- actions
         ]
     matches =
         [ action
-        | CACodeAction action@CodeAction { _title = actionTitle } <- actions
+        | InR action@CodeAction { _title = actionTitle } <- actions
         , title == actionTitle
         ]
-
-mkRange :: Int -> Int -> Int -> Int -> Range
-mkRange a b c d = Range (Position a b) (Position c d)
 
 run :: Session a -> IO a
 run s = run' (const s)
@@ -3599,12 +3613,12 @@ findCodeActions' op errMsg doc range expectedTitles = do
   let matches = sequence
         [ listToMaybe
           [ action
-          | CACodeAction action@CodeAction { _title = actionTitle } <- actions
+          | InR action@CodeAction { _title = actionTitle } <- actions
           , expectedTitle `op` actionTitle]
         | expectedTitle <- expectedTitles]
   let msg = show
             [ actionTitle
-            | CACodeAction CodeAction { _title = actionTitle } <- actions
+            | InR CodeAction { _title = actionTitle } <- actions
             ]
             ++ " " <> errMsg <> " "
             ++ show expectedTitles
@@ -3803,13 +3817,13 @@ nthLine i r
     | i >= Rope.rows r = error $ "Row number out of bounds: " <> show i <> "/" <> show (Rope.rows r)
     | otherwise = Rope.takeWhile (/= '\n') $ fst $ Rope.splitAtLine 1 $ snd $ Rope.splitAtLine (i - 1) r
 
-getWatchedFilesSubscriptionsUntil :: forall end . (FromJSON end, Typeable end) => Session [Maybe Value]
-getWatchedFilesSubscriptionsUntil = do
-      msgs <- manyTill (Just <$> message @RegisterCapabilityRequest <|> Nothing <$ anyMessage) (message @end)
+getWatchedFilesSubscriptionsUntil :: forall m. SServerMethod m  -> Session [DidChangeWatchedFilesRegistrationOptions]
+getWatchedFilesSubscriptionsUntil m = do
+      msgs <- manyTill (Just <$> message SClientRegisterCapability <|> Nothing <$ anyMessage) (message m)
       return
             [ args
             | Just RequestMessage{_params = RegistrationParams (List regs)} <- msgs
-            , Registration _id WorkspaceDidChangeWatchedFiles args <- regs
+            , SomeRegistration (Registration _id SWorkspaceDidChangeWatchedFiles args) <- regs
             ]
 
 -- | Version of 'System.IO.Extra.withTempDir' that canonicalizes the path

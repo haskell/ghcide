@@ -19,10 +19,10 @@ import           Development.IDE.LSP.Server
 import qualified Development.IDE.GHC.Util as Ghcide
 import qualified Language.Haskell.LSP.Control as LSP
 import qualified Language.Haskell.LSP.Core as LSP
-import           Language.Haskell.LSP.Core (LspM)
 import Control.Concurrent.Extra (newBarrier, signalBarrier, waitBarrier)
 import Control.Concurrent.STM
 import Data.Maybe
+import Data.Aeson (Value)
 import qualified Data.Set as Set
 import qualified Data.Text as T
 import GHC.IO.Handle (hDuplicate)
@@ -45,10 +45,11 @@ import Development.IDE.Core.FileStore
 runLanguageServer
     :: forall config. (Show config)
     => LSP.Options
+    -> (IdeState -> Value -> IO (Either T.Text config))
     -> LSP.Handlers (ServerM config)
     -> (LSP.LanguageContextEnv config -> VFSHandle -> Maybe FilePath -> IO IdeState)
     -> IO ()
-runLanguageServer options userHandlers getIdeState = do
+runLanguageServer options onConfigurationChange userHandlers getIdeState = do
     -- Move stdout to another file descriptor and duplicate stderr
     -- to stdout. This guards against stray prints from corrupting the JSON-RPC
     -- message stream.
@@ -112,7 +113,9 @@ runLanguageServer options userHandlers getIdeState = do
 
 
     let initializeCallbacks = LSP.InitializeCallbacks
-            { LSP.onConfigurationChange = const (pure $ Left "non supported")
+            { LSP.onConfigurationChange = \v -> do
+                (_chan, ide) <- ask
+                liftIO $ onConfigurationChange ide v
             , LSP.doInitialize = handleInit exit clearReqId waitForCancel clientMsgChan
             , LSP.staticHandlers = asyncHandlers
             , LSP.interpretHandler = \(env, st) -> LSP.Iso (LSP.runLspT env . flip runReaderT (clientMsgChan,st)) liftIO
