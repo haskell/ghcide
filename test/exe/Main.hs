@@ -2292,7 +2292,7 @@ pluginSimpleTests =
 
 pluginParsedResultTests :: TestTree
 pluginParsedResultTests =
-  knownBrokenInWindowsAndGHC10 $ testSessionWait "parsedResultAction plugin" $ do
+  testSessionWait "parsedResultAction plugin" $ do
     let content =
           T.unlines
             [ "{-# LANGUAGE DuplicateRecordFields, TypeApplications, FlexibleContexts, DataKinds, MultiParamTypeClasses, TypeSynonymInstances, FlexibleInstances #-}"
@@ -2308,7 +2308,7 @@ pluginParsedResultTests =
 cppTests :: TestTree
 cppTests =
   testGroup "cpp"
-    [ ignoreInWindowsBecause "Throw a lsp session time out in windows for ghc-8.8" $ testCase "cpp-error" $ do
+    [ ignoreInWindowsBecause "Throw a lsp session time out in windows for ghc-8.8 and is broken for other versions" $ testCase "cpp-error" $ do
         let content =
               T.unlines
                 [ "{-# LANGUAGE CPP #-}",
