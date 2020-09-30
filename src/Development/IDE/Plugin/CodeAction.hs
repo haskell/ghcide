@@ -1084,11 +1084,11 @@ matchRegex message regex = case message =~~ regex of
     Just (_ :: T.Text, _ :: T.Text, _ :: T.Text, bindings) -> Just bindings
     Nothing -> Nothing
 
-setHandlersCodeLens :: ReactorChan c -> LSP.Handlers c
-setHandlersCodeLens chan = mconcat
-  [ requestHandler chan STextDocumentCodeLens $ \ide (RequestMessage _ _ _ params) k ->
+setHandlersCodeLens :: LSP.Handlers (ServerM c)
+setHandlersCodeLens = mconcat
+  [ requestHandler STextDocumentCodeLens $ \ide (RequestMessage _ _ _ params) k ->
       k =<< codeLens ide params
-  , requestHandler chan SWorkspaceExecuteCommand $ \ide (RequestMessage _ _ _ params) k ->
+  , requestHandler SWorkspaceExecuteCommand $ \ide (RequestMessage _ _ _ params) k ->
       k =<< commandHandler ide params
   ]
 

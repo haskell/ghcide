@@ -42,9 +42,9 @@ whenUriFile uri act = whenJust (LSP.uriToFilePath uri) $ act . toNormalizedFileP
 getParams :: NotificationMessage m -> MessageParams m
 getParams (NotificationMessage _ _ params) = params
 
-setHandlersNotifications :: ReactorChan c -> LSP.Handlers c
-setHandlersNotifications chan = mconcat
-  [ notificationHandler chan LSP.STextDocumentDidOpen $
+setHandlersNotifications :: LSP.Handlers (ServerM c)
+setHandlersNotifications = mconcat
+  [ notificationHandler LSP.STextDocumentDidOpen $
       \ide (getParams  -> DidOpenTextDocumentParams TextDocumentItem{_uri,_version}) -> liftIO $ do
       updatePositionMapping ide (VersionedTextDocumentIdentifier _uri (Just _version)) (List [])
       whenUriFile _uri $ \file -> do
@@ -54,7 +54,7 @@ setHandlersNotifications chan = mconcat
           setFileModified ide False file
           logInfo (ideLogger ide) $ "Opened text document: " <> getUri _uri
 
-  , notificationHandler chan LSP.STextDocumentDidChange $
+  , notificationHandler LSP.STextDocumentDidChange $
       \ide (getParams  -> DidChangeTextDocumentParams identifier@VersionedTextDocumentIdentifier{_uri} changes) -> liftIO $ do
         updatePositionMapping ide identifier changes
         whenUriFile _uri $ \file -> do
@@ -62,14 +62,14 @@ setHandlersNotifications chan = mconcat
           setFileModified ide False file
         logInfo (ideLogger ide) $ "Modified text document: " <> getUri _uri
 
-  , notificationHandler chan LSP.STextDocumentDidSave $
+  , notificationHandler LSP.STextDocumentDidSave $
       \ide (getParams  -> DidSaveTextDocumentParams TextDocumentIdentifier{_uri} _) -> liftIO $ do
         whenUriFile _uri $ \file -> do
             modifyFilesOfInterest ide (M.insert file OnDisk)
             setFileModified ide True file
         logInfo (ideLogger ide) $ "Saved text document: " <> getUri _uri
 
-  , notificationHandler chan LSP.STextDocumentDidClose $
+  , notificationHandler LSP.STextDocumentDidClose $
         \ide (getParams  -> DidCloseTextDocumentParams TextDocumentIdentifier{_uri}) -> liftIO $ do
           whenUriFile _uri $ \file -> do
               modifyFilesOfInterest ide (M.delete file)
@@ -78,9 +78,9 @@ setHandlersNotifications chan = mconcat
               when (optCheckParents >= CheckOnClose) $ typecheckParents ide file
               logInfo (ideLogger ide) $ "Closed text document: " <> getUri _uri
 
-  , notificationHandler chan LSP.SWorkspaceDidChangeWatchedFiles $
+  , notificationHandler LSP.SWorkspaceDidChangeWatchedFiles $
       \ide (getParams  -> DidChangeWatchedFilesParams fileEvents) -> liftIO $ do
-        -- See Note [File existence cache and LSP file watchers] which explains why we get these notifications chan and
+        -- See Note [File existence cache and LSP file watchers] which explains why we get these notifications and
         -- what we do with them
         let events =
                 mapMaybe
@@ -94,7 +94,7 @@ setHandlersNotifications chan = mconcat
         modifyFileExists ide events
         setSomethingModified ide
 
-  , notificationHandler chan LSP.SWorkspaceDidChangeWorkspaceFolders $
+  , notificationHandler LSP.SWorkspaceDidChangeWorkspaceFolders $
       \ide (getParams -> DidChangeWorkspaceFoldersParams events) -> liftIO $ do
         let add       = S.union
             substract = flip S.difference
@@ -102,14 +102,14 @@ setHandlersNotifications chan = mconcat
           $ add       (foldMap (S.singleton . parseWorkspaceFolder) (_added   events))
           . substract (foldMap (S.singleton . parseWorkspaceFolder) (_removed events))
 
-  , notificationHandler chan LSP.SWorkspaceDidChangeConfiguration $
+  , notificationHandler LSP.SWorkspaceDidChangeConfiguration $
       \ide (getParams -> DidChangeConfigurationParams cfg) -> liftIO $ do
         let msg = Text.pack $ show cfg
         logInfo (ideLogger ide) $ "Configuration changed: " <> msg
         modifyClientSettings ide (const $ Just cfg)
         setSomethingModified ide
 
-  , notificationHandler chan LSP.SInitialized $ \ide _ -> do
+  , notificationHandler LSP.SInitialized $ \ide _ -> do
       clientCapabilities <- LSP.getClientCapabilities
       let watchSupported = case () of
             _ | LSP.ClientCapabilities{_workspace} <- clientCapabilities

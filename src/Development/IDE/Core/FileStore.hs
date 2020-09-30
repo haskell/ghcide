@@ -90,7 +90,7 @@ makeVFSHandle = do
 
 makeLSPVFSHandle :: LanguageContextEnv c -> VFSHandle
 makeLSPVFSHandle lspEnv = VFSHandle
-    { getVirtualFile = \uri -> runReaderT (runLspT $ LSP.getVirtualFile uri) lspEnv
+    { getVirtualFile = \uri -> runLspT lspEnv $ LSP.getVirtualFile uri
     , setVirtualFileContents = Nothing
    }
 

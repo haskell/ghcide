@@ -45,28 +45,28 @@ plugin = Plugin {
     pluginHandlers = customRequestHandler
 }
 
-customRequestHandler ::  ReactorChan c -> Handlers c
-customRequestHandler c = mconcat
-  [ requestHandler c (SCustomMethod "ghcide/blocking/request") $ \s (RequestMessage _ _ _ params) k -> case fromJSON params of
+customRequestHandler ::  Handlers (ServerM c)
+customRequestHandler = mconcat
+  [ requestHandler (SCustomMethod "ghcide/blocking/request") $ \s (RequestMessage _ _ _ params) k -> case fromJSON params of
       Success (BlockSeconds secs) -> do
         sendNotification (SCustomMethod "ghcide/blocking/request") $
           toJSON secs
         liftIO $ sleep secs
         k (Right Null)
       Error err -> k (Left $ ResponseError InvalidParams (T.pack err) Nothing)
-  , requestHandler c (SCustomMethod "hidir") $ \s (RequestMessage _ _ _ params) k -> case fromJSON params of
+  , requestHandler (SCustomMethod "hidir") $ \s (RequestMessage _ _ _ params) k -> case fromJSON params of
       Success (GetInterfaceFilesDir fp) -> do
         let nfp = toNormalizedFilePath fp
         sess <- liftIO $ runAction "Test - GhcSession" s $ use_ GhcSession nfp
         let hiPath = hiDir $ hsc_dflags $ hscEnv sess
         k $ Right (toJSON hiPath)
       Error err -> k (Left $ ResponseError InvalidParams (T.pack err) Nothing)
-  , requestHandler c (SCustomMethod "hidir") $ \s (RequestMessage _ _ _ params) k -> case fromJSON params of
+  , requestHandler (SCustomMethod "ghcide/queue/count") $ \s (RequestMessage _ _ _ params) k -> case fromJSON params of
       Success GetShakeSessionQueueCount -> do
         n <- liftIO $ atomically $ countQueue $ actionQueue $ shakeExtras s
         k $ Right (toJSON n)
       Error err -> k (Left $ ResponseError InvalidParams (T.pack err) Nothing)
-  , requestHandler c (SCustomMethod "ghcide/waitforqueue") $ \s (RequestMessage _ _ _ params) k -> case fromJSON params of
+  , requestHandler (SCustomMethod "ghcide/blocking/queue") $ \s (RequestMessage _ _ _ params) k -> case fromJSON params of
       Success WaitForShakeQueue -> do
         liftIO $ atomically $ do
             n <- countQueue $ actionQueue $ shakeExtras s

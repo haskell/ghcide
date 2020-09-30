@@ -152,7 +152,7 @@ watchedGlobs opts = [ "**/*." ++ extIncBoot | ext <- optExtensions opts, extIncB
 fileExistsRules :: Maybe (LanguageContextEnv c) -> VFSHandle -> Rules ()
 fileExistsRules lspEnv vfs = do
   supportsWatchedFiles <- case lspEnv of
-    Just lspEnv' -> liftIO $ flip runReaderT lspEnv' $ runLspT $ do
+    Just lspEnv' -> liftIO $ runLspT lspEnv' $ do
       ClientCapabilities {_workspace} <- getClientCapabilities
       case () of
         _ | Just WorkspaceClientCapabilities{_didChangeWatchedFiles} <- _workspace

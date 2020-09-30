@@ -101,8 +101,8 @@ main = do
             t <- t
             hPutStrLn stderr $ "Started LSP server in " ++ showDuration t
             sessionLoader <- loadSession $ fromMaybe dir rootPath
-            config <- maybe defaultLspConfig id <$> (flip LSP.runReaderT env $ LSP.runLspT LSP.getConfig)
-            caps <- flip LSP.runReaderT env $ LSP.runLspT LSP.getClientCapabilities
+            config <- maybe defaultLspConfig id <$> (LSP.runLspT env LSP.getConfig)
+            caps <- LSP.runLspT env LSP.getClientCapabilities
             let options = (defaultIdeOptions sessionLoader)
                     { optReportProgress = clientSupportsProgress caps
                     , optShakeProfiling = argsShakeProfiling

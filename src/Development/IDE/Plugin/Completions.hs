@@ -160,7 +160,7 @@ getCompletionsLSP ide
           _ -> return (InL $ List [])
       _ -> return (InL $ List [])
 
-setHandlersCompletion :: ReactorChan c -> LSP.Handlers c
-setHandlersCompletion chan = requestHandler chan STextDocumentCompletion $ \ide (RequestMessage _ _ _ params) k ->
+setHandlersCompletion :: LSP.Handlers (ServerM c)
+setHandlersCompletion = requestHandler STextDocumentCompletion $ \ide (RequestMessage _ _ _ params) k ->
   k =<< getCompletionsLSP ide params
 

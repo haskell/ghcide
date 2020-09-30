@@ -675,7 +675,7 @@ instantiateDelayedAction (DelayedAction _ s p a) = do
   return (b, d')
 
 mRunLspT :: Applicative m => Maybe (LSP.LanguageContextEnv c ) -> LSP.LspT c  m () -> m ()
-mRunLspT (Just lspEnv) f = runReaderT (LSP.runLspT f) lspEnv
+mRunLspT (Just lspEnv) f = LSP.runLspT lspEnv f
 mRunLspT Nothing _ = pure ()
 
 mRunLspTCallback :: Monad m
@@ -683,7 +683,7 @@ mRunLspTCallback :: Monad m
                  -> (LSP.LspT c m a -> LSP.LspT c m a)
                  -> m a
                  -> m a
-mRunLspTCallback (Just lspEnv) f g = runReaderT (LSP.runLspT (f (lift g))) lspEnv
+mRunLspTCallback (Just lspEnv) f g = LSP.runLspT lspEnv $ f (lift g)
 mRunLspTCallback Nothing _ g = g
 
 getDiagnostics :: IdeState -> IO [FileDiagnostic]

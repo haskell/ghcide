@@ -45,7 +45,7 @@ import Development.IDE.Core.FileStore
 runLanguageServer
     :: forall config. (Show config)
     => LSP.Options
-    -> (ReactorChan config -> LSP.Handlers config)
+    -> LSP.Handlers (ServerM config)
     -> (LSP.LanguageContextEnv config -> VFSHandle -> Maybe FilePath -> IO IdeState)
     -> IO ()
 runLanguageServer options userHandlers getIdeState = do
@@ -100,10 +100,10 @@ runLanguageServer options userHandlers getIdeState = do
 
     -- Send everything over a channel, since you need to wait until after initialise before
     -- LspFuncs is available
-    clientMsgChan :: Chan (ReactorMessage config) <- newChan
+    clientMsgChan :: Chan ReactorMessage <- newChan
 
     let asyncHandlers = mconcat
-          [ ideHandlers clientMsgChan
+          [ ideHandlers
           , cancelHandler cancelRequest
           , exitHandler exit
           ]
@@ -114,6 +114,8 @@ runLanguageServer options userHandlers getIdeState = do
     let initializeCallbacks = LSP.InitializeCallbacks
             { LSP.onConfigurationChange = const (pure $ Left "non supported")
             , LSP.doInitialize = handleInit exit clearReqId waitForCancel clientMsgChan
+            , LSP.staticHandlers = asyncHandlers
+            , LSP.interpretHandler = \(env, st) -> LSP.Iso (LSP.runLspT env . flip runReaderT (clientMsgChan,st)) liftIO
             }
 
     void $ waitAnyCancel =<< traverse async
@@ -121,41 +123,39 @@ runLanguageServer options userHandlers getIdeState = do
             stdin
             newStdout
             initializeCallbacks
-            asyncHandlers
             (modifyOptions options)
         , void $ waitBarrier clientMsgBarrier
         ]
 
     where
         handleInit
-          :: IO () -> (SomeLspId -> IO ()) -> (SomeLspId -> IO ()) -> Chan (ReactorMessage config)
-          -> RequestMessage Initialize -> LspM config (Maybe err)
-        handleInit exitClientMsg clearReqId waitForCancel clientMsgChan (RequestMessage _ _ _ params) = do
-            env <- LSP.LspT ask
-            root <- LSP.getRootPath
+          :: IO () -> (SomeLspId -> IO ()) -> (SomeLspId -> IO ()) -> Chan ReactorMessage
+          -> LSP.LanguageContextEnv config -> RequestMessage Initialize -> IO (Either err (LSP.LanguageContextEnv config, IdeState))
+        handleInit exitClientMsg clearReqId waitForCancel clientMsgChan env (RequestMessage _ _ _ params) = do
+            let root = LSP.resRootPath env
             ide <- liftIO $ getIdeState env (makeLSPVFSHandle env) root
 
             let initConfig = parseConfiguration params
             liftIO $ logInfo (ideLogger ide) $ T.pack $ "Registering ide configuration: " <> show initConfig
             liftIO $ registerIdeConfiguration (shakeExtras ide) initConfig
 
-            _ <- flip forkFinally (const $ liftIO exitClientMsg) $ forever $ do
-                msg <- liftIO $ readChan clientMsgChan
+            _ <- flip forkFinally (const $ exitClientMsg) $ forever $ do
+                msg <- readChan clientMsgChan
                 -- We dispatch notifications synchronously and requests asynchronously
                 -- This is to ensure that all file edits and config changes are applied before a request is handled
                 case msg of
                     ReactorNotification act -> do
-                      catch (act ide) $ \(e :: SomeException) ->
-                         liftIO $ logError (ideLogger ide) $ T.pack $
-                           "Unexpected exception on notification, please report!\n" ++
-                           "Exception: " ++ show e
+                      catch act $ \(e :: SomeException) ->
+                        logError (ideLogger ide) $ T.pack $
+                          "Unexpected exception on notification, please report!\n" ++
+                          "Exception: " ++ show e
                     ReactorRequest _id act k -> void $ async $
-                      checkCancelled ide clearReqId waitForCancel _id (act ide) k
-            pure Nothing
+                      checkCancelled ide clearReqId waitForCancel _id act k
+            pure $ Right (env,ide)
 
         checkCancelled
           :: IdeState -> (SomeLspId -> IO ()) -> (SomeLspId -> IO ()) -> SomeLspId
-          -> LspM config () -> (ResponseError -> LspM config ()) -> LspM config ()
+          -> IO () -> (ResponseError -> IO ()) -> IO ()
         checkCancelled ide clearReqId waitForCancel _id act k =
             flip finally (liftIO $ clearReqId _id) $
                 catch (do
@@ -176,11 +176,11 @@ runLanguageServer options userHandlers getIdeState = do
                     k $ ResponseError InternalError (T.pack $ show e) Nothing
 
 
-cancelHandler :: (SomeLspId -> IO ()) -> LSP.Handlers config
-cancelHandler cancelRequest = LSP.notificationHandler SCancelRequest $ \NotificationMessage {_params = CancelParams {_id}} ->
+cancelHandler :: (SomeLspId -> IO ()) -> LSP.Handlers (ServerM c)
+cancelHandler cancelRequest = LSP.notificationHandler SCancelRequest $ \NotificationMessage{_params=CancelParams{_id}} ->
   liftIO $ cancelRequest (SomeLspId _id)
 
-exitHandler :: IO () -> LSP.Handlers c
+exitHandler :: IO () -> LSP.Handlers (ServerM c)
 exitHandler exit = LSP.notificationHandler SExit (const $ liftIO exit)
 
 modifyOptions :: LSP.Options -> LSP.Options

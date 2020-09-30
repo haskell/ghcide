@@ -13,21 +13,32 @@ import qualified Language.Haskell.LSP.Core as LSP
 import           Language.Haskell.LSP.Core (Handlers, LspM, Handler)
 import Development.IDE.Core.Shake
 import UnliftIO.Chan
+import Control.Monad.Reader
 
-data ReactorMessage c
-  = ReactorNotification (IdeState -> LspM c ())
-  | forall m. ReactorRequest SomeLspId (IdeState -> LspM c ()) (ResponseError -> LspM c ())
+data ReactorMessage
+  = ReactorNotification (IO ())
+  | ReactorRequest SomeLspId (IO ()) (ResponseError -> IO ())
 
-type ReactorChan c = Chan (ReactorMessage c)
+type ReactorChan = Chan ReactorMessage
+type ServerM c = ReaderT (ReactorChan, IdeState) (LspM c)
 
 requestHandler
   :: forall (m :: Method FromClient Request) c.
-  ReactorChan c -> SMethod m -> (IdeState -> Handler m c) -> Handlers c
-requestHandler chan m k = LSP.requestHandler m $ \msg@(RequestMessage{_id}) resp ->
-  writeChan chan $ ReactorRequest (SomeLspId _id) (\st -> k st msg resp) (resp . Left)
+     SMethod m
+  -> (IdeState -> Handler (LspM c) m)
+  -> Handlers (ServerM c)
+requestHandler m k = LSP.requestHandler m $ \msg@(RequestMessage{_id}) resp -> do
+  st@(chan,ide) <- ask
+  env <- LSP.getLspEnv
+  let resp' = flip runReaderT st . resp
+  writeChan chan $ ReactorRequest (SomeLspId _id) (LSP.runLspT env $ k ide msg resp') (LSP.runLspT env . resp' . Left)
 
 notificationHandler
   :: forall (m :: Method FromClient Notification) c.
-  ReactorChan c -> SMethod m -> (IdeState -> Handler m c) -> Handlers c
-notificationHandler chan m k = LSP.notificationHandler m $ \msg ->
-  writeChan chan $ ReactorNotification (\st -> k st msg)
+     SMethod m
+  -> (IdeState -> Handler (LspM c) m)
+  -> Handlers (ServerM c)
+notificationHandler m k = LSP.notificationHandler m $ \msg -> do
+  (chan,ide) <- ask
+  env <- LSP.getLspEnv
+  writeChan chan $ ReactorNotification (LSP.runLspT env $ k ide msg)

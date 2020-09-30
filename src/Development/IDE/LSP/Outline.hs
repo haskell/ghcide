@@ -33,8 +33,8 @@ import           Outputable                     ( Outputable
                                                 , showSDocUnsafe
                                                 )
 
-setHandlersOutline :: ReactorChan c -> LSP.Handlers c
-setHandlersOutline c = requestHandler c STextDocumentDocumentSymbol $ \ide (RequestMessage _ _ _ params) k ->
+setHandlersOutline :: LSP.Handlers (ServerM c)
+setHandlersOutline = requestHandler STextDocumentDocumentSymbol $ \ide (RequestMessage _ _ _ params) k ->
   k =<< moduleOutline ide params
 
 moduleOutline

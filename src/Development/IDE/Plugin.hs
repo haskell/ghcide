@@ -16,7 +16,7 @@ import qualified Language.Haskell.LSP.Core as LSP
 
 data Plugin c = Plugin
     {pluginRules :: Rules ()
-    ,pluginHandlers :: ReactorChan c -> LSP.Handlers c
+    ,pluginHandlers :: LSP.Handlers (ServerM c)
     }
 
 instance Default (Plugin c) where
@@ -35,8 +35,8 @@ codeActionPlugin = codeActionPluginWithRules mempty
 codeActionPluginWithRules :: forall c. Rules () -> (IdeState -> TextDocumentIdentifier -> Range -> CodeActionContext -> LSP.LspM c (Either ResponseError [Command |? CodeAction])) -> Plugin c
 codeActionPluginWithRules rr f = Plugin rr handlers
   where
-    handlers :: ReactorChan c -> LSP.Handlers c
-    handlers chan = requestHandler chan STextDocumentCodeAction $ \state (RequestMessage _ _ _ params) k -> k =<< g state params
+    handlers :: LSP.Handlers (ServerM c)
+    handlers = requestHandler STextDocumentCodeAction $ \state (RequestMessage _ _ _ params) k -> k =<< g state params
     g state (CodeActionParams _ _ a b c) = fmap List <$> f state a b c
 
 -- | Prefix to uniquely identify commands sent to the client.  This
