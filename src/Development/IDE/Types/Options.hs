@@ -37,6 +37,7 @@ import Development.IDE.Types.Diagnostics
 import Control.DeepSeq (NFData(..))
 import Data.Aeson
 import GHC.Generics
+import Data.Hashable
 
 data IdeGhcSession = IdeGhcSession
   { loadSessionFun :: FilePath -> IO (IdeResult HscEnvEq, [FilePath])
@@ -104,7 +105,7 @@ data OptHaddockParse = HaddockParse | NoHaddockParse
 
 newtype CheckProject = CheckProject { shouldCheckProject :: Bool }
   deriving stock (Eq, Ord, Show)
-  deriving newtype (FromJSON,ToJSON)
+  deriving newtype (FromJSON,ToJSON, Hashable, NFData)
 data CheckParents
     -- Note that ordering of constructors is meaningful and must be monotonically
     -- increasing in the scenarios where parents are checked
@@ -113,14 +114,14 @@ data CheckParents
     | CheckOnSaveAndClose
     | AlwaysCheck
   deriving stock (Eq, Ord, Show, Generic)
-  deriving anyclass (FromJSON, ToJSON)
+  deriving anyclass (FromJSON, ToJSON, Hashable, NFData)
 
 data LspConfig
   = LspConfig
   { checkParents :: CheckParents
   , checkProject :: CheckProject
   } deriving stock (Eq, Ord, Show, Generic)
-    deriving anyclass (FromJSON, ToJSON)
+    deriving anyclass (FromJSON, ToJSON, Hashable, NFData)
 
 defaultLspConfig :: LspConfig
 defaultLspConfig = LspConfig CheckOnSaveAndClose (CheckProject True)

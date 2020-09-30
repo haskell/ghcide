@@ -82,13 +82,6 @@ main = do
 
     let plugins = Completions.plugin <> CodeAction.plugin
             <> if argsTesting then Test.plugin else mempty
-        onInitialConfiguration :: InitializeRequest -> Either T.Text LspConfig
-        onInitialConfiguration x = case x ^. params . initializationOptions of
-          Nothing -> Right defaultLspConfig
-          Just v -> case J.fromJSON v of
-            J.Error err -> Left $ T.pack err
-            J.Success a -> Right a
-        onConfigurationChange = const $ Left "Updating Not supported"
         options = def { LSP.executeCommandCommands = Just [command]
                       , LSP.completionTriggerCharacters = Just "."
                       }
