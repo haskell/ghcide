@@ -26,13 +26,14 @@ import           Development.Shake
 import           GHC.Generics                             (Generic)
 
 import Module (InstalledUnitId)
-import HscTypes (hm_iface, CgGuts, Linkable, HomeModInfo, ModDetails)
+import HscTypes (hm_iface, CgGuts, HomeModInfo)
 
 import           Development.IDE.Spans.Common
 import           Development.IDE.Spans.LocalBindings
 import           Development.IDE.Import.FindImports (ArtifactsLocation)
 import Data.ByteString (ByteString)
 import Language.Haskell.LSP.Types (NormalizedFilePath)
+import TcRnMonad (TcGblEnv)
 
 -- NOTATION
 --   Foo+ means Foo for the dependencies
@@ -65,23 +66,23 @@ type instance RuleResult GetKnownTargets = KnownTargets
 -- | Contains the typechecked module and the OrigNameCache entry for
 -- that module.
 data TcModuleResult = TcModuleResult
-    { tmrModule     :: TypecheckedModule
-    -- ^ warning, the ModIface in the tm_checked_module_info of the
-    -- TypecheckedModule will always be Nothing, use the ModIface in the
-    -- HomeModInfo instead
+    { tmrParsed :: ParsedModule
+    , tmrRenamed :: RenamedSource
+    , tmrTypechecked :: TcGblEnv
     , tmrModInfo    :: HomeModInfo
     -- ^ Never includes the linkable
     , tmrDeferedError :: !Bool -- ^ Did we defer any type errors for this module?
     , tmrHieAsts :: !(Maybe (HieASTs Type)) -- ^ The HieASTs if we computed them
+    , tmrGuts :: CgGuts
     }
 instance Show TcModuleResult where
-    show = show . pm_mod_summary . tm_parsed_module . tmrModule
+    show = show . pm_mod_summary . tmrParsed
 
 instance NFData TcModuleResult where
     rnf = rwhnf
 
 tmrModSummary :: TcModuleResult -> ModSummary
-tmrModSummary = pm_mod_summary . tm_parsed_module . tmrModule
+tmrModSummary = pm_mod_summary . tmrParsed
 
 data HiFileResult = HiFileResult
     { hirModSummary :: !ModSummary
@@ -135,12 +136,6 @@ instance Show DocAndKindMap where
     show = const "docmap"
 
 type instance RuleResult GetDocMap = DocAndKindMap
-
--- | Convert to Core, requires TypeCheck*
-type instance RuleResult GenerateCore = (SafeHaskellMode, CgGuts, ModDetails)
-
--- | Generate byte code for template haskell.
-type instance RuleResult GenerateByteCode = Linkable
 
 -- | A GHC session that we reuse.
 type instance RuleResult GhcSession = HscEnvEq
@@ -251,18 +246,6 @@ data GetBindings = GetBindings
 instance Hashable GetBindings
 instance NFData   GetBindings
 instance Binary   GetBindings
-
-data GenerateCore = GenerateCore
-    deriving (Eq, Show, Typeable, Generic)
-instance Hashable GenerateCore
-instance NFData   GenerateCore
-instance Binary   GenerateCore
-
-data GenerateByteCode = GenerateByteCode
-   deriving (Eq, Show, Typeable, Generic)
-instance Hashable GenerateByteCode
-instance NFData   GenerateByteCode
-instance Binary   GenerateByteCode
 
 data GhcSession = GhcSession
     deriving (Eq, Show, Typeable, Generic)

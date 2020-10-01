@@ -65,10 +65,10 @@ import qualified Development.IDE.GHC.Compat     as Compat
 import           GhcMonad
 import           GhcPlugins                     as GHC hiding (fst3, (<>))
 import qualified HeaderInfo                     as Hdr
-import           HscMain                        (hscInteractive, hscSimplify, hscGenHardCode)
+import           HscMain                        (hscDesugar, hscTypecheckRename, hscInteractive, hscSimplify, hscGenHardCode)
 import           MkIface
 import           StringBuffer                   as SB
-import           TcRnMonad (tct_id, TcTyThing(AGlobal, ATcId), initTc, initIfaceLoad, tcg_th_coreplugins, tcg_binds)
+import           TcRnMonad (finalSafeMode, TcGblEnv, tct_id, TcTyThing(AGlobal, ATcId), initTc, initIfaceLoad, tcg_th_coreplugins, tcg_binds)
 import           TcIface                        (typecheckIface)
 import           TidyPgm
 
@@ -127,7 +127,7 @@ typecheckModule :: IdeDefer
                 -> ParsedModule
                 -> IO (IdeResult (HscEnv, TcModuleResult))
 typecheckModule (IdeDefer defer) hsc pm = do
-    fmap (either (, Nothing) (second Just . sequence) . sequence) $
+    fmap (\(hsc, res) -> case res of Left d -> (d,Nothing); Right (d,res) -> (d,fmap (hsc,) res)) $
       runGhcEnv hsc $
       catchSrcErrors "typecheck" $ do
 
@@ -136,16 +136,30 @@ typecheckModule (IdeDefer defer) hsc pm = do
 
         modSummary' <- initPlugins modSummary
         (warnings, tcm1) <- withWarnings "typecheck" $ \tweak ->
-            GHC.typecheckModule $ enableTopLevelWarnings
-                                $ enableUnnecessaryAndDeprecationWarnings
-                                $ demoteIfDefer pm{pm_mod_summary = tweak modSummary'}
-        tcm2 <- liftIO $ fixDetailsForTH tcm1
+            tcRnModule $ enableTopLevelWarnings
+                       $ enableUnnecessaryAndDeprecationWarnings
+                       $ demoteIfDefer pm{pm_mod_summary = tweak modSummary'}
         let errorPipeline = unDefer . hideDiag dflags . tagDiag
             diags = map errorPipeline warnings
-        tcm3 <- mkTcModuleResult tcm2 (any fst diags)
-        return (map snd diags, tcm3)
+        (compile_diags, tcm2) <- mkTcModuleResult pm tcm1 (any fst diags)
+        return (compile_diags ++ map snd diags, tcm2)
     where
         demoteIfDefer = if defer then demoteTypeErrorsToWarnings else id
+
+tcRnModule :: (GhcMonad m) => ParsedModule -> m (TcGblEnv, RenamedSource)
+tcRnModule pmod = do
+ let ms = pm_mod_summary pmod
+ hsc_env <- getSession
+ let hsc_env_tmp = hsc_env { hsc_dflags = ms_hspp_opts ms }
+ (tc_gbl_env, mrn_info)
+       <- liftIO $ hscTypecheckRename hsc_env_tmp ms $
+                      HsParsedModule { hpm_module = parsedSource pmod,
+                                       hpm_src_files = pm_extra_src_files pmod,
+                                       hpm_annotations = pm_annotations pmod }
+ let rn_info = case mrn_info of
+       Just x -> x
+       Nothing -> error "no renamed info tcRnModule"
+ pure (tc_gbl_env, rn_info)
 
 initPlugins :: GhcMonad m => ModSummary -> m ModSummary
 initPlugins modSummary = do
@@ -164,25 +178,21 @@ newtype RunSimplifier = RunSimplifier Bool
 compileModule
     :: RunSimplifier
     -> HscEnv
-    -> TcModuleResult
+    -> ModSummary
+    -> TcGblEnv
     -> IO (IdeResult (SafeHaskellMode, CgGuts, ModDetails))
-compileModule (RunSimplifier simplify) packageState tmr =
+compileModule (RunSimplifier simplify) packageState ms tcg =
     fmap (either (, Nothing) (second Just)) $
     evalGhcEnv packageState $
         catchSrcErrors "compile" $ do
-            setupEnv [(tmrModSummary tmr, tmrModInfo tmr)]
-            let tm = tmrModule tmr
             session <- getSession
             (warnings,desugar) <- withWarnings "compile" $ \tweak -> do
-                let pm = tm_parsed_module tm
-                let pm' = pm{pm_mod_summary = tweak $ pm_mod_summary pm}
-                let tm' = tm{tm_parsed_module  = pm'}
-                GHC.dm_core_module <$> GHC.desugarModule tm'
-            let tc_result = fst (tm_internals_ (tmrModule tmr))
+               let ms' = tweak ms
+               liftIO $ hscDesugar session{ hsc_dflags = ms_hspp_opts ms'} ms' tcg
             desugared_guts <-
                 if simplify
                     then do
-                        plugins <- liftIO $ readIORef (tcg_th_coreplugins tc_result)
+                        plugins <- liftIO $ readIORef (tcg_th_coreplugins tcg)
                         liftIO $ hscSimplify session plugins desugar
                     else pure desugar
             -- give variables unique OccNames
@@ -196,13 +206,13 @@ generateByteCode hscEnv deps tmr guts =
       catchSrcErrors "bytecode" $ do
           setupEnv (deps ++ [(tmrModSummary tmr, tmrModInfo tmr)])
           session <- getSession
+          let summary = tmrModSummary tmr
           (warnings, (_, bytecode, sptEntries)) <- withWarnings "bytecode" $ \tweak ->
 #if MIN_GHC_API_VERSION(8,10,0)
-                liftIO $ hscInteractive session guts (GHC.ms_location $ tweak $ GHC.pm_mod_summary $ GHC.tm_parsed_module $ tmrModule tmr)
+                liftIO $ hscInteractive session guts (GHC.ms_location $ tweak summary)
 #else
-                liftIO $ hscInteractive session guts (tweak $ GHC.pm_mod_summary $ GHC.tm_parsed_module $ tmrModule tmr)
+                liftIO $ hscInteractive session guts (tweak summary)
 #endif
-          let summary = pm_mod_summary $ tm_parsed_module $ tmrModule tmr
           let unlinked = BCOs bytecode sptEntries
           let linkable = LM (ms_hs_date summary) (ms_mod summary) [unlinked]
           pure (map snd warnings, linkable)
@@ -210,12 +220,12 @@ generateByteCode hscEnv deps tmr guts =
 
 generateObjectCode :: HscEnv -> TcModuleResult -> IO (IdeResult Linkable)
 generateObjectCode hscEnv tmr = do
-    (compile_diags, Just (_, guts, _)) <- compileModule (RunSimplifier True) hscEnv tmr
+    let guts = tmrGuts tmr
     fmap (either (, Nothing) (second Just)) $
         evalGhcEnv hscEnv $
           catchSrcErrors "object" $ do
               session <- getSession
-              let summary = pm_mod_summary $ tm_parsed_module $ tmrModule tmr
+              let summary = tmrModSummary tmr
               let dot_o =  ml_obj_file (ms_location summary)
               let session' = session { hsc_dflags = (hsc_dflags session) { outputFile = Just dot_o }}
                   fp = replaceExtension dot_o "s"
@@ -232,7 +242,7 @@ generateObjectCode hscEnv tmr = do
                       compileFile session' StopLn (fp, Just (As False))
               let unlinked = DotO dot_o_fp
               let linkable = LM (ms_hs_date summary) (ms_mod summary) [unlinked]
-              pure (compile_diags ++ map snd warnings, linkable)
+              pure (map snd warnings, linkable)
 
 demoteTypeErrorsToWarnings :: ParsedModule -> ParsedModule
 demoteTypeErrorsToWarnings =
@@ -330,21 +340,24 @@ addRelativeImport fp modu dflags = dflags
 
 mkTcModuleResult
     :: GhcMonad m
-    => TypecheckedModule
+    => ParsedModule
+    -> (TcGblEnv, RenamedSource)
     -> Bool
-    -> m TcModuleResult
-mkTcModuleResult tcm upgradedError = do
+    -> m (IdeResult TcModuleResult)
+mkTcModuleResult pm (tcGblEnv, rn_src) upgradedError = do
     session <- getSession
-    let sf = modInfoSafe (tm_checked_module_info tcm)
+    (compile_diags, res) <- liftIO $ compileModule (RunSimplifier True) session (pm_mod_summary pm) tcGblEnv
+    case res of
+      Nothing -> pure (compile_diags, Nothing)
+      Just (_, guts, details) -> do
+        sf    <- liftIO $ finalSafeMode (ms_hspp_opts $ pm_mod_summary pm) tcGblEnv
 #if MIN_GHC_API_VERSION(8,10,0)
-    iface <- liftIO $ mkIfaceTc session sf details tcGblEnv
+        iface <- liftIO $ mkIfaceTc session sf details tcGblEnv
 #else
-    (iface, _) <- liftIO $ mkIfaceTc session Nothing sf details tcGblEnv
+        (iface, _) <- liftIO $ mkIfaceTc session Nothing sf details tcGblEnv
 #endif
-    let mod_info = HomeModInfo iface details Nothing
-    return $ TcModuleResult tcm mod_info upgradedError Nothing
-  where
-    (tcGblEnv, details) = tm_internals_ tcm
+        let mod_info = HomeModInfo iface details Nothing
+        return (compile_diags, Just $ TcModuleResult pm rn_src tcGblEnv mod_info upgradedError Nothing guts)
 
 atomicFileWrite :: FilePath -> (FilePath -> IO a) -> IO ()
 atomicFileWrite targetPath write = do
@@ -353,16 +366,12 @@ atomicFileWrite targetPath write = do
   (tempFilePath, cleanUp) <- newTempFileWithin dir
   (write tempFilePath >> renameFile tempFilePath targetPath) `onException` cleanUp
 
-generateHieAsts :: HscEnv -> TypecheckedModule -> IO ([FileDiagnostic], Maybe (HieASTs Type))
+generateHieAsts :: HscEnv -> TcModuleResult -> IO ([FileDiagnostic], Maybe (HieASTs Type))
 generateHieAsts hscEnv tcm =
-  handleGenerationErrors' dflags "extended interface generation" $ do
-    case tm_renamed_source tcm of
-      Just rnsrc -> runHsc hscEnv $
-        Just <$> GHC.enrichHie (tcg_binds $ fst $ tm_internals_ tcm) rnsrc
-      _ ->
-        return Nothing
+  handleGenerationErrors' dflags "extended interface generation" $ runHsc hscEnv $
+    Just <$> GHC.enrichHie (tcg_binds $ tmrTypechecked tcm) (tmrRenamed tcm)
   where
-    dflags       = hsc_dflags hscEnv
+    dflags = hsc_dflags hscEnv
 
 writeHieFile :: HscEnv -> ModSummary -> [GHC.AvailInfo] -> HieASTs Type -> BS.ByteString -> IO [FileDiagnostic]
 writeHieFile hscEnv mod_summary exports ast source =

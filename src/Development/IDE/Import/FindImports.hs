@@ -62,7 +62,7 @@ modSummaryToArtifactsLocation nfp ms = ArtifactsLocation nfp (ms_location <$> ms
     isSource HsSrcFile = True
     isSource _ = False
     source = case ms of
-      Nothing -> "-boot" `isSuffixOf` (fromNormalizedFilePath nfp)
+      Nothing -> "-boot" `isSuffixOf` fromNormalizedFilePath nfp
       Just ms -> isSource (ms_hsc_src ms)
 
 -- | locate a module in the file system. Where we go from *daml to Haskell

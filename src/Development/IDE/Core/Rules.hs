@@ -27,7 +27,6 @@ module Development.IDE.Core.Rules(
     highlightAtPoint,
     getDependencies,
     getParsedModule,
-    generateCore,
     ) where
 
 import Fingerprint
@@ -529,7 +528,7 @@ getHieAstsRule =
         -- Compute asts if we haven't already computed them
         Nothing -> do
           hsc <- hscEnv <$> use_ GhcSession f
-          (diagsHieGen, masts) <- liftIO $ generateHieAsts hsc (tmrModule tmr)
+          (diagsHieGen, masts) <- liftIO $ generateHieAsts hsc tmr
           pure (diagsHieGen, masts)
       let refmap = generateReferencesMap . getAsts <$> masts
       im <- use GetLocatedImports f
@@ -606,10 +605,9 @@ typeCheckRuleDefinition hsc pm isFoi source = do
         case isFoi of
           IsFOI Modified -> return (diags, Just tcm)
           _ -> do -- If the file is saved on disk, or is not a FOI, we write out ifaces
-            let tm = tmrModule tcm
-                ms = tmrModSummary tcm
-                exports = tcg_exports $ fst $ tm_internals_ tm
-            (diagsHieGen, masts) <- generateHieAsts hsc (tmrModule tcm)
+            let ms = tmrModSummary tcm
+                exports = tcg_exports $ tmrTypechecked tcm
+            (diagsHieGen, masts) <- generateHieAsts hsc tcm
             diagsHieWrite <- case masts of
               Nothing -> pure mempty
               Just asts -> writeHieFile hsc ms exports asts $ fromMaybe "" source
@@ -635,26 +633,6 @@ typeCheckRuleDefinition hsc pm isFoi source = do
       void $ uses_ GetModificationTime (map toNormalizedFilePath' used_files)
     return r
 
-
-generateCore :: RunSimplifier -> NormalizedFilePath -> Action (IdeResult (SafeHaskellMode, CgGuts, ModDetails))
-generateCore runSimplifier file = do
-    tm <- use_ TypeCheck file
-    setPriority priorityGenerateCore
-    packageState <- hscEnv <$> use_ GhcSessionDeps file
-    liftIO $ compileModule runSimplifier packageState tm
-
-generateCoreRule :: Rules ()
-generateCoreRule =
-    define $ \GenerateCore -> generateCore (RunSimplifier True)
-
-generateByteCodeRule :: Rules ()
-generateByteCodeRule =
-    define $ \GenerateByteCode file -> do
-      deps <- use_ GetDependencies file
-      (tm : tms) <- uses_ TypeCheck (file: transitiveModuleDeps deps)
-      session <- hscEnv <$> use_ GhcSession file
-      (_, guts, _) <- use_ GenerateCore file
-      liftIO $ generateByteCode session [(tmrModSummary x, tmrModInfo x) | x <- tms] tm guts
 
 -- A local rule type to get caching. We want to use newCache, but it has
 -- thread killed exception issues, so we lift it to a full rule.
@@ -860,7 +838,7 @@ compileToObjCodeIfNeeded _hsc _obj Nothing = pure ([],Nothing)
 compileToObjCodeIfNeeded _hsc False (Just tmr) = pure ([], Just $! HiFileResult (tmrModSummary tmr) (tmrModInfo tmr))
 compileToObjCodeIfNeeded hsc True (Just tmr) = do
   (diags, linkable) <- generateObjectCode hsc tmr
-  let hmi = (tmrModInfo tmr) { hm_linkable = linkable }
+  let hmi = (tmrModInfo tmr) { hm_linkable = linkable}
   pure (diags, Just $! HiFileResult (tmrModSummary tmr) hmi)
 
 getClientSettingsRule :: Rules ()
@@ -877,8 +855,8 @@ needsObjectCodeRule = defineEarlyCutoff $ \NeedsObjectCode file -> do
     if uses_th_qq ms
     then pure True
     -- Treat as False if some reverse dependency header fails to parse
-    else anyM (fmap (fromMaybe False) . use NeedsObjectCode)
-           =<< fmap (maybe [] $ immediateReverseDependencies file) (useNoFile GetModuleGraph)
+    else anyM (fmap (fromMaybe False) . use NeedsObjectCode) . maybe [] (immediateReverseDependencies file)
+           =<< useNoFile GetModuleGraph
   pure (Just $ BS.pack $ show $ hash res, ([], Just res))
   where
     uses_th_qq (ms_hspp_opts -> dflags) =
@@ -894,8 +872,6 @@ mainRule = do
     getDependenciesRule
     typeCheckRule
     getDocMapRule
-    generateCoreRule
-    generateByteCodeRule
     loadGhcSession
     getModIfaceFromDiskRule
     getModIfaceRule
