@@ -204,7 +204,8 @@ getHomeHieFile f = do
       wait <- lift $ delayedAction $ mkDelayedAction "OutOfDateHie" L.Info $ do
         hsc <- hscEnv <$> use_ GhcSession f
         pm <- use_ GetParsedModule f
-        typeCheckRuleDefinition hsc pm
+        (_, mtm)<- typeCheckRuleDefinition hsc pm
+        mapM_ (getHieAstRuleDefinition f hsc) mtm
       _ <- MaybeT $ liftIO $ timeout 1 wait
       ncu <- mkUpdater
       liftIO $ loadHieFile ncu hie_f
@@ -524,21 +525,25 @@ getHieAstsRule =
     define $ \GetHieAst f -> do
       tmr <- use_ TypeCheck f
       hsc <- hscEnv <$> use_ GhcSession f
-      (diags, masts) <- liftIO $ generateHieAsts hsc tmr
+      getHieAstRuleDefinition f hsc tmr
 
-      isFoi <- use_ IsFileOfInterest f
-      diagsWrite <- case isFoi of
-        IsFOI Modified -> pure []
-        _ | Just asts <- masts -> do
-              source <- getSourceFileSource f
-              liftIO $ writeHieFile hsc (tmrModSummary tmr) (tcg_exports $ tmrTypechecked tmr) asts source
-        _ -> pure []
-
-      im <- use GetLocatedImports f
-      let mkImports (fileImports, _) = M.fromList $ mapMaybe (\(m, mfp) -> (unLoc m,) . artifactFilePath <$> mfp)  fileImports
-
-      let refmap = generateReferencesMap . getAsts <$> masts
-      pure (diags ++ diagsWrite, HAR (ms_mod  $ tmrModSummary tmr) <$> masts <*> refmap <*> fmap mkImports im)
+getHieAstRuleDefinition :: NormalizedFilePath -> HscEnv -> TcModuleResult -> Action (IdeResult HieAstResult)
+getHieAstRuleDefinition f hsc tmr = do
+  (diags, masts) <- liftIO $ generateHieAsts hsc tmr
+ 
+  isFoi <- use_ IsFileOfInterest f
+  diagsWrite <- case isFoi of
+    IsFOI Modified -> pure []
+    _ | Just asts <- masts -> do
+          source <- getSourceFileSource f
+          liftIO $ writeHieFile hsc (tmrModSummary tmr) (tcg_exports $ tmrTypechecked tmr) asts source
+    _ -> pure []
+ 
+  im <- use GetLocatedImports f
+  let mkImports (fileImports, _) = M.fromList $ mapMaybe (\(m, mfp) -> (unLoc m,) . artifactFilePath <$> mfp)  fileImports
+ 
+  let refmap = generateReferencesMap . getAsts <$> masts
+  pure (diags ++ diagsWrite, HAR (ms_mod  $ tmrModSummary tmr) <$> masts <*> refmap <*> fmap mkImports im)
 
 getBindingsRule :: Rules ()
 getBindingsRule =
