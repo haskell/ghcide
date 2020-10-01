@@ -94,7 +94,7 @@ import Data.Time (UTCTime(..))
 import Data.Hashable
 import qualified Data.HashSet as HashSet
 import qualified Data.HashMap.Strict as HM
-import TcRnMonad (TcGblEnv, tcg_dependent_files)
+import TcRnMonad (tcg_dependent_files)
 import Data.IORef
 
 -- | This is useful for rules to convert rules that can only produce errors or
@@ -525,16 +525,19 @@ getHieAstsRule =
       tmr <- use_ TypeCheck f
       hsc <- hscEnv <$> use_ GhcSession f
       (diags, masts) <- liftIO $ generateHieAsts hsc tmr
-      let refmap = generateReferencesMap . getAsts <$> masts
-      im <- use GetLocatedImports f
-      let mkImports (fileImports, _) = M.fromList $ mapMaybe (\(m, mfp) -> (unLoc m,) . artifactFilePath <$> mfp)  fileImports
+
       isFoi <- use_ IsFileOfInterest f
       diagsWrite <- case isFoi of
         IsFOI Modified -> pure []
         _ | Just asts <- masts -> do
-          source <- getSourceFileSource f
-          liftIO $ writeHieFile hsc (tmrModSummary tmr) (tcg_exports $ tmrTypechecked tmr) asts source
+              source <- getSourceFileSource f
+              liftIO $ writeHieFile hsc (tmrModSummary tmr) (tcg_exports $ tmrTypechecked tmr) asts source
         _ -> pure []
+
+      im <- use GetLocatedImports f
+      let mkImports (fileImports, _) = M.fromList $ mapMaybe (\(m, mfp) -> (unLoc m,) . artifactFilePath <$> mfp)  fileImports
+
+      let refmap = generateReferencesMap . getAsts <$> masts
       pure (diags ++ diagsWrite, HAR (ms_mod  $ tmrModSummary tmr) <$> masts <*> refmap <*> fmap mkImports im)
 
 getBindingsRule :: Rules ()
@@ -771,8 +774,8 @@ getModIfaceRule = defineEarlyCutoff $ \GetModIface f -> do
       tmr <- use_ TypeCheck f
       needsObj <- use_ NeedsObjectCode f
       hsc <- hscEnv <$> use_ GhcSessionDeps f
-      let compile = const $ fmap ([],) $ use GenerateCore f
-      (diags, !hiFile) <- compileToObjCodeIfNeeded hsc needsObj compile (Just tmr)
+      let compile = fmap ([],) $ use GenerateCore f
+      (diags, !hiFile) <- compileToObjCodeIfNeeded hsc needsObj compile tmr
       let fp = hiFileFingerPrint <$> hiFile
       hiDiags <- case hiFile of
         Just hiFile
@@ -785,9 +788,9 @@ getModIfaceRule = defineEarlyCutoff $ \GetModIface f -> do
       let fp = hiFileFingerPrint hiFile
       return (Just fp, ([], Just hiFile))
 #else
-    tm <- use TypeCheck f
+    tm <- use_ TypeCheck f
     hsc <- hscEnv <$> use_ GhcSessionDeps f
-    (diags, !hiFile) <- liftIO $ compileToObjCodeIfNeeded hsc False tm
+    (diags, !hiFile) <- liftIO $ compileToObjCodeIfNeeded hsc False (error "can't compile with ghc-lib") tm
     let fp = hiFileFingerPrint <$> hiFile
     return (fp, (diags, hiFile))
 #endif
@@ -814,31 +817,45 @@ regenerateHiFile sess f objNeeded = do
         Just pm -> do
             -- Invoke typechecking directly to update it without incurring a dependency
             -- on the parsed module and the typecheck rules
-            (diags', tmr) <- typeCheckRuleDefinition hsc pm
-            -- Bang pattern is important to avoid leaking 'tmr'
-            let compile = compileModule (RunSimplifier True) hsc (pm_mod_summary pm)
-            (diags'', !res) <- liftIO $ compileToObjCodeIfNeeded hsc objNeeded compile tmr
-            hiDiags <- case res of
-              Just hiFile
-                | maybe False (not . tmrDeferedError) tmr -> liftIO $ writeHiFile hsc hiFile
-              _ -> pure []
-            return (diags <> diags' <> diags'' <> hiDiags, res)
+            (diags', mtmr) <- typeCheckRuleDefinition hsc pm
+            case mtmr of
+              Nothing -> pure (diags', Nothing)
+              Just tmr -> do
+
+                -- compile writes .o file
+                let compile = compileModule (RunSimplifier True) hsc (pm_mod_summary pm) $ tmrTypechecked tmr
+
+                -- Bang pattern is important to avoid leaking 'tmr'
+                (diags'', !res) <- liftIO $ compileToObjCodeIfNeeded hsc objNeeded compile tmr
+
+                -- Write hi file
+                hiDiags <- case res of
+                  Just hiFile
+                    | not $ tmrDeferedError tmr ->
+                      liftIO $ writeHiFile hsc hiFile
+                  _ -> pure []
+                (gDiags, masts) <- liftIO $ generateHieAsts hsc tmr
+
+                -- Write hie file
+                wDiags <- forM masts $ \asts ->
+                  liftIO $ writeHieFile hsc (tmrModSummary tmr) (tcg_exports $ tmrTypechecked tmr) asts $ maybe "" T.encodeUtf8 contents
+
+                return (diags <> diags' <> diags'' <> hiDiags <> gDiags <> concat wDiags, res)
 
 
-type CompileMod m = TcGblEnv -> m (IdeResult ModGuts)
+type CompileMod m = m (IdeResult ModGuts)
 
 -- | HscEnv should have deps included already
-compileToObjCodeIfNeeded :: MonadIO m => HscEnv -> Bool -> CompileMod m -> Maybe TcModuleResult -> m (IdeResult HiFileResult)
-compileToObjCodeIfNeeded _hsc _obj _ Nothing = pure ([],Nothing)
-compileToObjCodeIfNeeded hsc False _ (Just tmr) = liftIO $ do
+compileToObjCodeIfNeeded :: MonadIO m => HscEnv -> Bool -> CompileMod m -> TcModuleResult -> m (IdeResult HiFileResult)
+compileToObjCodeIfNeeded hsc False _ tmr = liftIO $ do
   res <- mkTcModuleResultNoCompile hsc tmr
-  pure ([], Just res)
-compileToObjCodeIfNeeded hsc True getGuts (Just tmr) = do
-  (diags, mguts) <- getGuts (tmrTypechecked tmr)
+  pure ([], Just $! res)
+compileToObjCodeIfNeeded hsc True getGuts tmr = do
+  (diags, mguts) <- getGuts
   case mguts of
     Nothing -> pure (diags, Nothing)
     Just guts -> do
-      (diags', res) <- liftIO $ mkTcModuleResultCompile hsc tmr guts
+      (diags', !res) <- liftIO $ mkTcModuleResultCompile hsc tmr guts
       pure (diags++diags', res)
 
 getClientSettingsRule :: Rules ()

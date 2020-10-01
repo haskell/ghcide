@@ -175,7 +175,7 @@ mkTcModuleResultNoCompile session tcm = do
   (iface, _) <- mkIfaceTc session Nothing sf details tcGblEnv
 #endif
   let mod_info = HomeModInfo iface details Nothing
-  pure $ HiFileResult ms mod_info
+  pure $! HiFileResult ms mod_info
 
 mkTcModuleResultCompile
     :: HscEnv
@@ -207,7 +207,7 @@ mkTcModuleResultCompile session' tcm simplified_guts = catchErrs $ do
       (final_iface,_) <- mkIface session Nothing details simplified_guts
 #endif
       let mod_info = HomeModInfo final_iface details (Just linkable)
-      pure (diags, Just $ HiFileResult ms mod_info)
+      pure (diags, Just $! HiFileResult ms mod_info)
   where
     dflags = hsc_dflags session'
     source = "compile"
