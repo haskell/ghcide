@@ -392,7 +392,8 @@ rawDependencyInformation fs = do
       -- If we have, just return its Id but don't update any of the state.
       -- Otherwise, we need to process its imports.
       checkAlreadyProcessed f $ do
-          al <- lift $ modSummaryToArtifactsLocation f <$> use_ GetModSummaryWithoutTimestamps f
+          msum <- lift $ use GetModSummaryWithoutTimestamps f
+          let al =  modSummaryToArtifactsLocation f msum
           -- Get a fresh FilePathId for the new file
           fId <- getFreshFid al
           -- Adding an edge to the bootmap so we can make sure to
@@ -457,15 +458,14 @@ rawDependencyInformation fs = do
     updateBootMap pm boot_mod_id ArtifactsLocation{..} bm =
       if not artifactIsSource
         then
-          let msource_mod_id = lookupPathToId (rawPathIdMap pm) (toNormalizedFilePath' $ dropBootSuffix artifactModLocation)
+          let msource_mod_id = lookupPathToId (rawPathIdMap pm) (toNormalizedFilePath' $ dropBootSuffix $ fromNormalizedFilePath artifactFilePath)
           in case msource_mod_id of
                Just source_mod_id -> insertBootId source_mod_id (FilePathId boot_mod_id) bm
                Nothing -> bm
         else bm
 
-    dropBootSuffix :: ModLocation -> FilePath
-    dropBootSuffix (ModLocation (Just hs_src) _ _) = reverse . drop (length @[] "-boot") . reverse $ hs_src
-    dropBootSuffix _ = error "dropBootSuffix"
+    dropBootSuffix :: FilePath -> FilePath
+    dropBootSuffix hs_src = reverse . drop (length @[] "-boot") . reverse $ hs_src
 
 getDependencyInformationRule :: Rules ()
 getDependencyInformationRule =
@@ -876,8 +876,9 @@ needsObjectCodeRule = defineEarlyCutoff $ \NeedsObjectCode file -> do
   res <-
     if uses_th_qq ms
     then pure True
-    else anyM (use_ NeedsObjectCode) . immediateReverseDependencies file
-           =<< useNoFile_ GetModuleGraph
+    -- Treat as False if some reverse dependency header fails to parse
+    else anyM (fmap (fromMaybe False) . use NeedsObjectCode)
+           =<< fmap (maybe [] $ immediateReverseDependencies file) (useNoFile GetModuleGraph)
   pure (Just $ BS.pack $ show $ hash res, ([], Just res))
   where
     uses_th_qq (ms_hspp_opts -> dflags) =

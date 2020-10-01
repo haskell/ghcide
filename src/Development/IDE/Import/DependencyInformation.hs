@@ -385,7 +385,7 @@ instance NFData TransitiveDependencies
 data NamedModuleDep = NamedModuleDep {
   nmdFilePath :: !NormalizedFilePath,
   nmdModuleName :: !ModuleName,
-  nmdModLocation :: !ModLocation
+  nmdModLocation :: !(Maybe ModLocation)
   }
   deriving Generic
 
