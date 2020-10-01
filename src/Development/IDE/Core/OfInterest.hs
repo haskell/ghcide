@@ -31,7 +31,7 @@ import Development.IDE.Types.Location
 import Development.IDE.Types.Logger
 import Development.IDE.Core.RuleTypes
 import Development.IDE.Core.Shake
-import Data.Maybe (mapMaybe)
+import Data.Maybe (catMaybes)
 import GhcPlugins (HomeModInfo(hm_iface))
 
 newtype OfInterestVar = OfInterestVar (Var (HashMap NormalizedFilePath FileOfInterestStatus))
@@ -95,10 +95,12 @@ kick = mkDelayedAction "kick" Debug $ do
     liftIO $ progressUpdate KickStarted
 
     -- Update the exports map for the project
-    results <-  uses TypeCheck $ HashMap.keys files
+    results <- uses GetModIface $ HashMap.keys files
     ShakeExtras{exportsMap} <- getShakeExtras
-    let modIfaces = mapMaybe (fmap (hm_iface . tmrModInfo)) results
+    let modIfaces = map (hm_iface . hirHomeMod) $ catMaybes results
         !exportsMap' = createExportsMap modIfaces
     liftIO $ modifyVar_ exportsMap $ evaluate . (exportsMap' <>)
+
+    _ <- uses GenerateCore $ HashMap.keys files
 
     liftIO $ progressUpdate KickCompleted

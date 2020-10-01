@@ -26,7 +26,7 @@ import           Development.Shake
 import           GHC.Generics                             (Generic)
 
 import Module (InstalledUnitId)
-import HscTypes (hm_iface, CgGuts, HomeModInfo)
+import HscTypes (ModGuts, hm_iface, HomeModInfo)
 
 import           Development.IDE.Spans.Common
 import           Development.IDE.Spans.LocalBindings
@@ -63,17 +63,22 @@ instance NFData   GetKnownTargets
 instance Binary   GetKnownTargets
 type instance RuleResult GetKnownTargets = KnownTargets
 
+-- | Convert to Core, requires TypeCheck*
+type instance RuleResult GenerateCore = ModGuts
+
+data GenerateCore = GenerateCore
+    deriving (Eq, Show, Typeable, Generic)
+instance Hashable GenerateCore
+instance NFData   GenerateCore
+instance Binary   GenerateCore
+
 -- | Contains the typechecked module and the OrigNameCache entry for
 -- that module.
 data TcModuleResult = TcModuleResult
     { tmrParsed :: ParsedModule
     , tmrRenamed :: RenamedSource
     , tmrTypechecked :: TcGblEnv
-    , tmrModInfo    :: HomeModInfo
-    -- ^ Never includes the linkable
     , tmrDeferedError :: !Bool -- ^ Did we defer any type errors for this module?
-    , tmrHieAsts :: !(Maybe (HieASTs Type)) -- ^ The HieASTs if we computed them
-    , tmrGuts :: CgGuts
     }
 instance Show TcModuleResult where
     show = show . pm_mod_summary . tmrParsed
@@ -89,7 +94,7 @@ data HiFileResult = HiFileResult
     -- Bang patterns here are important to stop the result retaining
     -- a reference to a typechecked module
     , hirHomeMod :: !HomeModInfo
-    -- ^ Includes the Linkable if we need object files
+    -- ^ Includes the Linkable iff we need object files
     }
 
 hiFileFingerPrint :: HiFileResult -> ByteString
