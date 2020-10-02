@@ -101,9 +101,9 @@ kick = mkDelayedAction "kick" Debug $ do
         !exportsMap' = createExportsMap modIfaces
     liftIO $ modifyVar_ exportsMap $ evaluate . (exportsMap' <>)
 
-    -- Get desugarer warnings
-    _ <- uses GenerateCore $ HashMap.keys files
-    -- generate (and write) hie files for queries
-    _ <- uses GetHieAst $ HashMap.keys files
+    -- -- Get desugarer warnings
+    -- _ <- uses GenerateCore $ HashMap.keys files
+    -- -- generate (and write) hie files for queries
+    -- _ <- uses GetHieAst $ HashMap.keys files
 
     liftIO $ progressUpdate KickCompleted
