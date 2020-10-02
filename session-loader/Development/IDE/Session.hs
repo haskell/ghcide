@@ -645,7 +645,7 @@ setOptions (ComponentOptions theOpts compRoot _) dflags = do
 setLinkerOptions :: DynFlags -> DynFlags
 setLinkerOptions df = df {
     ghcLink   = LinkInMemory
-  , hscTarget = HscNothing
+  , hscTarget = HscAsm
   , ghcMode = CompManager
   }
 

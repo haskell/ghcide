@@ -188,7 +188,7 @@ mkTcModuleResultCompile session' tcm simplified_guts = catchErrs $ do
   -- give variables unique OccNames
   (guts, details) <- tidyProgram session simplified_guts
 
-  (diags, obj_res) <- generateByteCode session ms guts
+  (diags, obj_res) <- generateObjectCode session ms guts
   case obj_res of
     Nothing -> do
 #if MIN_GHC_API_VERSION(8,10,0) 
@@ -741,7 +741,7 @@ loadInterface session ms sourceMod objNeeded regen = do
             -> do
              linkable <-
                if objNeeded
-               then pure Nothing -- liftIO $ findObjectLinkableMaybe (ms_mod ms) (ms_location ms)
+               then liftIO $ findObjectLinkableMaybe (ms_mod ms) (ms_location ms)
                else pure Nothing
              let objUpToDate = not objNeeded || case linkable of
                    Nothing -> False
