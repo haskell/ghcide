@@ -15,7 +15,7 @@ import           Control.DeepSeq
 import           Data.Hashable
 import           Development.IDE.GHC.Compat
 import           Development.IDE.GHC.Util
-import           GHC
+import           GHC                        ()
 import           GhcPlugins
 import qualified StringBuffer               as SB
 
