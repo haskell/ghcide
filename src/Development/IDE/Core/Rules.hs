@@ -695,7 +695,7 @@ getModIfaceFromDiskRule = defineEarlyCutoff $ \GetModIfaceFromDisk f -> do
             (diags, Nothing) -> return (Nothing, (diags ++ diags_session, Nothing))
 
 isHiFileStableRule :: Rules ()
-isHiFileStableRule = define $ \IsHiFileStable f -> do
+isHiFileStableRule = defineEarlyCutoff $ \IsHiFileStable f -> do
     ms <- use_ GetModSummaryWithoutTimestamps f
     let hiFile = toNormalizedFilePath'
                 $ ml_hi_file $ ms_location ms
@@ -713,7 +713,7 @@ isHiFileStableRule = define $ \IsHiFileStable f -> do
                     pure $ if all (== SourceUnmodifiedAndStable) deps
                         then SourceUnmodifiedAndStable
                         else SourceUnmodified
-    return ([], Just sourceModified)
+    return (Just (BS.pack $ show sourceModified), ([], Just sourceModified))
 
 getModSummaryRule :: Rules ()
 getModSummaryRule = do
