@@ -264,6 +264,7 @@ priorityFilesOfInterest = Priority (-2)
 -- and https://github.com/mpickering/ghcide/pull/22#issuecomment-625070490
 getParsedModuleRule :: Rules ()
 getParsedModuleRule = defineEarlyCutoff $ \GetParsedModule file -> do
+    _ <- use_ GetModSummaryWithoutTimestamps file -- Fail if we can't even parse the ModSummary
     sess <- use_ GhcSession file
     let hsc = hscEnv sess
         -- These packages are used when removing PackageImports from a
@@ -760,9 +761,9 @@ getModSummaryRule = do
 
 generateCore :: RunSimplifier -> NormalizedFilePath -> Action (IdeResult ModGuts)
 generateCore runSimplifier file = do
-    setPriority priorityGenerateCore
     packageState <- hscEnv <$> use_ GhcSessionDeps file
     tm <- use_ TypeCheck file
+    setPriority priorityGenerateCore
     liftIO $ compileModule runSimplifier packageState (tmrModSummary tm) (tmrTypechecked tm)
 
 generateCoreRule :: Rules ()
@@ -839,9 +840,9 @@ regenerateHiFile sess f objNeeded = do
                     | not $ tmrDeferedError tmr ->
                       liftIO $ writeHiFile hsc hiFile
                   _ -> pure []
-                (gDiags, masts) <- liftIO $ generateHieAsts hsc tmr
 
                 -- Write hie file
+                (gDiags, masts) <- liftIO $ generateHieAsts hsc tmr
                 wDiags <- forM masts $ \asts ->
                   liftIO $ writeHieFile hsc (tmrModSummary tmr) (tcg_exports $ tmrTypechecked tmr) asts $ maybe "" T.encodeUtf8 contents
 
