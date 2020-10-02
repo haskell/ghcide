@@ -5,7 +5,8 @@ module Development.IDE.Types.Exports
     IdentInfo(..),
     ExportsMap(..),
     createExportsMap,
-    createExportsMapMg
+    createExportsMapMg,
+    createExportsMapTc
 ) where
 
 import Avail (AvailInfo(..))
@@ -23,6 +24,7 @@ import Data.HashSet (HashSet)
 import qualified Data.HashSet as Set
 import Data.Bifunctor (Bifunctor(second))
 import Data.Hashable (Hashable)
+import TcRnTypes(TcGblEnv(..))
 
 newtype ExportsMap = ExportsMap
     {getExportsMap :: HashMap IdentifierText (HashSet (IdentInfo,ModuleNameText))}
@@ -76,6 +78,13 @@ createExportsMapMg = ExportsMap . Map.fromListWith (<>) . concatMap doOne
     doOne mi = concatMap (fmap (second Set.fromList) . unpackAvail mn) (mg_exports mi)
       where
         mn = moduleName $ mg_module mi
+
+createExportsMapTc :: [TcGblEnv] -> ExportsMap
+createExportsMapTc = ExportsMap . Map.fromListWith (<>) . concatMap doOne
+  where
+    doOne mi = concatMap (fmap (second Set.fromList) . unpackAvail mn) (tcg_exports mi)
+      where
+        mn = moduleName $ tcg_mod mi
 
 unpackAvail :: ModuleName -> IfaceExport -> [(Text, [(IdentInfo, Text)])]
 unpackAvail mod =
