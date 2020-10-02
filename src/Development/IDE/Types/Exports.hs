@@ -5,6 +5,7 @@ module Development.IDE.Types.Exports
     IdentInfo(..),
     ExportsMap(..),
     createExportsMap,
+    createExportsMapMg
 ) where
 
 import Avail (AvailInfo(..))
@@ -17,7 +18,7 @@ import GHC.Generics (Generic)
 import Name
 import FieldLabel (flSelector)
 import qualified Data.HashMap.Strict as Map
-import GhcPlugins (IfaceExport)
+import GhcPlugins (IfaceExport, ModGuts(..))
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as Set
 import Data.Bifunctor (Bifunctor(second))
@@ -68,6 +69,13 @@ createExportsMap = ExportsMap . Map.fromListWith (<>) . concatMap doOne
     doOne mi = concatMap (fmap (second Set.fromList) . unpackAvail mn) (mi_exports mi)
       where
         mn = moduleName $ mi_module mi
+
+createExportsMapMg :: [ModGuts] -> ExportsMap
+createExportsMapMg = ExportsMap . Map.fromListWith (<>) . concatMap doOne
+  where
+    doOne mi = concatMap (fmap (second Set.fromList) . unpackAvail mn) (mg_exports mi)
+      where
+        mn = moduleName $ mg_module mi
 
 unpackAvail :: ModuleName -> IfaceExport -> [(Text, [(IdentInfo, Text)])]
 unpackAvail mod =

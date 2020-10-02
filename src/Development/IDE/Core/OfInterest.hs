@@ -32,7 +32,6 @@ import Development.IDE.Types.Logger
 import Development.IDE.Core.RuleTypes
 import Development.IDE.Core.Shake
 import Data.Maybe (catMaybes)
-import GhcPlugins (HomeModInfo(hm_iface))
 
 newtype OfInterestVar = OfInterestVar (Var (HashMap NormalizedFilePath FileOfInterestStatus))
 instance IsIdeGlobal OfInterestVar
@@ -95,15 +94,10 @@ kick = mkDelayedAction "kick" Debug $ do
     liftIO $ progressUpdate KickStarted
 
     -- Update the exports map for the project
-    results <- uses GetModIface $ HashMap.keys files
+    results <- uses GenerateCore $ HashMap.keys files
     ShakeExtras{exportsMap} <- getShakeExtras
-    let modIfaces = map (hm_iface . hirHomeMod) $ catMaybes results
-        !exportsMap' = createExportsMap modIfaces
+    let mguts = catMaybes results
+        !exportsMap' = createExportsMapMg mguts
     liftIO $ modifyVar_ exportsMap $ evaluate . (exportsMap' <>)
-
-    -- -- Get desugarer warnings
-    -- _ <- uses GenerateCore $ HashMap.keys files
-    -- -- generate (and write) hie files for queries
-    -- _ <- uses GetHieAst $ HashMap.keys files
 
     liftIO $ progressUpdate KickCompleted
