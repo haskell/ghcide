@@ -19,6 +19,7 @@ module Development.IDE.Core.Compile
   , mkTcModuleResultCompile
   , mkTcModuleResultNoCompile
   , generateObjectCode
+  , generateByteCode
   , generateHieAsts
   , writeHieFile
   , writeHiFile

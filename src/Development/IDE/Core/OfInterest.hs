@@ -94,10 +94,10 @@ kick = mkDelayedAction "kick" Debug $ do
     liftIO $ progressUpdate KickStarted
 
     -- Update the exports map for the project
-    results <- uses TypeCheck $ HashMap.keys files
+    results <- uses GenerateCore $ HashMap.keys files
     ShakeExtras{exportsMap} <- getShakeExtras
     let mguts = catMaybes results
-        !exportsMap' = createExportsMapTc $ map tmrTypechecked mguts
+        !exportsMap' = createExportsMapMg mguts
     liftIO $ modifyVar_ exportsMap $ evaluate . (exportsMap' <>)
 
     liftIO $ progressUpdate KickCompleted
