@@ -67,7 +67,7 @@ import qualified Development.IDE.GHC.Compat     as Compat
 import           GhcMonad
 import           GhcPlugins                     as GHC hiding (fst3, (<>))
 import qualified HeaderInfo                     as Hdr
-import           HscMain                        (makeSimpleDetails, hscDesugar, hscTypecheckRename, hscSimplify, hscGenHardCode)
+import           HscMain                        (makeSimpleDetails, hscDesugar, hscTypecheckRename, hscSimplify, hscGenHardCode, hscInteractive)
 import           MkIface
 import           StringBuffer                   as SB
 import           TcRnMonad (finalSafeMode, TcGblEnv, tct_id, TcTyThing(AGlobal, ATcId), initTc, initIfaceLoad, tcg_th_coreplugins, tcg_binds)
@@ -188,7 +188,7 @@ mkTcModuleResultCompile session' tcm simplified_guts = catchErrs $ do
   -- give variables unique OccNames
   (guts, details) <- tidyProgram session simplified_guts
 
-  (diags, obj_res) <- generateObjectCode session ms guts
+  (diags, obj_res) <- generateByteCode session ms guts
   case obj_res of
     Nothing -> do
 #if MIN_GHC_API_VERSION(8,10,0) 
@@ -265,7 +265,7 @@ generateObjectCode hscEnv summary guts = do
               liftIO $ createDirectoryIfMissing True (takeDirectory fp)
               (warnings, dot_o_fp) <-
                 withWarnings "object" $ \_tweak -> liftIO $ do
-                      (outputFilename, _mStub, _foreign_files) <- hscGenHardCode session guts
+                      (outputFilename, _mStub, _foreign_files) <- hscGenHardCode session' guts
 #if MIN_GHC_API_VERSION(8,10,0)
                                 (ms_location summary)
 #else
@@ -274,6 +274,24 @@ generateObjectCode hscEnv summary guts = do
                                 fp
                       compileFile session' StopLn (outputFilename, Just (As False))
               let unlinked = DotO dot_o_fp
+              let linkable = LM (ms_hs_date summary) (ms_mod summary) [unlinked]
+              pure (map snd warnings, linkable)
+
+generateByteCode :: HscEnv -> ModSummary -> CgGuts -> IO (IdeResult Linkable)
+generateByteCode hscEnv summary guts = do
+    fmap (either (, Nothing) (second Just)) $
+        evalGhcEnv hscEnv $
+          catchSrcErrors "bytecode" $ do
+              session <- getSession
+              (warnings, (_, bytecode, sptEntries)) <-
+                withWarnings "bytecode" $ \_tweak -> liftIO $
+                      hscInteractive session guts
+#if MIN_GHC_API_VERSION(8,10,0)
+                                (ms_location summary)
+#else
+                                (_tweak summary)
+#endif
+              let unlinked = BCOs bytecode sptEntries
               let linkable = LM (ms_hs_date summary) (ms_mod summary) [unlinked]
               pure (map snd warnings, linkable)
 
@@ -723,7 +741,7 @@ loadInterface session ms sourceMod objNeeded regen = do
             -> do
              linkable <-
                if objNeeded
-               then liftIO $ findObjectLinkableMaybe (ms_mod ms) (ms_location ms)
+               then pure Nothing -- liftIO $ findObjectLinkableMaybe (ms_mod ms) (ms_location ms)
                else pure Nothing
              let objUpToDate = not objNeeded || case linkable of
                    Nothing -> False
