@@ -16,8 +16,8 @@ module Development.IDE.Core.Compile
   , typecheckModule
   , computePackageDeps
   , addRelativeImport
-  , mkTcModuleResultCompile
-  , mkTcModuleResultNoCompile
+  , mkHiFileResultCompile
+  , mkHiFileResultNoCompile
   , generateObjectCode
   , generateByteCode
   , generateHieAsts
@@ -163,8 +163,8 @@ tcRnModule pmod = do
         Nothing -> error "no renamed info tcRnModule"
   pure (TcModuleResult pmod rn_info tc_gbl_env False)
 
-mkTcModuleResultNoCompile :: HscEnv -> TcModuleResult -> IO HiFileResult
-mkTcModuleResultNoCompile session tcm = do
+mkHiFileResultNoCompile :: HscEnv -> TcModuleResult -> IO HiFileResult
+mkHiFileResultNoCompile session tcm = do
   let hsc_env_tmp = session { hsc_dflags = ms_hspp_opts ms }
       ms = pm_mod_summary $ tmrParsed tcm
       tcGblEnv = tmrTypechecked tcm
@@ -178,12 +178,12 @@ mkTcModuleResultNoCompile session tcm = do
   let mod_info = HomeModInfo iface details Nothing
   pure $! HiFileResult ms mod_info
 
-mkTcModuleResultCompile
+mkHiFileResultCompile
     :: HscEnv
     -> TcModuleResult
     -> ModGuts
     -> IO (IdeResult HiFileResult)
-mkTcModuleResultCompile session' tcm simplified_guts = catchErrs $ do
+mkHiFileResultCompile session' tcm simplified_guts = catchErrs $ do
   let session = session' { hsc_dflags = ms_hspp_opts ms }
       ms = pm_mod_summary $ tmrParsed tcm
   -- give variables unique OccNames

@@ -205,7 +205,7 @@ getHomeHieFile f = do
         hsc <- hscEnv <$> use_ GhcSession f
         pm <- use_ GetParsedModule f
         (_, mtm)<- typeCheckRuleDefinition hsc pm
-        mapM_ (getHieAstRuleDefinition f hsc) mtm
+        mapM_ (getHieAstRuleDefinition f hsc) mtm -- Write the HiFile to disk
       _ <- MaybeT $ liftIO $ timeout 1 wait
       ncu <- mkUpdater
       liftIO $ loadHieFile ncu hie_f
@@ -790,9 +790,9 @@ getModIfaceRule = defineEarlyCutoff $ \GetModIface f -> do
         _ -> pure []
       return (fp, (diags++hiDiags, hiFile))
     NotFOI -> do
-      hiFile <- use_ GetModIfaceFromDisk f
-      let fp = hiFileFingerPrint hiFile
-      return (Just fp, ([], Just hiFile))
+      hiFile <- use GetModIfaceFromDisk f
+      let fp = hiFileFingerPrint <$> hiFile
+      return (fp, ([], hiFile))
 #else
     tm <- use_ TypeCheck f
     hsc <- hscEnv <$> use_ GhcSessionDeps f
@@ -854,14 +854,14 @@ type CompileMod m = m (IdeResult ModGuts)
 -- | HscEnv should have deps included already
 compileToObjCodeIfNeeded :: MonadIO m => HscEnv -> Bool -> CompileMod m -> TcModuleResult -> m (IdeResult HiFileResult)
 compileToObjCodeIfNeeded hsc False _ tmr = liftIO $ do
-  res <- mkTcModuleResultNoCompile hsc tmr
+  res <- mkHiFileResultNoCompile hsc tmr
   pure ([], Just $! res)
 compileToObjCodeIfNeeded hsc True getGuts tmr = do
   (diags, mguts) <- getGuts
   case mguts of
     Nothing -> pure (diags, Nothing)
     Just guts -> do
-      (diags', !res) <- liftIO $ mkTcModuleResultCompile hsc tmr guts
+      (diags', !res) <- liftIO $ mkHiFileResultCompile hsc tmr guts
       pure (diags++diags', res)
 
 getClientSettingsRule :: Rules ()
