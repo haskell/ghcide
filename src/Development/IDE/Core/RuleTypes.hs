@@ -2,7 +2,8 @@
 -- SPDX-License-Identifier: Apache-2.0
 
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE DerivingStrategies #-}
 
 -- | A Shake implementation of the compiler service, built
 --   using the "Shaker" abstraction layer for in-memory use.
@@ -72,6 +73,18 @@ instance Hashable GenerateCore
 instance NFData   GenerateCore
 instance Binary   GenerateCore
 
+data GetImportMap = GetImportMap
+    deriving (Eq, Show, Typeable, Generic)
+instance Hashable GetImportMap
+instance NFData   GetImportMap
+instance Binary   GetImportMap
+
+type instance RuleResult GetImportMap = ImportMap
+newtype ImportMap = ImportMap
+  { importMap :: M.Map ModuleName NormalizedFilePath -- ^ Where are the modules imported by this file located?
+  } deriving stock Show
+    deriving newtype NFData
+
 -- | Contains the typechecked module and the OrigNameCache entry for
 -- that module.
 data TcModuleResult = TcModuleResult
@@ -114,12 +127,14 @@ data HieAstResult
   = HAR
   { hieModule :: Module
   , hieAst :: !(HieASTs Type)
-  , refMap :: !RefMap
-  , importMap :: !(M.Map ModuleName NormalizedFilePath) -- ^ Where are the modules imported by this file located?
+  , refMap :: RefMap
+  -- ^ Lazy because its value only depends on the hieAst, which is bundled in this type
+  -- Lazyness can't cause leaks here because the lifetime of `refMap` will be the same
+  -- as that of `hieAst`
   }
  
 instance NFData HieAstResult where
-    rnf (HAR m hf rm im) = rnf m `seq` rwhnf hf `seq` rnf rm `seq` rnf im
+    rnf (HAR m hf _rm) = rnf m `seq` rwhnf hf
  
 instance Show HieAstResult where
     show = show . hieModule
@@ -135,7 +150,7 @@ type instance RuleResult GetBindings = Bindings
 
 data DocAndKindMap = DKMap {getDocMap :: !DocMap, getKindMap :: !KindMap}
 instance NFData DocAndKindMap where
-    rnf (DKMap a b) = rnf a `seq` rnf b
+    rnf (DKMap a b) = rwhnf a `seq` rwhnf b
 
 instance Show DocAndKindMap where
     show = const "docmap"

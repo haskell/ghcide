@@ -150,7 +150,8 @@ getDefinition :: NormalizedFilePath -> Position -> IdeAction (Maybe Location)
 getDefinition file pos = runMaybeT $ do
     ide <- ask
     opts <- liftIO $ getIdeOptionsIO ide
-    (HAR _ hf _ imports, mapping) <- useE GetHieAst file
+    (HAR _ hf _ , mapping) <- useE GetHieAst file
+    (ImportMap imports, _) <- useE GetImportMap file
     !pos' <- MaybeT (return $ fromCurrentPosition mapping pos)
     AtPoint.gotoDefinition (getHieFile ide file) opts imports hf pos'
 
@@ -164,7 +165,7 @@ getTypeDefinition file pos = runMaybeT $ do
 
 highlightAtPoint :: NormalizedFilePath -> Position -> IdeAction (Maybe [DocumentHighlight])
 highlightAtPoint file pos = runMaybeT $ do
-    (HAR _ hf rf _,mapping) <- useE GetHieAst file
+    (HAR _ hf rf,mapping) <- useE GetHieAst file
     !pos' <- MaybeT (return $ fromCurrentPosition mapping pos)
     AtPoint.documentHighlight hf rf pos'
 
@@ -540,11 +541,14 @@ getHieAstRuleDefinition f hsc tmr = do
           liftIO $ writeHieFile hsc (tmrModSummary tmr) (tcg_exports $ tmrTypechecked tmr) asts source
     _ -> pure []
  
-  im <- use GetLocatedImports f
-  let mkImports (fileImports, _) = M.fromList $ mapMaybe (\(m, mfp) -> (unLoc m,) . artifactFilePath <$> mfp)  fileImports
- 
   let refmap = generateReferencesMap . getAsts <$> masts
-  pure (diags ++ diagsWrite, HAR (ms_mod  $ tmrModSummary tmr) <$> masts <*> refmap <*> fmap mkImports im)
+  pure (diags <> diagsWrite, HAR (ms_mod  $ tmrModSummary tmr) <$> masts <*> refmap)
+
+getImportMapRule :: Rules()
+getImportMapRule = define $ \GetImportMap f -> do
+  im <- use GetLocatedImports f
+  let mkImports (fileImports, _) = M.fromList $ mapMaybe (\(m, mfp) -> (unLoc m,) . artifactFilePath <$> mfp) fileImports
+  pure ([], ImportMap . mkImports <$> im)
 
 getBindingsRule :: Rules ()
 getBindingsRule =
@@ -555,9 +559,9 @@ getBindingsRule =
 getDocMapRule :: Rules ()
 getDocMapRule =
     define $ \GetDocMap file -> do
-      hmi <- hirHomeMod <$> use_ GetModIface file
-      hsc <- hscEnv <$> use_ GhcSessionDeps file
-      (refMap -> rf) <- use_ GetHieAst file
+      (tmrTypechecked -> tc,_) <- useWithStale_ TypeCheck file
+      (hscEnv -> hsc,_) <-useWithStale_ GhcSessionDeps file
+      (refMap -> rf, _) <- useWithStale_ GetHieAst file
 
 -- When possible, rely on the haddocks embedded in our interface files
 -- This creates problems on ghc-lib, see comment on 'getDocumentationTryGhc'
@@ -569,7 +573,7 @@ getDocMapRule =
       parsedDeps <- uses_ GetParsedModule tdeps
 #endif
 
-      dkMap <- liftIO $ evalGhcEnv hsc $ mkDocMap parsedDeps rf hmi
+      dkMap <- liftIO $ evalGhcEnv hsc $ mkDocMap parsedDeps rf tc
       return ([],Just dkMap)
 
 -- Typechecks a module.
@@ -907,6 +911,7 @@ mainRule = do
     getBindingsRule
     needsObjectCodeRule
     generateCoreRule
+    getImportMapRule
 
 -- | Given the path to a module src file, this rule returns True if the
 -- corresponding `.hi` file is stable, that is, if it is newer

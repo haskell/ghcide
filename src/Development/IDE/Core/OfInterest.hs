@@ -25,6 +25,7 @@ import qualified Data.HashMap.Strict as HashMap
 import qualified Data.Text as T
 import Data.Tuple.Extra
 import Development.Shake
+import Control.Monad (void)
 
 import Development.IDE.Types.Exports
 import Development.IDE.Types.Location
@@ -89,12 +90,12 @@ modifyFilesOfInterest state f = do
 --   Could be improved
 kick :: DelayedAction ()
 kick = mkDelayedAction "kick" Debug $ do
-    files <- getFilesOfInterest
+    files <- HashMap.keys <$> getFilesOfInterest
     ShakeExtras{progressUpdate} <- getShakeExtras
     liftIO $ progressUpdate KickStarted
 
     -- Update the exports map for the project
-    results <- uses GenerateCore $ HashMap.keys files
+    (results, ()) <- par (uses GenerateCore files) (void $ uses GetHieAst files)
     ShakeExtras{exportsMap} <- getShakeExtras
     let mguts = catMaybes results
         !exportsMap' = createExportsMapMg mguts
