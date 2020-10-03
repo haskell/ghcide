@@ -284,7 +284,7 @@ diagnosticTests = testGroup "diagnostics"
       let contentA = T.unlines [ "module ModuleA where" ]
       _ <- createDoc "ModuleA.hs" "haskell" contentA
       expectDiagnostics [("ModuleB.hs", [])]
-  , testSessionWait "add missing module (non workspace)" $ do
+  , ignoreInWindowsBecause "Broken in windows" $ testSessionWait "add missing module (non workspace)" $ do
       tmpDir <- liftIO getTemporaryDirectory
       let contentB = T.unlines
             [ "module ModuleB where"
