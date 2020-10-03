@@ -38,7 +38,7 @@ import           Name
 import           Language.Haskell.LSP.Types (getUri, filePathToUri)
 import           TcRnTypes
 import           ExtractDocs
-import NameEnv
+import           NameEnv
 
 mkDocMap
   :: GhcMonad m
@@ -52,7 +52,9 @@ mkDocMap sources rm this_mod =
      k <- foldrM getType (tcg_type_env this_mod) names
      pure $ DKMap d k
   where
-    getDocs n map = do
+    getDocs n map
+      | maybe True (mod ==) $ nameModule_maybe n = pure map -- we already have the docs in this_docs, or they do not exist
+      | otherwise = do
       doc <- getDocumentationTryGhc mod sources n
       pure $ extendNameEnv map n doc
     getType n map
