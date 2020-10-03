@@ -1,9 +1,12 @@
-{-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE LambdaCase         #-}
 
 module Development.IDE.Spans.LocalBindings
   ( Bindings
   , getLocalScope
   , getFuzzyScope
+  , getDefiningBindings
+  , getFuzzyDefiningBindings
   , bindings
   ) where
 
@@ -13,7 +16,7 @@ import qualified Data.IntervalMap.FingerTree as IM
 import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Data.List as L
-import           Development.IDE.GHC.Compat (RefMap, identType, identInfo, getScopeFromContext, Scope(..), Name, Type)
+import           Development.IDE.GHC.Compat (RefMap, identType, identInfo, getScopeFromContext, getBindSiteFromContext, Scope(..), Name, Type)
 import           Development.IDE.Types.Location
 import           Development.IDE.GHC.Error
 import           SrcLoc
@@ -27,11 +30,16 @@ realSrcSpanToInterval rss =
     (realSrcLocToPosition $ realSrcSpanStart rss)
     (realSrcLocToPosition $ realSrcSpanEnd   rss)
 
+bindings :: RefMap -> Bindings
+bindings ref = Bindings (localBindings ref) (bindSites ref)
+
 ------------------------------------------------------------------------------
 -- | Compute which identifiers are in scope at every point in the AST. Use
 -- 'getLocalScope' to find the results.
-bindings :: RefMap -> Bindings
-bindings refmap = Bindings $ L.foldl' (flip (uncurry IM.insert)) mempty  $ do
+localBindings
+    :: RefMap
+    -> IntervalMap Position (NameEnv (Name, Maybe Type))
+localBindings refmap = L.foldl' (flip (uncurry IM.insert)) mempty  $ do
   (ident, refs)      <- M.toList refmap
   Right name         <- pure ident
   (_, ident_details) <- refs
@@ -46,12 +54,41 @@ bindings refmap = Bindings $ L.foldl' (flip (uncurry IM.insert)) mempty  $ do
        )
 
 ------------------------------------------------------------------------------
+-- | Compute which identifiers are in scope at every point in the AST. Use
+-- 'getDefiningBindings' to find the results.
+bindSites
+    :: RefMap
+    -> IntervalMap Position (NameEnv (Name, Maybe Type))
+bindSites refmap = foldr (uncurry IM.insert) mempty $ do
+  (ident, refs)      <- M.toList refmap
+  Right name         <- pure ident
+  (_, ident_details) <- refs
+  let ty = identType ident_details
+  info        <- S.toList $ identInfo ident_details
+  Just scope <- pure $ getBindSiteFromContext info
+  pure ( realSrcSpanToInterval scope
+       , unitNameEnv name (name,ty)
+       )
+
+------------------------------------------------------------------------------
 -- | The available bindings at every point in a Haskell tree.
-newtype Bindings = Bindings
-  { getBindings :: IntervalMap Position (NameEnv (Name, Maybe Type))
-  } deriving newtype (Semigroup, Monoid)
+data Bindings = Bindings
+  { getLocalBindings
+        :: IntervalMap Position (NameEnv (Name, Maybe Type))
+  , getBindingSites
+        :: IntervalMap Position (NameEnv (Name, Maybe Type))
+  }
+
+instance Semigroup Bindings where
+  Bindings a1 b1 <> Bindings a2 b2
+    = Bindings (a1 <> a2) (b1 <> b2)
+
+instance Monoid Bindings where
+  mempty = Bindings mempty mempty
+
 instance NFData Bindings where
     rnf = rwhnf
+
 instance Show Bindings where
     show _ = "<bindings>"
 
@@ -64,7 +101,18 @@ getLocalScope bs rss
   = nameEnvElts
   $ foldMap snd
   $ IM.dominators (realSrcSpanToInterval rss)
-  $ getBindings bs
+  $ getLocalBindings bs
+
+------------------------------------------------------------------------------
+-- | Given a 'Bindings', get every binding currently active at a given
+-- 'RealSrcSpan',
+getDefiningBindings :: Bindings -> RealSrcSpan -> [(Name, Maybe Type)]
+getDefiningBindings bs rss
+  = nameEnvElts
+  $ foldMap snd
+  $ IM.dominators (realSrcSpanToInterval rss)
+  $ getBindingSites bs
+
 
 -- | Lookup all names in scope in any span that intersects the interval
 -- defined by the two positions.
@@ -74,4 +122,17 @@ getFuzzyScope bs a b
   = nameEnvElts
   $ foldMap snd
   $ IM.intersections (Interval a b)
-  $ getBindings bs
+  $ getLocalBindings bs
+
+------------------------------------------------------------------------------
+-- | Given a 'Bindings', get every binding that intersects the interval defined
+-- by the two positions.
+-- This is meant for use with the fuzzy `PositionRange` returned by
+-- `PositionMapping`
+getFuzzyDefiningBindings :: Bindings -> Position -> Position -> [(Name, Maybe Type)]
+getFuzzyDefiningBindings bs a b
+  = nameEnvElts
+  $ foldMap snd
+  $ IM.intersections (Interval a b)
+  $ getBindingSites bs
+
