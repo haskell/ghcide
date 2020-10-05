@@ -3,48 +3,41 @@
 
 -- | Gives information about symbols at a given point in DAML files.
 -- These are all pure functions that should execute quickly.
-module Development.IDE.Spans.AtPoint (
-    atPoint
-  , gotoDefinition
-  , gotoTypeDefinition
-  , documentHighlight
-  , pointCommand
-  ) where
+module Development.IDE.Spans.AtPoint
+    ( atPoint
+    , documentHighlight
+    , gotoDefinition
+    , gotoTypeDefinition
+    , pointCommand
+    ) where
 
-import           Development.IDE.GHC.Error
-import Development.IDE.GHC.Orphans()
-import Development.IDE.Types.Location
-import           Language.Haskell.LSP.Types
-
--- DAML compiler and infrastructure
-import Development.IDE.GHC.Compat
-import Development.IDE.Types.Options
-import Development.IDE.Spans.Common
-import Development.IDE.Core.RuleTypes
-
--- GHC API imports
-import FastString
-import Name
-import Outputable hiding ((<>))
-import SrcLoc
-import TyCoRep
-import TyCon
-import qualified Var
-import NameEnv
-
-import Control.Applicative
-import Control.Monad.Extra
-import Control.Monad.Trans.Maybe
-import Control.Monad.Trans.Class
-import Control.Monad.IO.Class
-import           Data.Maybe
+import           Control.Applicative
+import           Control.Monad.Extra
+import           Control.Monad.IO.Class
+import           Control.Monad.Trans.Class
+import           Control.Monad.Trans.Maybe
+import           Data.Either
 import           Data.List
-import qualified Data.Text as T
-import qualified Data.Map as M
-
-
-import Data.Either
-import Data.List.Extra (dropEnd1)
+import           Data.List.Extra                (dropEnd1)
+import qualified Data.Map                       as M
+import           Data.Maybe
+import qualified Data.Text                      as T
+import           Development.IDE.Core.RuleTypes
+import           Development.IDE.GHC.Compat
+import           Development.IDE.GHC.Error
+import           Development.IDE.GHC.Orphans    ()
+import           Development.IDE.Spans.Common
+import           Development.IDE.Types.Location
+import           Development.IDE.Types.Options
+import           FastString
+import           Language.Haskell.LSP.Types
+import           Name
+import           NameEnv
+import           Outputable                     hiding ((<>))
+import           SrcLoc
+import           TyCoRep
+import           TyCon
+import qualified Var
 
 documentHighlight
   :: Monad m

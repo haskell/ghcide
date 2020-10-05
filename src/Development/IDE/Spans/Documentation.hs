@@ -2,43 +2,42 @@
 -- Copyright (c) 2019 The DAML Authors. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
 
-{-# LANGUAGE CPP #-}
+{-# LANGUAGE CPP        #-}
 #include "ghc-api-version.h"
 
-module Development.IDE.Spans.Documentation (
-    getDocumentation
-  , getDocumentationTryGhc
-  , getDocumentationsTryGhc
-  , DocMap
-  , mkDocMap
-  ) where
+module Development.IDE.Spans.Documentation
+    ( DocMap
+    , getDocumentation
+    , getDocumentationTryGhc
+    , getDocumentationsTryGhc
+    , mkDocMap
+    ) where
 
 import           Control.Monad
-import           Control.Monad.Extra (findM)
+import           Control.Monad.Extra            (findM)
 import           Data.Either
 import           Data.Foldable
 import           Data.List.Extra
-import qualified Data.Map as M
-import qualified Data.Set as S
+import qualified Data.Map                       as M
 import           Data.Maybe
-import qualified Data.Text as T
+import qualified Data.Set                       as S
+import qualified Data.Text                      as T
 import           Development.IDE.Core.Compile
+import           Development.IDE.Core.RuleTypes
 import           Development.IDE.GHC.Compat
 import           Development.IDE.GHC.Error
 import           Development.IDE.Spans.Common
-import           Development.IDE.Core.RuleTypes
+import           ExtractDocs
+import           FastString
+import           GhcMonad
+import           Language.Haskell.LSP.Types     (filePathToUri, getUri)
+import           Name
+import           NameEnv
+import           Packages
+import           SrcLoc                         (RealLocated)
 import           System.Directory
 import           System.FilePath
-
-import           FastString
-import           SrcLoc (RealLocated)
-import           GhcMonad
-import           Packages
-import           Name
-import           Language.Haskell.LSP.Types (getUri, filePathToUri)
 import           TcRnTypes
-import           ExtractDocs
-import           NameEnv
 
 mkDocMap
   :: GhcMonad m
@@ -87,7 +86,7 @@ getDocumentationsTryGhc mod sources names = do
 
     mkSpanDocText name =
       pure (SpanDocText (getDocumentation sources name)) <*> getUris name
-   
+
     -- Get the uris to the documentation and source html pages if they exist
     getUris name = do
       df <- getSessionDynFlags
@@ -220,6 +219,6 @@ lookupHtmlForModule mkDocPath df m = do
 
 lookupHtmls :: DynFlags -> UnitId -> Maybe [FilePath]
 lookupHtmls df ui =
-  -- use haddockInterfaces instead of haddockHTMLs: GHC treats haddockHTMLs as URL not path 
+  -- use haddockInterfaces instead of haddockHTMLs: GHC treats haddockHTMLs as URL not path
   -- and therefore doesn't expand $topdir on Windows
   map takeDirectory . haddockInterfaces <$> lookupPackage df ui

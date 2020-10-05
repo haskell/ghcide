@@ -4,26 +4,25 @@
 
 -- | Display information on hover.
 module Development.IDE.LSP.HoverDefinition
-    ( setHandlersHover
-    , setHandlersDefinition
-    , setHandlersTypeDefinition
+    ( setHandlersDefinition
     , setHandlersDocHighlight
-    -- * For haskell-language-server
-    , hover
+    , setHandlersHover
+    , setHandlersTypeDefinition
+      -- * For haskell-language-server
     , gotoDefinition
     , gotoTypeDefinition
+    , hover
     ) where
 
+import qualified Data.Text                      as T
 import           Development.IDE.Core.Rules
 import           Development.IDE.Core.Shake
 import           Development.IDE.LSP.Server
 import           Development.IDE.Types.Location
 import           Development.IDE.Types.Logger
-import qualified Language.Haskell.LSP.Core       as LSP
+import qualified Language.Haskell.LSP.Core      as LSP
 import           Language.Haskell.LSP.Messages
 import           Language.Haskell.LSP.Types
-
-import qualified Data.Text as T
 
 gotoDefinition :: IdeState -> TextDocumentPositionParams -> IO (Either ResponseError LocationResponseParams)
 hover          :: IdeState -> TextDocumentPositionParams -> IO (Either ResponseError (Maybe Hover))

@@ -1,20 +1,25 @@
 
-module Development.IDE.Plugin(Plugin(..), codeActionPlugin, codeActionPluginWithRules,makeLspCommandId,getPid) where
+module Development.IDE.Plugin
+    ( Plugin (..)
+    , codeActionPlugin
+    , codeActionPluginWithRules
+    , getPid
+    , makeLspCommandId
+    ) where
 
-import Data.Default
-import qualified Data.Text as T
-import Development.Shake
-import Development.IDE.LSP.Server
-
+import           Data.Default
+import qualified Data.Text                     as T
+import           Development.IDE.Compat
+import           Development.IDE.Core.Rules
+import           Development.IDE.LSP.Server
+import           Development.Shake
+import qualified Language.Haskell.LSP.Core     as LSP
+import           Language.Haskell.LSP.Messages
 import           Language.Haskell.LSP.Types
-import Development.IDE.Compat
-import Development.IDE.Core.Rules
-import qualified Language.Haskell.LSP.Core as LSP
-import Language.Haskell.LSP.Messages
 
 
 data Plugin c = Plugin
-    {pluginRules :: Rules ()
+    {pluginRules   :: Rules ()
     ,pluginHandler :: PartialHandlers c
     }
 

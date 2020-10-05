@@ -3,69 +3,70 @@
 {-|
 The logic for setting up a ghcide session by tapping into hie-bios.
 -}
-module Development.IDE.Session (loadSession) where
+module Development.IDE.Session
+    ( loadSession
+    ) where
 
 -- Unfortunately, we cannot use loadSession with ghc-lib since hie-bios uses
 -- the real GHC library and the types are incompatible. Furthermore, when
 -- building with ghc-lib we need to make this Haskell agnostic, so no hie-bios!
 
-import Control.Concurrent.Async
-import Control.Concurrent.Extra
-import Control.Exception.Safe
-import Control.Monad
-import Control.Monad.Extra
-import Control.Monad.IO.Class
-import qualified Crypto.Hash.SHA1 as H
-import qualified Data.ByteString.Char8 as B
-import qualified Data.HashMap.Strict as HM
-import qualified Data.Map.Strict as Map
-import qualified Data.Text as T
-import Data.Aeson
-import Data.Bifunctor
-import qualified Data.ByteString.Base16 as B16
-import Data.Either.Extra
-import Data.Function
-import Data.Hashable
-import Data.List
-import Data.IORef
-import Data.Maybe
-import Data.Time.Clock
-import Data.Version
-import Development.IDE.Core.OfInterest
-import Development.IDE.Core.Shake
-import Development.IDE.Core.RuleTypes
-import Development.IDE.GHC.Compat hiding (Target, TargetModule, TargetFile)
-import qualified Development.IDE.GHC.Compat as GHC
-import Development.IDE.GHC.Util
-import Development.IDE.Session.VersionCheck
-import Development.IDE.Types.Diagnostics
-import Development.IDE.Types.Exports
-import Development.IDE.Types.Location
-import Development.IDE.Types.Logger
-import Development.IDE.Types.Options
-import Development.Shake (Action)
-import GHC.Check
-import HIE.Bios
-import HIE.Bios.Environment hiding (getCacheDir)
-import HIE.Bios.Types
-import Hie.Implicit.Cradle (loadImplicitHieCradle)
-import Language.Haskell.LSP.Core
-import Language.Haskell.LSP.Messages
-import Language.Haskell.LSP.Types
-import System.Directory
-import qualified System.Directory.Extra as IO
-import System.FilePath
-import System.Info
-import System.IO
-
-import GHCi
-import DynFlags
-import HscTypes (ic_dflags, hsc_IC, hsc_dflags, hsc_NC)
-import Linker
-import Module
-import NameCache
-import Packages
-import Control.Exception (evaluate)
+import           Control.Concurrent.Async
+import           Control.Concurrent.Extra
+import           Control.Exception                    (evaluate)
+import           Control.Exception.Safe
+import           Control.Monad
+import           Control.Monad.Extra
+import           Control.Monad.IO.Class
+import qualified Crypto.Hash.SHA1                     as H
+import           Data.Aeson
+import           Data.Bifunctor
+import qualified Data.ByteString.Base16               as B16
+import qualified Data.ByteString.Char8                as B
+import           Data.Either.Extra
+import           Data.Function
+import qualified Data.HashMap.Strict                  as HM
+import           Data.Hashable
+import           Data.IORef
+import           Data.List
+import qualified Data.Map.Strict                      as Map
+import           Data.Maybe
+import qualified Data.Text                            as T
+import           Data.Time.Clock
+import           Data.Version
+import           Development.IDE.Core.OfInterest
+import           Development.IDE.Core.RuleTypes
+import           Development.IDE.Core.Shake
+import           Development.IDE.GHC.Compat           hiding (Target, TargetFile, TargetModule)
+import qualified Development.IDE.GHC.Compat           as GHC
+import           Development.IDE.GHC.Util
+import           Development.IDE.Session.VersionCheck
+import           Development.IDE.Types.Diagnostics
+import           Development.IDE.Types.Exports
+import           Development.IDE.Types.Location
+import           Development.IDE.Types.Logger
+import           Development.IDE.Types.Options
+import           Development.Shake                    (Action)
+import           DynFlags
+import           GHC.Check
+import           GHCi
+import           HIE.Bios
+import           HIE.Bios.Environment                 hiding (getCacheDir)
+import           HIE.Bios.Types
+import           Hie.Implicit.Cradle                  (loadImplicitHieCradle)
+import           HscTypes                             (hsc_IC, hsc_NC, hsc_dflags, ic_dflags)
+import           Language.Haskell.LSP.Core
+import           Language.Haskell.LSP.Messages
+import           Language.Haskell.LSP.Types
+import           Linker
+import           Module
+import           NameCache
+import           Packages
+import           System.Directory
+import qualified System.Directory.Extra               as IO
+import           System.FilePath
+import           System.IO
+import           System.Info
 
 -- | Given a root directory, return a Shake 'Action' which setups an
 -- 'IdeGhcSession' given a file.

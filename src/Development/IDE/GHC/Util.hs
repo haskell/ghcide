@@ -2,79 +2,82 @@
 -- SPDX-License-Identifier: Apache-2.0
 
 -- | General utility functions, mostly focused around GHC operations.
-module Development.IDE.GHC.Util(
-    -- * HcsEnv and environment
-    HscEnvEq,
-    hscEnv, newHscEnvEq,
-    hscEnvWithImportPaths,
-    envImportPaths,
-    modifyDynFlags,
-    evalGhcEnv,
-    runGhcEnv,
-    deps,
-    -- * GHC wrappers
-    prettyPrint,
-    printRdrName,
-    printName,
-    ParseResult(..), runParser,
-    lookupPackageConfig,
-    textToStringBuffer,
-    bytestringToStringBuffer,
-    stringBufferToByteString,
-    moduleImportPath,
-    cgGutsToCoreModule,
-    fingerprintToBS,
-    fingerprintFromStringBuffer,
-    -- * General utilities
-    readFileUtf8,
-    hDuplicateTo',
-    setHieDir,
-    dontWriteHieFiles,
-    disableWarningsAsErrors,
-    newHscEnvEqPreserveImportPaths) where
+module Development.IDE.GHC.Util
+    ( -- * HcsEnv and environment
+      HscEnvEq
+    , deps
+    , envImportPaths
+    , evalGhcEnv
+    , hscEnv
+    , hscEnvWithImportPaths
+    , modifyDynFlags
+    , newHscEnvEq
+    , runGhcEnv
+      -- * GHC wrappers
+    , ParseResult (..)
+    , bytestringToStringBuffer
+    , cgGutsToCoreModule
+    , fingerprintFromStringBuffer
+    , fingerprintToBS
+    , lookupPackageConfig
+    , moduleImportPath
+    , prettyPrint
+    , printName
+    , printRdrName
+    , runParser
+    , stringBufferToByteString
+    , textToStringBuffer
+      -- * General utilities
+    , disableWarningsAsErrors
+    , dontWriteHieFiles
+    , hDuplicateTo'
+    , newHscEnvEqPreserveImportPaths
+    , readFileUtf8
+    , setHieDir
+    ) where
 
-import Control.Concurrent
-import Data.List.Extra
-import Data.ByteString.Internal (ByteString(..))
-import Data.Maybe
-import Data.Typeable
-import qualified Data.ByteString.Internal as BS
-import Fingerprint
-import GhcMonad
-import Control.Exception
-import Data.IORef
-import FileCleanup
-import Foreign.Ptr
-import Foreign.ForeignPtr
-import Foreign.Storable
-import GHC.IO.BufferedIO (BufferedIO)
-import GHC.IO.Device as IODevice
-import GHC.IO.Encoding
-import GHC.IO.Exception
-import GHC.IO.Handle.Types
-import GHC.IO.Handle.Internals
-import Data.Unique
-import Development.Shake.Classes
-import qualified Data.Text                as T
-import qualified Data.Text.Encoding       as T
-import qualified Data.Text.Encoding.Error as T
-import qualified Data.ByteString          as BS
-import Lexer
-import StringBuffer
-import System.FilePath
-import HscTypes (cg_binds, md_types, cg_module, ModDetails, CgGuts, ic_dflags, hsc_IC, HscEnv(hsc_dflags))
-import PackageConfig (PackageConfig)
-import Outputable (showSDocUnsafe, ppr, showSDoc, Outputable)
-import Packages (getPackageConfigMap, lookupPackage')
-import SrcLoc (mkRealSrcLoc)
-import FastString (mkFastString)
-import DynFlags (emptyFilesToClean, unsafeGlobalDynFlags)
-import Module (moduleNameSlashes, InstalledUnitId)
-import OccName (parenSymOcc)
-import RdrName (nameRdrName, rdrNameOcc)
-
-import Development.IDE.GHC.Compat as GHC
-import Development.IDE.Types.Location
+import           Control.Concurrent
+import           Control.Exception
+import qualified Data.ByteString                as BS
+import           Data.ByteString.Internal       (ByteString (..))
+import qualified Data.ByteString.Internal       as BS
+import           Data.IORef
+import           Data.List.Extra
+import           Data.Maybe
+import qualified Data.Text                      as T
+import qualified Data.Text.Encoding             as T
+import qualified Data.Text.Encoding.Error       as T
+import           Data.Typeable
+import           Data.Unique
+import           Development.IDE.GHC.Compat     as GHC
+import           Development.IDE.Types.Location
+import           Development.Shake.Classes
+import           DynFlags                       (emptyFilesToClean, unsafeGlobalDynFlags)
+import           FastString                     (mkFastString)
+import           FileCleanup
+import           Fingerprint
+import           Foreign.ForeignPtr
+import           Foreign.Ptr
+import           Foreign.Storable
+import           GHC.IO.BufferedIO              (BufferedIO)
+import           GHC.IO.Device                  as IODevice
+import           GHC.IO.Encoding
+import           GHC.IO.Exception
+import           GHC.IO.Handle.Internals
+import           GHC.IO.Handle.Types
+import           GhcMonad
+import           HscTypes                       (CgGuts, HscEnv (hsc_dflags), ModDetails, cg_binds, cg_module, hsc_IC,
+                                                 ic_dflags, md_types)
+import           Lexer
+import           Module                         (InstalledUnitId, moduleNameSlashes)
+import           OccName                        (parenSymOcc)
+import           Outputable                     (Outputable, ppr, showSDoc, showSDocUnsafe)
+import           PackageConfig                  (PackageConfig)
+import           Packages                       (getPackageConfigMap, lookupPackage')
+import           RdrName                        (nameRdrName, rdrNameOcc)
+import           SrcLoc                         (mkRealSrcLoc)
+import           StringBuffer
+import           System.FilePath
 
 
 ----------------------------------------------------------------------

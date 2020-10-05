@@ -2,37 +2,36 @@
 -- SPDX-License-Identifier: Apache-2.0
 
 module Development.IDE.Core.Preprocessor
-  ( preprocessor
-  ) where
+    ( preprocessor
+    ) where
 
-import Development.IDE.GHC.CPP
-import Development.IDE.GHC.Orphans()
-import Development.IDE.GHC.Compat
-import GhcMonad
-import StringBuffer as SB
-
-import Data.List.Extra
-import System.FilePath
-import System.IO.Extra
-import Data.Char
-import DynFlags
-import qualified HeaderInfo as Hdr
-import Development.IDE.Types.Diagnostics
-import Development.IDE.Types.Location
-import Development.IDE.GHC.Error
-import SysTools (Option (..), runUnlit, runPp)
-import Control.Monad.Trans.Except
-import qualified GHC.LanguageExtensions as LangExt
-import Data.Maybe
-import Control.Exception.Safe (catch, throw)
-import Data.IORef (IORef, modifyIORef, newIORef, readIORef)
-import Data.Text (Text)
-import qualified Data.Text as T
-import Outputable (showSDoc)
-import Control.DeepSeq (NFData(rnf))
-import Control.Exception (evaluate)
-import Control.Monad.IO.Class (MonadIO)
-import Exception (ExceptionMonad)
+import           Control.DeepSeq                   (NFData (rnf))
+import           Control.Exception                 (evaluate)
+import           Control.Exception.Safe            (catch, throw)
+import           Control.Monad.IO.Class            (MonadIO)
+import           Control.Monad.Trans.Except
+import           Data.Char
+import           Data.IORef                        (IORef, modifyIORef, newIORef, readIORef)
+import           Data.List.Extra
+import           Data.Maybe
+import           Data.Text                         (Text)
+import qualified Data.Text                         as T
+import           Development.IDE.GHC.CPP
+import           Development.IDE.GHC.Compat
+import           Development.IDE.GHC.Error
+import           Development.IDE.GHC.Orphans       ()
+import           Development.IDE.Types.Diagnostics
+import           Development.IDE.Types.Location
+import           DynFlags
+import           Exception                         (ExceptionMonad)
+import qualified GHC.LanguageExtensions            as LangExt
+import           GhcMonad
+import qualified HeaderInfo                        as Hdr
+import           Outputable                        (showSDoc)
+import           StringBuffer                      as SB
+import           SysTools                          (Option (..), runPp, runUnlit)
+import           System.FilePath
+import           System.IO.Extra
 
 
 -- | Given a file and some contents, apply any necessary preprocessors,

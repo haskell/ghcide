@@ -10,54 +10,56 @@
 
 module Main (main) where
 
-import Control.Applicative.Combinators
-import Control.Exception (bracket, catch)
-import qualified Control.Lens as Lens
-import Control.Monad
-import Control.Monad.IO.Class (liftIO)
-import Data.Aeson (FromJSON, Value, toJSON)
-import qualified Data.Binary as Binary
-import Data.Foldable
-import Data.List.Extra
-import Data.Maybe
-import Data.Rope.UTF16 (Rope)
-import qualified Data.Rope.UTF16 as Rope
-import Development.IDE.Core.PositionMapping (fromCurrent, toCurrent, PositionResult(..), positionResultToMaybe)
-import Development.IDE.Core.Shake (Q(..))
-import Development.IDE.GHC.Util
-import qualified Data.Text as T
-import Data.Typeable
-import Development.IDE.Spans.Common
-import Development.IDE.Test
-import Development.IDE.Test.Runfiles
-import Development.IDE.Types.Location
-import Development.Shake (getDirectoryFilesIO)
-import qualified Experiments as Bench
-import Language.Haskell.LSP.Test
-import Language.Haskell.LSP.Messages
-import Language.Haskell.LSP.Types
-import Language.Haskell.LSP.Types.Capabilities
-import qualified Language.Haskell.LSP.Types.Lens as Lsp (diagnostics, params, message)
-import Language.Haskell.LSP.VFS (applyChange)
-import Network.URI
-import System.Environment.Blank (getEnv, setEnv, unsetEnv)
-import System.FilePath
-import System.IO.Extra hiding (withTempDir)
+import           Control.Applicative.Combinators
+import           Control.Exception                       (bracket, catch)
+import qualified Control.Lens                            as Lens
+import           Control.Monad
+import           Control.Monad.IO.Class                  (liftIO)
+import           Data.Aeson                              (FromJSON, Value, toJSON)
+import qualified Data.Binary                             as Binary
+import           Data.Foldable
+import           Data.List.Extra
+import           Data.Maybe
+import           Data.Rope.UTF16                         (Rope)
+import qualified Data.Rope.UTF16                         as Rope
+import qualified Data.Text                               as T
+import           Data.Typeable
+import           Development.IDE.Core.PositionMapping    (PositionResult (..), fromCurrent, positionResultToMaybe,
+                                                          toCurrent)
+import           Development.IDE.Core.Shake              (Q (..))
+import           Development.IDE.GHC.Util
+import           Development.IDE.Plugin.CodeAction       (blockCommandId, typeSignatureCommandId)
+import           Development.IDE.Plugin.Test             (TestRequest (BlockSeconds, GetInterfaceFilesDir))
+import           Development.IDE.Spans.Common
+import           Development.IDE.Test
+import           Development.IDE.Test.Runfiles
+import           Development.IDE.Types.Location
+import           Development.Shake                       (getDirectoryFilesIO)
+import qualified Experiments                             as Bench
+import           Language.Haskell.LSP.Messages
+import           Language.Haskell.LSP.Test
+import           Language.Haskell.LSP.Types
+import           Language.Haskell.LSP.Types.Capabilities
+import qualified Language.Haskell.LSP.Types.Lens         as Lsp (diagnostics, message, params)
+import           Language.Haskell.LSP.VFS                (applyChange)
+import           Network.URI
+import           System.Directory
+import           System.Environment.Blank                (getEnv, setEnv, unsetEnv)
+import           System.Exit                             (ExitCode (ExitSuccess))
+import           System.FilePath
+import           System.IO.Extra                         hiding (withTempDir)
 import qualified System.IO.Extra
-import System.Directory
-import System.Exit (ExitCode(ExitSuccess))
-import System.Process.Extra (readCreateProcessWithExitCode, CreateProcess(cwd), proc)
-import System.Info.Extra (isWindows)
-import Test.QuickCheck
-import Test.QuickCheck.Instances ()
-import Test.Tasty
-import Test.Tasty.ExpectedFailure
-import Test.Tasty.Ingredients.Rerun
-import Test.Tasty.HUnit
-import Test.Tasty.QuickCheck
-import System.Time.Extra
-import Development.IDE.Plugin.CodeAction (typeSignatureCommandId, blockCommandId)
-import Development.IDE.Plugin.Test (TestRequest(BlockSeconds,GetInterfaceFilesDir))
+import           System.Info.Extra                       (isWindows)
+import           System.Process.Extra                    (CreateProcess (cwd), proc, readCreateProcessWithExitCode)
+import           System.Time.Extra
+import           Test.QuickCheck
+import           Test.QuickCheck.Instances               ()
+import           Test.Tasty
+import           Test.Tasty.ExpectedFailure
+import           Test.Tasty.HUnit
+import           Test.Tasty.Ingredients.Rerun
+import           Test.Tasty.QuickCheck
+
 
 main :: IO ()
 main = do
@@ -1711,7 +1713,7 @@ addFunctionConstraintTests = let
     , "eq :: " <> constraint <> " => Pair a b -> Pair a b -> Bool"
     , "eq (Pair x y) (Pair x' y') = x == x' && y == y'"
     ]
-  
+
   incompleteConstraintSourceCodeWithNewlinesInTypeSignature :: T.Text -> T.Text
   incompleteConstraintSourceCodeWithNewlinesInTypeSignature constraint =
     T.unlines

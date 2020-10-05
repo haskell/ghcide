@@ -1,30 +1,29 @@
-{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveAnyClass     #-}
 {-# LANGUAGE DerivingStrategies #-}
 module Development.IDE.Types.Exports
-(
-    IdentInfo(..),
-    ExportsMap(..),
-    createExportsMap,
-    createExportsMapMg,
-    createExportsMapTc
-) where
+    ( ExportsMap (..)
+    , IdentInfo (..)
+    , createExportsMap
+    , createExportsMapMg
+    , createExportsMapTc
+    ) where
 
-import Avail (AvailInfo(..))
-import Control.DeepSeq (NFData)
-import Data.Text (pack, Text)
-import Development.IDE.GHC.Compat
-import Development.IDE.GHC.Util
-import Data.HashMap.Strict (HashMap)
-import GHC.Generics (Generic)
-import Name
-import FieldLabel (flSelector)
-import qualified Data.HashMap.Strict as Map
-import GhcPlugins (IfaceExport, ModGuts(..))
-import Data.HashSet (HashSet)
-import qualified Data.HashSet as Set
-import Data.Bifunctor (Bifunctor(second))
-import Data.Hashable (Hashable)
-import TcRnTypes(TcGblEnv(..))
+import           Avail                      (AvailInfo (..))
+import           Control.DeepSeq            (NFData)
+import           Data.Bifunctor             (Bifunctor (second))
+import           Data.HashMap.Strict        (HashMap)
+import qualified Data.HashMap.Strict        as Map
+import           Data.HashSet               (HashSet)
+import qualified Data.HashSet               as Set
+import           Data.Hashable              (Hashable)
+import           Data.Text                  (Text, pack)
+import           Development.IDE.GHC.Compat
+import           Development.IDE.GHC.Util
+import           FieldLabel                 (flSelector)
+import           GHC.Generics               (Generic)
+import           GhcPlugins                 (IfaceExport, ModGuts (..))
+import           Name
+import           TcRnTypes                  (TcGblEnv (..))
 
 newtype ExportsMap = ExportsMap
     {getExportsMap :: HashMap IdentifierText (HashSet (IdentInfo,ModuleNameText))}
@@ -37,9 +36,9 @@ type IdentifierText = Text
 type ModuleNameText = Text
 
 data IdentInfo = IdentInfo
-    { name :: !Text
-    , rendered :: Text
-    , parent :: !(Maybe Text)
+    { name      :: !Text
+    , rendered  :: Text
+    , parent    :: !(Maybe Text)
     , isDatacon :: !Bool
     }
     deriving (Eq, Generic, Show)

@@ -1,53 +1,51 @@
 {-# LANGUAGE CPP #-}
 #include "ghc-api-version.h"
 -- Mostly taken from "haskell-ide-engine"
-module Development.IDE.Plugin.Completions.Logic (
-  CachedCompletions
-, cacheDataProducer
-, localCompletionsForParsedModule
-, WithSnippets(..)
-, getCompletions
-) where
+module Development.IDE.Plugin.Completions.Logic
+    ( CachedCompletions
+    , WithSnippets (..)
+    , cacheDataProducer
+    , getCompletions
+    , localCompletionsForParsedModule
+    ) where
 
-import Control.Applicative
-import Data.Char (isUpper)
-import Data.Generics
-import Data.List.Extra as List hiding (stripPrefix)
-import qualified Data.Map  as Map
-import Data.Maybe (fromMaybe, mapMaybe)
-import qualified Data.Text as T
-import qualified Text.Fuzzy as Fuzzy
-
-import HscTypes
-import Name
-import RdrName
-import TcRnTypes
-import Type
-import Var
-import Packages
-import DynFlags
+import           Control.Applicative
+import           Data.Char                                (isUpper)
+import           Data.Generics
+import           Data.List.Extra                          as List hiding (stripPrefix)
+import qualified Data.Map                                 as Map
+import           Data.Maybe                               (fromMaybe, mapMaybe)
+import qualified Data.Set                                 as Set
+import qualified Data.Text                                as T
+import           Development.IDE.Core.Compile
+import           Development.IDE.Core.PositionMapping
+import           Development.IDE.GHC.Compat               as GHC
+import           Development.IDE.GHC.Error
+import           Development.IDE.GHC.Util
+import           Development.IDE.Plugin.Completions.Types
+import           Development.IDE.Spans.Common
+import           Development.IDE.Spans.Documentation
+import           Development.IDE.Spans.LocalBindings
+import           Development.IDE.Types.Options
+import           DynFlags
+import           HscTypes
+import           Language.Haskell.LSP.Types
+import           Language.Haskell.LSP.Types.Capabilities
+import qualified Language.Haskell.LSP.VFS                 as VFS
+import           Name
+import           Outputable                               (Outputable)
+import           Packages
+import           RdrName
+import           TcRnTypes
+import qualified Text.Fuzzy                               as Fuzzy
+import           Type
+import           Var
 #if MIN_GHC_API_VERSION(8,10,0)
-import Predicate (isDictTy)
-import GHC.Platform
-import Pair
-import Coercion
+import           Coercion
+import           GHC.Platform
+import           Pair
+import           Predicate                                (isDictTy)
 #endif
-
-import Language.Haskell.LSP.Types
-import Language.Haskell.LSP.Types.Capabilities
-import qualified Language.Haskell.LSP.VFS as VFS
-import Development.IDE.Core.Compile
-import Development.IDE.Core.PositionMapping
-import Development.IDE.Plugin.Completions.Types
-import Development.IDE.Spans.Documentation
-import Development.IDE.Spans.LocalBindings
-import Development.IDE.GHC.Compat as GHC
-import Development.IDE.GHC.Error
-import Development.IDE.Types.Options
-import Development.IDE.Spans.Common
-import Development.IDE.GHC.Util
-import Outputable (Outputable)
-import qualified Data.Set as Set
 
 -- From haskell-ide-engine/hie-plugin-api/Haskell/Ide/Engine/Context.hs
 

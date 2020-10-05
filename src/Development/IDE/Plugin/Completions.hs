@@ -3,40 +3,38 @@
 #include "ghc-api-version.h"
 
 module Development.IDE.Plugin.Completions
-    (
-      plugin
-    , getCompletionsLSP
+    ( getCompletionsLSP
+    , plugin
     ) where
 
-import Language.Haskell.LSP.Messages
-import Language.Haskell.LSP.Types
-import qualified Language.Haskell.LSP.Core as LSP
-import qualified Language.Haskell.LSP.VFS as VFS
-import Language.Haskell.LSP.Types.Capabilities
-import Development.Shake.Classes
-import Development.Shake
-import GHC.Generics
-
-import Development.IDE.Plugin
-import Development.IDE.Core.Service
-import Development.IDE.Core.PositionMapping
-import Development.IDE.Plugin.Completions.Logic
-import Development.IDE.Types.Location
-import Development.IDE.Types.Options
-import Development.IDE.Core.Compile
-import Development.IDE.Core.RuleTypes
-import Development.IDE.Core.Shake
-import Development.IDE.GHC.Compat (hsmodExports, ParsedModule(..), ModSummary (ms_hspp_buf))
-
-import Development.IDE.GHC.Util
-import Development.IDE.LSP.Server
-import Control.Monad.Trans.Except (runExceptT)
-import HscTypes (HscEnv(hsc_dflags))
-import Data.Maybe
-import Data.Functor ((<&>))
+import           Control.Monad.Trans.Except                   (runExceptT)
+import           Data.Functor                                 ((<&>))
+import           Data.Maybe
+import           Development.IDE.Core.Compile
+import           Development.IDE.Core.PositionMapping
+import           Development.IDE.Core.RuleTypes
+import           Development.IDE.Core.Service
+import           Development.IDE.Core.Shake
+import           Development.IDE.GHC.Compat                   (ModSummary (ms_hspp_buf), ParsedModule (..),
+                                                               hsmodExports)
+import           Development.IDE.GHC.Util
+import           Development.IDE.LSP.Server
+import           Development.IDE.Plugin
+import           Development.IDE.Plugin.Completions.Logic
+import           Development.IDE.Types.Location
+import           Development.IDE.Types.Options
+import           Development.Shake
+import           Development.Shake.Classes
+import           GHC.Generics
+import           HscTypes                                     (HscEnv (hsc_dflags))
+import qualified Language.Haskell.LSP.Core                    as LSP
+import           Language.Haskell.LSP.Messages
+import           Language.Haskell.LSP.Types
+import           Language.Haskell.LSP.Types.Capabilities
+import qualified Language.Haskell.LSP.VFS                     as VFS
 
 #if defined(GHC_LIB)
-import Development.IDE.Import.DependencyInformation
+import           Development.IDE.Import.DependencyInformation
 #endif
 
 plugin :: Plugin c

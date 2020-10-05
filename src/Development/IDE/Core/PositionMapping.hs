@@ -1,29 +1,29 @@
 -- Copyright (c) 2019 The DAML Authors. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
 module Development.IDE.Core.PositionMapping
-  ( PositionMapping(..)
-  , PositionResult(..)
-  , lowerRange
-  , upperRange
-  , positionResultToMaybe
-  , fromCurrentPosition
-  , toCurrentPosition
-  , PositionDelta(..)
-  , addDelta
-  , mkDelta
-  , toCurrentRange
-  , fromCurrentRange
-  , applyChange
-  , zeroMapping
-  -- toCurrent and fromCurrent are mainly exposed for testing
-  , toCurrent
-  , fromCurrent
-  ) where
+    ( PositionDelta (..)
+    , PositionMapping (..)
+    , PositionResult (..)
+    , addDelta
+    , applyChange
+    , fromCurrentPosition
+    , fromCurrentRange
+    , lowerRange
+    , mkDelta
+    , positionResultToMaybe
+    , toCurrentPosition
+    , toCurrentRange
+    , upperRange
+    , zeroMapping
+      -- toCurrent and fromCurrent are mainly exposed for testing
+    , fromCurrent
+    , toCurrent
+    ) where
 
-import Control.Monad
-import qualified Data.Text as T
-import Language.Haskell.LSP.Types
-import Data.List
+import           Control.Monad
+import           Data.List
+import qualified Data.Text                  as T
+import           Language.Haskell.LSP.Types
 
 -- | Either an exact position, or the range of text that was substituted
 data PositionResult a
@@ -34,16 +34,16 @@ data PositionResult a
   deriving (Eq,Ord,Show,Functor)
 
 lowerRange :: PositionResult a -> a
-lowerRange (PositionExact a) = a
+lowerRange (PositionExact a)       = a
 lowerRange (PositionRange lower _) = lower
 
 upperRange :: PositionResult a -> a
-upperRange (PositionExact a) = a
+upperRange (PositionExact a)       = a
 upperRange (PositionRange _ upper) = upper
 
 positionResultToMaybe :: PositionResult a -> Maybe a
 positionResultToMaybe (PositionExact a) = Just a
-positionResultToMaybe _ = Nothing
+positionResultToMaybe _                 = Nothing
 
 instance Applicative PositionResult where
   pure = PositionExact
@@ -60,7 +60,7 @@ instance Monad PositionResult where
 
 -- The position delta is the difference between two versions
 data PositionDelta = PositionDelta
-  { toDelta :: !(Position -> PositionResult Position)
+  { toDelta   :: !(Position -> PositionResult Position)
   , fromDelta :: !(Position -> PositionResult Position)
   }
 

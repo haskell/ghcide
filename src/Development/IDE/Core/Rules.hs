@@ -10,13 +10,21 @@
 -- | A Shake implementation of the compiler service, built
 --   using the "Shaker" abstraction layer for in-memory use.
 --
-module Development.IDE.Core.Rules(
-    IdeState, GetDependencies(..), GetParsedModule(..), TransitiveDependencies(..),
-    Priority(..), GhcSessionIO(..), GetClientSettings(..),
+module Development.IDE.Core.Rules
+  ( IdeState,
+    GetDependencies (..),
+    GetParsedModule (..),
+    TransitiveDependencies (..),
+    Priority (..),
+    GhcSessionIO (..),
+    GetClientSettings (..),
     priorityTypeCheck,
     priorityGenerateCore,
     priorityFilesOfInterest,
-    runAction, useE, useNoFileE, usesE,
+    runAction,
+    useE,
+    useNoFileE,
+    usesE,
     toIdeResult,
     defineNoFile,
     defineEarlyCutOffNoFile,
@@ -27,75 +35,74 @@ module Development.IDE.Core.Rules(
     highlightAtPoint,
     getDependencies,
     getParsedModule,
-    ) where
+  )
+where
 
-import Fingerprint
 
-import Data.Binary hiding (get, put)
-import Data.Tuple.Extra
-import Control.Monad.Extra
-import Control.Monad.Trans.Class
-import Control.Monad.Trans.Maybe
-import Development.IDE.Core.Compile
-import Development.IDE.Core.OfInterest
-import Development.IDE.Types.Options
-import Development.IDE.Spans.Documentation
-import Development.IDE.Spans.LocalBindings
-import Development.IDE.Import.DependencyInformation
-import Development.IDE.Import.FindImports
-import           Development.IDE.Core.FileExists
-import           Development.IDE.Core.FileStore        (modificationTime, getFileContents)
-import           Development.IDE.Types.Diagnostics as Diag
-import Development.IDE.Types.Location
-import Development.IDE.GHC.Compat hiding (parseModule, typecheckModule, writeHieFile, TargetModule, TargetFile)
-import Development.IDE.GHC.Util
-import Development.IDE.GHC.WithDynFlags
-import Data.Either.Extra
-import qualified Development.IDE.Types.Logger as L
-import Data.Maybe
+import           Control.Concurrent.Async                     (concurrently)
+import           Control.Exception
+import           Control.Monad.Extra
+import           Control.Monad.Reader
+import           Control.Monad.State
+import           Control.Monad.Trans.Except                   (runExceptT)
+import           Control.Monad.Trans.Maybe
+import           Data.Binary                                  hiding (get, put)
+import           Data.ByteString                              (ByteString)
+import qualified Data.ByteString.Char8                        as BS
+import           Data.Either.Extra
 import           Data.Foldable
-import qualified Data.IntMap.Strict as IntMap
-import Data.IntMap.Strict (IntMap)
-import Data.List
-import qualified Data.Set                                 as Set
-import qualified Data.Map as M
-import qualified Data.Text                                as T
-import qualified Data.Text.Encoding                       as T
+import qualified Data.HashMap.Strict                          as HM
+import qualified Data.HashSet                                 as HashSet
+import           Data.Hashable
+import           Data.IORef
+import           Data.IntMap.Strict                           (IntMap)
+import qualified Data.IntMap.Strict                           as IntMap
+import           Data.List
+import qualified Data.Map                                     as M
+import           Data.Maybe
+import qualified Data.Set                                     as Set
+import qualified Data.Text                                    as T
+import qualified Data.Text.Encoding                           as T
+import           Data.Time                                    (UTCTime (..))
+import           Data.Tuple.Extra
+import           Development.IDE.Core.Compile
+import           Development.IDE.Core.FileExists
+import           Development.IDE.Core.FileStore               (getFileContents, modificationTime)
+import           Development.IDE.Core.IdeConfiguration
+import           Development.IDE.Core.OfInterest
+import           Development.IDE.Core.PositionMapping
+import           Development.IDE.Core.RuleTypes
+import           Development.IDE.Core.Service
+import           Development.IDE.Core.Shake
+import           Development.IDE.GHC.Compat                   hiding (TargetFile, TargetModule, parseModule,
+                                                               typecheckModule, writeHieFile)
 import           Development.IDE.GHC.Error
-import           Development.Shake                        hiding (Diagnostic)
-import Development.IDE.Core.RuleTypes
-import qualified Data.ByteString.Char8 as BS
-import Development.IDE.Core.PositionMapping
-import           Language.Haskell.LSP.Types (DocumentHighlight (..))
+import           Development.IDE.GHC.Util
+import           Development.IDE.GHC.WithDynFlags
+import           Development.IDE.Import.DependencyInformation
+import           Development.IDE.Import.FindImports
+import qualified Development.IDE.Spans.AtPoint                as AtPoint
+import           Development.IDE.Spans.Documentation
+import           Development.IDE.Spans.LocalBindings
+import           Development.IDE.Types.Diagnostics            as Diag
+import           Development.IDE.Types.Location
+import qualified Development.IDE.Types.Logger                 as L
+import           Development.IDE.Types.Options
+import           Development.Shake                            hiding (Diagnostic)
+import           Development.Shake.Classes                    hiding (get, put)
+import           DynFlags                                     (gopt_set, xopt)
+import           FastString                                   (FastString (uniq))
+import           Fingerprint
+import           GHC.Generics                                 (Generic)
+import qualified GHC.LanguageExtensions                       as LangExt
+import qualified HeaderInfo                                   as Hdr
+import           HscTypes                                     hiding (TargetFile, TargetModule)
+import           Language.Haskell.LSP.Types                   (DocumentHighlight (..))
+import           PackageConfig
+import           System.Directory                             (getModificationTime)
+import           System.Time.Extra
+import           TcRnMonad                                    (tcg_dependent_files)
 
-import qualified GHC.LanguageExtensions as LangExt
-import HscTypes hiding (TargetModule, TargetFile)
-import PackageConfig
-import DynFlags (gopt_set, xopt)
-import GHC.Generics(Generic)
-
-import qualified Development.IDE.Spans.AtPoint as AtPoint
-import Development.IDE.Core.IdeConfiguration
-import Development.IDE.Core.Service
-import Development.IDE.Core.Shake
-import Development.Shake.Classes hiding (get, put)
-import Control.Monad.Trans.Except (runExceptT)
-import Data.ByteString (ByteString)
-import Control.Concurrent.Async (concurrently)
-import System.Time.Extra
-import Control.Monad.Reader
-import System.Directory ( getModificationTime )
-import Control.Exception
-
-import Control.Monad.State
-import FastString (FastString(uniq))
-import qualified HeaderInfo as Hdr
-import Data.Time (UTCTime(..))
-import Data.Hashable
-import qualified Data.HashSet as HashSet
-import qualified Data.HashMap.Strict as HM
-import TcRnMonad (tcg_dependent_files)
-import Data.IORef
 
 -- | This is useful for rules to convert rules that can only produce errors or
 -- a result into the more general IdeResult type that supports producing
@@ -532,7 +539,7 @@ getHieAstsRule =
 getHieAstRuleDefinition :: NormalizedFilePath -> HscEnv -> TcModuleResult -> Action (IdeResult HieAstResult)
 getHieAstRuleDefinition f hsc tmr = do
   (diags, masts) <- liftIO $ generateHieAsts hsc tmr
- 
+
   isFoi <- use_ IsFileOfInterest f
   diagsWrite <- case isFoi of
     IsFOI Modified -> pure []
@@ -540,7 +547,7 @@ getHieAstRuleDefinition f hsc tmr = do
           source <- getSourceFileSource f
           liftIO $ writeHieFile hsc (tmrModSummary tmr) (tcg_exports $ tmrTypechecked tmr) asts source
     _ -> pure []
- 
+
   let refmap = generateReferencesMap . getAsts <$> masts
   pure (diags <> diagsWrite, HAR (ms_mod  $ tmrModSummary tmr) <$> masts <*> refmap)
 

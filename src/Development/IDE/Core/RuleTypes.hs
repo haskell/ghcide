@@ -1,40 +1,38 @@
 -- Copyright (c) 2019 The DAML Authors. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
 
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE FlexibleInstances  #-}
+{-# LANGUAGE TypeFamilies       #-}
 
 -- | A Shake implementation of the compiler service, built
 --   using the "Shaker" abstraction layer for in-memory use.
 --
-module Development.IDE.Core.RuleTypes(
-    module Development.IDE.Core.RuleTypes
+module Development.IDE.Core.RuleTypes
+    ( module Development.IDE.Core.RuleTypes
     ) where
 
 import           Control.DeepSeq
-import Data.Aeson.Types (Value)
-import Data.Binary
-import           Development.IDE.Import.DependencyInformation
-import Development.IDE.GHC.Compat hiding (HieFileResult)
-import Development.IDE.GHC.Util
-import Development.IDE.Core.Shake (KnownTargets)
+import           Data.Aeson.Types                             (Value)
+import           Data.Binary
+import           Data.ByteString                              (ByteString)
 import           Data.Hashable
+import qualified Data.Map                                     as M
+import qualified Data.Set                                     as S
 import           Data.Typeable
-import qualified Data.Set as S
-import qualified Data.Map as M
-import           Development.Shake
-import           GHC.Generics                             (Generic)
-
-import Module (InstalledUnitId)
-import HscTypes (ModGuts, hm_iface, HomeModInfo)
-
+import           Development.IDE.Core.Shake                   (KnownTargets)
+import           Development.IDE.GHC.Compat                   hiding (HieFileResult)
+import           Development.IDE.GHC.Util
+import           Development.IDE.Import.DependencyInformation
+import           Development.IDE.Import.FindImports           (ArtifactsLocation)
 import           Development.IDE.Spans.Common
 import           Development.IDE.Spans.LocalBindings
-import           Development.IDE.Import.FindImports (ArtifactsLocation)
-import Data.ByteString (ByteString)
-import Language.Haskell.LSP.Types (NormalizedFilePath)
-import TcRnMonad (TcGblEnv)
+import           Development.Shake
+import           GHC.Generics                                 (Generic)
+import           HscTypes                                     (HomeModInfo, ModGuts, hm_iface)
+import           Language.Haskell.LSP.Types                   (NormalizedFilePath)
+import           Module                                       (InstalledUnitId)
+import           TcRnMonad                                    (TcGblEnv)
 
 -- NOTATION
 --   Foo+ means Foo for the dependencies
@@ -132,10 +130,10 @@ data HieAstResult
   -- Lazyness can't cause leaks here because the lifetime of `refMap` will be the same
   -- as that of `hieAst`
   }
- 
+
 instance NFData HieAstResult where
     rnf (HAR m hf _rm) = rnf m `seq` rwhnf hf
- 
+
 instance Show HieAstResult where
     show = show . hieModule
 

@@ -4,32 +4,32 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 
 module Development.IDE.Test
-  ( Cursor
-  , cursorPosition
-  , requireDiagnostic
-  , diagnostic
-  , expectDiagnostics
-  , expectDiagnosticsWithTags
-  , expectNoMoreDiagnostics
-  , canonicalizeUri
-  , standardizeQuotes
-  ) where
+    ( Cursor
+    , canonicalizeUri
+    , cursorPosition
+    , diagnostic
+    , expectDiagnostics
+    , expectDiagnosticsWithTags
+    , expectNoMoreDiagnostics
+    , requireDiagnostic
+    , standardizeQuotes
+    ) where
 
-import Control.Applicative.Combinators
-import Control.Lens hiding (List)
-import Control.Monad
-import Control.Monad.IO.Class
-import Data.Bifunctor (second)
-import qualified Data.Map.Strict as Map
-import qualified Data.Text as T
-import Language.Haskell.LSP.Test hiding (message)
-import qualified Language.Haskell.LSP.Test as LspTest
-import Language.Haskell.LSP.Types
-import Language.Haskell.LSP.Types.Lens as Lsp
-import System.Time.Extra
-import Test.Tasty.HUnit
-import System.Directory (canonicalizePath)
-import Data.Maybe (fromJust)
+import           Control.Applicative.Combinators
+import           Control.Lens                    hiding (List)
+import           Control.Monad
+import           Control.Monad.IO.Class
+import           Data.Bifunctor                  (second)
+import qualified Data.Map.Strict                 as Map
+import           Data.Maybe                      (fromJust)
+import qualified Data.Text                       as T
+import           Language.Haskell.LSP.Test       hiding (message)
+import qualified Language.Haskell.LSP.Test       as LspTest
+import           Language.Haskell.LSP.Types
+import           Language.Haskell.LSP.Types.Lens as Lsp
+import           System.Directory                (canonicalizePath)
+import           System.Time.Extra
+import           Test.Tasty.HUnit
 
 
 -- | (0-based line number, 0-based column number)

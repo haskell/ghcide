@@ -1,39 +1,37 @@
-{-# LANGUAGE CPP #-}
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE CPP                #-}
+{-# LANGUAGE DeriveAnyClass     #-}
+{-# LANGUAGE DerivingStrategies #-}
 #include "ghc-api-version.h"
 
-module Development.IDE.Spans.Common (
-  showGhc
-, showName
-, safeTyThingId
-, safeTyThingType
-, SpanDoc(..)
-, SpanDocUris(..)
-, emptySpanDoc
-, spanDocToMarkdown
-, spanDocToMarkdownForTest
-, DocMap
-, KindMap
-) where
+module Development.IDE.Spans.Common
+    ( DocMap
+    , KindMap
+    , SpanDoc (..)
+    , SpanDocUris (..)
+    , emptySpanDoc
+    , safeTyThingId
+    , safeTyThingType
+    , showGhc
+    , showName
+    , spanDocToMarkdown
+    , spanDocToMarkdownForTest
+    ) where
 
-import Data.Maybe
-import qualified Data.Text as T
-import Data.List.Extra
-import Control.DeepSeq
-import GHC.Generics
-
-import GHC
-import Outputable hiding ((<>))
-import DynFlags
-import ConLike
-import DataCon
-import Var
-import NameEnv
-
+import           ConLike
+import           Control.DeepSeq
+import           Data.List.Extra
+import           Data.Maybe
+import qualified Data.Text                    as T
+import           DataCon
+import           Development.IDE.GHC.Orphans  ()
 import qualified Documentation.Haddock.Parser as H
-import qualified Documentation.Haddock.Types as H
-import Development.IDE.GHC.Orphans ()
+import qualified Documentation.Haddock.Types  as H
+import           DynFlags
+import           GHC
+import           GHC.Generics
+import           NameEnv
+import           Outputable                   hiding ((<>))
+import           Var
 
 type DocMap = NameEnv SpanDoc
 type KindMap = NameEnv TyThing

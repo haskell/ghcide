@@ -1,8 +1,8 @@
 -- Copyright (c) 2019 The DAML Authors. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
 
-{-# LANGUAGE ExistentialQuantification  #-}
-{-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE RankNTypes                #-}
 
 -- WARNING: A copy of DA.Daml.LanguageServer, try to keep them in sync
 -- This version removes the daml: handling
@@ -10,34 +10,33 @@ module Development.IDE.LSP.LanguageServer
     ( runLanguageServer
     ) where
 
+import           Control.Concurrent.Async
+import           Control.Concurrent.Chan
+import           Control.Concurrent.Extra
+import           Control.Concurrent.STM
+import           Control.Exception.Safe
+import           Control.Monad.Extra
+import           Data.Default
+import           Data.Maybe
+import qualified Data.Set                                as Set
+import qualified Data.Text                               as T
+import           Development.IDE.Core.FileStore
+import           Development.IDE.Core.IdeConfiguration
+import           Development.IDE.Core.Shake
+import qualified Development.IDE.GHC.Util                as Ghcide
+import           Development.IDE.LSP.HoverDefinition
+import           Development.IDE.LSP.Notifications
+import           Development.IDE.LSP.Outline
+import           Development.IDE.LSP.Server
+import           Development.IDE.Types.Logger
+import           GHC.IO.Handle                           (hDuplicate)
+import qualified Language.Haskell.LSP.Control            as LSP
+import           Language.Haskell.LSP.Core               (LspFuncs (..))
+import qualified Language.Haskell.LSP.Core               as LSP
+import           Language.Haskell.LSP.Messages
 import           Language.Haskell.LSP.Types
 import           Language.Haskell.LSP.Types.Capabilities
-import           Development.IDE.LSP.Server
-import qualified Development.IDE.GHC.Util as Ghcide
-import qualified Language.Haskell.LSP.Control as LSP
-import qualified Language.Haskell.LSP.Core as LSP
-import Control.Concurrent.Chan
-import Control.Concurrent.Extra
-import Control.Concurrent.Async
-import Control.Concurrent.STM
-import Control.Exception.Safe
-import Data.Default
-import Data.Maybe
-import qualified Data.Set as Set
-import qualified Data.Text as T
-import GHC.IO.Handle (hDuplicate)
-import System.IO
-import Control.Monad.Extra
-
-import Development.IDE.Core.IdeConfiguration
-import Development.IDE.Core.Shake
-import Development.IDE.LSP.HoverDefinition
-import Development.IDE.LSP.Notifications
-import Development.IDE.LSP.Outline
-import Development.IDE.Types.Logger
-import Development.IDE.Core.FileStore
-import Language.Haskell.LSP.Core (LspFuncs(..))
-import Language.Haskell.LSP.Messages
+import           System.IO
 
 runLanguageServer
     :: forall config. (Show config)

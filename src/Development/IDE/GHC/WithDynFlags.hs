@@ -1,14 +1,14 @@
 module Development.IDE.GHC.WithDynFlags
-( WithDynFlags
-, evalWithDynFlags
-) where
+    ( WithDynFlags
+    , evalWithDynFlags
+    ) where
 
-import Control.Monad.Trans.Reader (ask, ReaderT(..))
-import GHC (DynFlags)
-import Control.Monad.IO.Class (MonadIO)
-import Exception (ExceptionMonad(..))
-import Control.Monad.Trans.Class (MonadTrans(..))
-import GhcPlugins (HasDynFlags(..))
+import           Control.Monad.IO.Class     (MonadIO)
+import           Control.Monad.Trans.Class  (MonadTrans (..))
+import           Control.Monad.Trans.Reader (ReaderT (..), ask)
+import           Exception                  (ExceptionMonad (..))
+import           GHC                        (DynFlags)
+import           GhcPlugins                 (HasDynFlags (..))
 
 -- | A monad transformer implementing the 'HasDynFlags' effect
 newtype WithDynFlags m a = WithDynFlags {withDynFlags :: ReaderT DynFlags m a}

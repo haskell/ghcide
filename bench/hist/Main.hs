@@ -39,27 +39,28 @@
 {-# LANGUAGE DerivingStrategies#-}
 {-# LANGUAGE TypeFamilies      #-}
 
-import Control.Applicative (Alternative (empty))
-import Control.Monad (when, forM, forM_, replicateM)
-import Data.Char (toLower)
-import Data.Foldable (find)
-import Data.Maybe (fromMaybe)
-import Data.Text (Text)
-import qualified Data.Text as T
-import Data.Yaml ((.!=), (.:?), FromJSON (..), ToJSON (..), Value (..), decodeFileThrow)
-import Development.Shake
-import Development.Shake.Classes (Binary, Hashable, NFData)
-import Experiments.Types (exampleToOptions, Example(..))
-import GHC.Exts (IsList (..))
-import GHC.Generics (Generic)
+import           Control.Applicative                       (Alternative (empty))
+import           Control.Monad                             (forM, forM_, replicateM, when)
+import           Data.Char                                 (toLower)
+import           Data.Foldable                             (find)
+import           Data.Maybe                                (fromMaybe)
+import           Data.Text                                 (Text)
+import qualified Data.Text                                 as T
+import           Data.Yaml                                 (FromJSON (..), ToJSON (..), Value (..), decodeFileThrow,
+                                                            (.!=), (.:?))
+import           Development.Shake
+import           Development.Shake.Classes                 (Binary, Hashable, NFData)
+import           Experiments.Types                         (Example (..), exampleToOptions)
+import           GHC.Exts                                  (IsList (..))
+import           GHC.Generics                              (Generic)
 import qualified Graphics.Rendering.Chart.Backend.Diagrams as E
-import Graphics.Rendering.Chart.Easy ((.=))
-import qualified Graphics.Rendering.Chart.Easy as E
-import Numeric.Natural (Natural)
-import System.Directory
-import System.FilePath
-import qualified Text.ParserCombinators.ReadP as P
-import Text.Read (Read (..), get, readMaybe, readP_to_Prec)
+import           Graphics.Rendering.Chart.Easy             ((.=))
+import qualified Graphics.Rendering.Chart.Easy             as E
+import           Numeric.Natural                           (Natural)
+import           System.Directory
+import           System.FilePath
+import qualified Text.ParserCombinators.ReadP              as P
+import           Text.Read                                 (Read (..), get, readMaybe, readP_to_Prec)
 
 config :: FilePath
 config = "bench/config.yaml"

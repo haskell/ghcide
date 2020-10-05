@@ -1,49 +1,49 @@
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE ConstraintKinds           #-}
 {-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE ImplicitParams #-}
-{-# LANGUAGE ImpredicativeTypes #-}
+{-# LANGUAGE ImplicitParams            #-}
+{-# LANGUAGE ImpredicativeTypes        #-}
+{-# LANGUAGE RankNTypes                #-}
 
 module Experiments
-( Bench(..)
-, BenchRun(..)
-, Config(..)
-, Verbosity(..)
-, CabalStack(..)
-, SetupResult(..)
-, Example(..)
-, experiments
-, configP
-, defConfig
-, output
-, setup
-, runBench
-, exampleToOptions
-) where
-import Control.Applicative.Combinators (skipManyTill)
-import Control.Concurrent
-import Control.Exception.Safe
-import Control.Monad.Extra
-import Control.Monad.IO.Class
-import Data.Aeson (Value(Null))
-import Data.Char (isDigit)
-import Data.List
-import Data.Maybe
-import qualified Data.Text as T
-import Data.Version
-import Development.IDE.Plugin.Test
-import Experiments.Types
-import Language.Haskell.LSP.Test
-import Language.Haskell.LSP.Types
-import Language.Haskell.LSP.Types.Capabilities
-import Numeric.Natural
-import Options.Applicative
-import System.Directory
-import System.Environment.Blank (getEnv)
-import System.FilePath ((</>))
-import System.Process
-import System.Time.Extra
-import Text.ParserCombinators.ReadP (readP_to_S)
+    ( Bench (..)
+    , BenchRun (..)
+    , CabalStack (..)
+    , Config (..)
+    , Example (..)
+    , SetupResult (..)
+    , Verbosity (..)
+    , configP
+    , defConfig
+    , exampleToOptions
+    , experiments
+    , output
+    , runBench
+    , setup
+    ) where
+import           Control.Applicative.Combinators         (skipManyTill)
+import           Control.Concurrent
+import           Control.Exception.Safe
+import           Control.Monad.Extra
+import           Control.Monad.IO.Class
+import           Data.Aeson                              (Value (Null))
+import           Data.Char                               (isDigit)
+import           Data.List
+import           Data.Maybe
+import qualified Data.Text                               as T
+import           Data.Version
+import           Development.IDE.Plugin.Test
+import           Experiments.Types
+import           Language.Haskell.LSP.Test
+import           Language.Haskell.LSP.Types
+import           Language.Haskell.LSP.Types.Capabilities
+import           Numeric.Natural
+import           Options.Applicative
+import           System.Directory
+import           System.Environment.Blank                (getEnv)
+import           System.FilePath                         ((</>))
+import           System.Process
+import           System.Time.Extra
+import           Text.ParserCombinators.ReadP            (readP_to_S)
 
 hygienicEdit :: (?hygienicP :: Position) => TextDocumentContentChangeEvent
 hygienicEdit =

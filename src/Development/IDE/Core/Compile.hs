@@ -1,99 +1,94 @@
 -- Copyright (c) 2019 The DAML Authors. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
 
+{-# LANGUAGE CPP        #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE CPP #-}
 #include "ghc-api-version.h"
 
 -- | Based on https://ghc.haskell.org/trac/ghc/wiki/Commentary/Compiler/API.
 --   Given a list of paths to find libraries, and a file to compile, produce a list of 'CoreModule' values.
 module Development.IDE.Core.Compile
-  ( TcModuleResult(..)
-  , RunSimplifier(..)
-  , compileModule
-  , parseModule
-  , parseHeader
-  , typecheckModule
-  , computePackageDeps
-  , addRelativeImport
-  , mkHiFileResultCompile
-  , mkHiFileResultNoCompile
-  , generateObjectCode
-  , generateByteCode
-  , generateHieAsts
-  , writeHieFile
-  , writeHiFile
-  , getModSummaryFromImports
-  , loadHieFile
-  , loadInterface
-  , loadDepModule
-  , loadModuleHome
-  , setupFinderCache
-  , getDocsBatch
-  , lookupName
-  ) where
+    ( RunSimplifier (..)
+    , TcModuleResult (..)
+    , addRelativeImport
+    , compileModule
+    , computePackageDeps
+    , generateByteCode
+    , generateHieAsts
+    , generateObjectCode
+    , getDocsBatch
+    , getModSummaryFromImports
+    , loadDepModule
+    , loadHieFile
+    , loadInterface
+    , loadModuleHome
+    , lookupName
+    , mkHiFileResultCompile
+    , mkHiFileResultNoCompile
+    , parseHeader
+    , parseModule
+    , setupFinderCache
+    , typecheckModule
+    , writeHiFile
+    , writeHieFile
+    ) where
 
-import Development.IDE.Core.RuleTypes
-import Development.IDE.Core.Preprocessor
-import Development.IDE.Core.Shake
-import Development.IDE.GHC.Error
-import Development.IDE.GHC.Warnings
-import Development.IDE.Types.Diagnostics
-import Development.IDE.GHC.Orphans()
-import Development.IDE.GHC.Util
-import qualified GHC.LanguageExtensions.Type as GHC
-import Development.IDE.Types.Options
-import Development.IDE.Types.Location
-
-import Language.Haskell.LSP.Types (DiagnosticTag(..))
-
-import LoadIface (loadModuleInterface)
-import DriverPhases
-import HscTypes
-import DriverPipeline hiding (unP)
-
-import qualified Parser
-import           Lexer
-#if MIN_GHC_API_VERSION(8,10,0)
-import Control.DeepSeq (force, rnf)
-#else
-import Control.DeepSeq (rnf)
-import ErrUtils
-#endif
-
-import           Finder
-import           Development.IDE.GHC.Compat hiding (parseModule, typecheckModule, writeHieFile)
-import qualified Development.IDE.GHC.Compat     as GHC
-import qualified Development.IDE.GHC.Compat     as Compat
-import           GhcMonad
-import           GhcPlugins                     as GHC hiding (fst3, (<>))
-import qualified HeaderInfo                     as Hdr
-import           HscMain                        (makeSimpleDetails, hscDesugar, hscTypecheckRename, hscSimplify, hscGenHardCode, hscInteractive)
-import           MkIface
-import           StringBuffer                   as SB
-import           TcRnMonad (finalSafeMode, TcGblEnv, tct_id, TcTyThing(AGlobal, ATcId), initTc, initIfaceLoad, tcg_th_coreplugins, tcg_binds)
-import           TcIface                        (typecheckIface)
-import           TidyPgm
-
-import Control.Exception.Safe
-import Control.Monad.Extra
-import Control.Monad.Except
-import Control.Monad.Trans.Except
-import Data.Bifunctor                           (first, second)
-import qualified Data.ByteString as BS
-import qualified Data.Text as T
+import           Control.Exception                 (evaluate)
+import           Control.Exception.Safe
+import           Control.Monad.Except
+import           Control.Monad.Trans.Except
+import           Data.Bifunctor                    (first, second)
+import qualified Data.ByteString                   as BS
 import           Data.IORef
 import           Data.List.Extra
+import qualified Data.Map.Strict                   as Map
 import           Data.Maybe
-import qualified Data.Map.Strict                          as Map
-import           System.FilePath
+import qualified Data.Text                         as T
+import           Data.Time                         (UTCTime)
+import           Development.IDE.Core.Preprocessor
+import           Development.IDE.Core.RuleTypes
+import           Development.IDE.Core.Shake
+import           Development.IDE.GHC.Compat        hiding (parseModule, typecheckModule, writeHieFile)
+import qualified Development.IDE.GHC.Compat        as Compat
+import qualified Development.IDE.GHC.Compat        as GHC
+import           Development.IDE.GHC.Error
+import           Development.IDE.GHC.Orphans       ()
+import           Development.IDE.GHC.Util
+import           Development.IDE.GHC.Warnings
+import           Development.IDE.Types.Diagnostics
+import           Development.IDE.Types.Location
+import           Development.IDE.Types.Options
+import           DriverPhases
+import           DriverPipeline                    hiding (unP)
+import           Exception                         (ExceptionMonad)
+import           Finder
+import qualified GHC.LanguageExtensions.Type       as GHC
+import           GhcMonad
+import           GhcPlugins                        as GHC hiding (fst3, (<>))
+import qualified HeaderInfo                        as Hdr
+import           HscMain                           (hscDesugar, hscGenHardCode, hscInteractive, hscSimplify,
+                                                    hscTypecheckRename, makeSimpleDetails)
+import           Language.Haskell.LSP.Types        (DiagnosticTag (..))
+import           Lexer
+import           LoadIface                         (loadModuleInterface)
+import           MkIface
+import qualified Parser
+import           StringBuffer                      as SB
 import           System.Directory
+import           System.FilePath
 import           System.IO.Extra
-import Control.Exception (evaluate)
-import Exception (ExceptionMonad)
-import TcEnv (tcLookup)
-import Data.Time (UTCTime)
+import           TcEnv                             (tcLookup)
+import           TcIface                           (typecheckIface)
+import           TcRnMonad                         (TcGblEnv, TcTyThing (AGlobal, ATcId), finalSafeMode, initIfaceLoad,
+                                                    initTc, tcg_binds, tcg_th_coreplugins, tct_id)
+import           TidyPgm
 
+#if MIN_GHC_API_VERSION(8,10,0)
+import           Control.DeepSeq                   (force, rnf)
+#else
+import           Control.DeepSeq                   (rnf)
+import           ErrUtils
+#endif
 
 -- | Given a string buffer, return the string (after preprocessing) and the 'ParsedModule'.
 parseModule
@@ -159,7 +154,7 @@ tcRnModule pmod = do
                                         hpm_src_files = pm_extra_src_files pmod,
                                         hpm_annotations = pm_annotations pmod }
   let rn_info = case mrn_info of
-        Just x -> x
+        Just x  -> x
         Nothing -> error "no renamed info tcRnModule"
   pure (TcModuleResult pmod rn_info tc_gbl_env False)
 
@@ -192,7 +187,7 @@ mkHiFileResultCompile session' tcm simplified_guts = catchErrs $ do
   (diags, obj_res) <- generateObjectCode session ms guts
   case obj_res of
     Nothing -> do
-#if MIN_GHC_API_VERSION(8,10,0) 
+#if MIN_GHC_API_VERSION(8,10,0)
       let !partial_iface = force (mkPartialIface session details simplified_guts)
       final_iface <- mkFullIface session partial_iface
 #else
@@ -515,7 +510,7 @@ getImportsParsed dflags (L loc parsed) = do
 
 withBootSuffix :: HscSource -> ModLocation -> ModLocation
 withBootSuffix HsBootFile = addBootSuffixLocnOut
-withBootSuffix _ = id
+withBootSuffix _          = id
 
 -- | Produce a module summary from a StringBuffer.
 getModSummaryFromBuffer
@@ -703,7 +698,7 @@ removePackageImports pkgs (L l h@HsModule {hsmodImports} ) = L l (h { hsmodImpor
     do_one_import (L l i@ImportDecl{ideclPkgQual}) =
       case PackageName . sl_fs <$> ideclPkgQual of
         Just pn | pn `elem` pkgs -> L l (i { ideclPkgQual = Nothing })
-        _ -> L l i
+        _                        -> L l i
     do_one_import l = l
 
 loadHieFile :: Compat.NameCacheUpdater -> FilePath -> IO GHC.HieFile
@@ -745,7 +740,7 @@ loadInterface session ms sourceMod objNeeded regen = do
                then liftIO $ findObjectLinkableMaybe (ms_mod ms) (ms_location ms)
                else pure Nothing
              let objUpToDate = not objNeeded || case linkable of
-                   Nothing -> False
+                   Nothing                -> False
                    Just (LM obj_time _ _) -> obj_time > ms_hs_date ms
              if objUpToDate
              then do
@@ -783,14 +778,14 @@ getDocsBatch _mod _names =
                else pure (Right ( Map.lookup name dmap
                                 , Map.findWithDefault Map.empty name amap))
     case res of
-        Just x -> return $ map (first prettyPrint) x
+        Just x  -> return $ map (first prettyPrint) x
         Nothing -> throwErrors errs
   where
     throwErrors = liftIO . throwIO . mkSrcErr
     compiled n =
       -- TODO: Find a more direct indicator.
       case nameSrcLoc n of
-        RealSrcLoc {} -> False
+        RealSrcLoc {}   -> False
         UnhelpfulLoc {} -> True
 
 fakeSpan :: RealSrcSpan
@@ -809,5 +804,5 @@ lookupName mod name = withSession $ \hsc_env -> liftIO $ do
         case tcthing of
             AGlobal thing    -> return thing
             ATcId{tct_id=id} -> return (AnId id)
-            _ -> panic "tcRnLookupName'"
+            _                -> panic "tcRnLookupName'"
     return res

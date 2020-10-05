@@ -6,11 +6,15 @@
 -- concrete choice of logging framework so users can plug in whatever
 -- framework they want to.
 module Development.IDE.Types.Logger
-  ( Priority(..)
-  , Logger(..)
-  , logError, logWarning, logInfo, logDebug, logTelemetry
-  , noLogging
-  ) where
+    ( Logger (..)
+    , Priority (..)
+    , logDebug
+    , logError
+    , logInfo
+    , logTelemetry
+    , logWarning
+    , noLogging
+    ) where
 
 import qualified Data.Text as T
 

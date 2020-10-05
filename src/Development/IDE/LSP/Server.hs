@@ -2,19 +2,18 @@
 -- SPDX-License-Identifier: Apache-2.0
 
 {-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RankNTypes            #-}
 module Development.IDE.LSP.Server
-  ( WithMessage(..)
-  , PartialHandlers(..)
-  ) where
+    ( PartialHandlers (..)
+    , WithMessage (..)
+    ) where
 
 
-import Data.Default
-
-import           Language.Haskell.LSP.Types
-import qualified Language.Haskell.LSP.Core as LSP
+import           Data.Default
+import           Development.IDE.Core.Service
+import qualified Language.Haskell.LSP.Core     as LSP
 import qualified Language.Haskell.LSP.Messages as LSP
-import Development.IDE.Core.Service
+import           Language.Haskell.LSP.Types
 
 data WithMessage c = WithMessage
     {withResponse :: forall m req resp . (Show m, Show req) =>

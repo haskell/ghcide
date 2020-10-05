@@ -1,45 +1,42 @@
 -- Copyright (c) 2019 The DAML Authors. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
 module Development.IDE.GHC.Error
-  (
-    -- * Producing Diagnostic values
-    diagFromErrMsgs
-  , diagFromErrMsg
-  , diagFromString
-  , diagFromStrings
-  , diagFromGhcException
-  , catchSrcErrors
+    ( -- * Producing Diagnostic values
+      catchSrcErrors
+    , diagFromErrMsg
+    , diagFromErrMsgs
+    , diagFromGhcException
+    , diagFromString
+    , diagFromStrings
+      -- * utilities working with spans
+    , isInsideSrcSpan
+    , noSpan
+    , realSpan
+    , realSrcLocToPosition
+    , realSrcSpanToRange
+    , srcSpanToFilename
+    , srcSpanToLocation
+    , srcSpanToRange
+    , zeroSpan
+      -- * utilities working with severities
+    , toDSeverity
+    ) where
 
-  -- * utilities working with spans
-  , srcSpanToLocation
-  , srcSpanToRange
-  , realSrcSpanToRange
-  , realSrcLocToPosition
-  , srcSpanToFilename
-  , zeroSpan
-  , realSpan
-  , isInsideSrcSpan
-  , noSpan
-
-  -- * utilities working with severities
-  , toDSeverity
-  ) where
-
-import                     Development.IDE.Types.Diagnostics as D
-import qualified           Data.Text as T
-import Data.Maybe
-import Development.IDE.Types.Location
-import Development.IDE.GHC.Orphans()
-import qualified FastString as FS
-import           GHC
 import           Bag
-import DynFlags
-import HscTypes
-import Panic
+import           Data.Maybe
+import qualified Data.Text                         as T
+import           Development.IDE.GHC.Orphans       ()
+import           Development.IDE.Types.Diagnostics as D
+import           Development.IDE.Types.Location
+import           DynFlags
 import           ErrUtils
+import           Exception                         (ExceptionMonad)
+import qualified FastString                        as FS
+import           GHC
+import           HscTypes
+import qualified Outputable                        as Out
+import           Panic
 import           SrcLoc
-import qualified Outputable                 as Out
-import Exception (ExceptionMonad)
 
 
 

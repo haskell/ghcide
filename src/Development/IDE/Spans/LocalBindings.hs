@@ -1,23 +1,24 @@
-{-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE DerivingStrategies #-}
 
 module Development.IDE.Spans.LocalBindings
-  ( Bindings
-  , getLocalScope
-  , getFuzzyScope
-  , bindings
-  ) where
+    ( Bindings
+    , bindings
+    , getFuzzyScope
+    , getLocalScope
+    ) where
 
 import           Control.DeepSeq
-import           Data.IntervalMap.FingerTree (IntervalMap, Interval (..))
-import qualified Data.IntervalMap.FingerTree as IM
-import qualified Data.Map as M
-import qualified Data.Set as S
-import qualified Data.List as L
-import           Development.IDE.GHC.Compat (RefMap, identType, identInfo, getScopeFromContext, Scope(..), Name, Type)
-import           Development.IDE.Types.Location
+import           Data.IntervalMap.FingerTree    (Interval (..), IntervalMap)
+import qualified Data.IntervalMap.FingerTree    as IM
+import qualified Data.List                      as L
+import qualified Data.Map                       as M
+import qualified Data.Set                       as S
+import           Development.IDE.GHC.Compat     (Name, RefMap, Scope (..), Type, getScopeFromContext, identInfo,
+                                                 identType)
 import           Development.IDE.GHC.Error
-import           SrcLoc
+import           Development.IDE.Types.Location
 import           NameEnv
+import           SrcLoc
 
 ------------------------------------------------------------------------------
 -- | Turn a 'RealSrcSpan' into an 'Interval'.

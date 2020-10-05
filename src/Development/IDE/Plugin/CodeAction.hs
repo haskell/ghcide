@@ -1,69 +1,66 @@
 -- Copyright (c) 2019 The DAML Authors. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
 
+{-# LANGUAGE CPP                   #-}
 {-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE CPP #-}
 #include "ghc-api-version.h"
 
 -- | Go to the definition of a variable.
 module Development.IDE.Plugin.CodeAction
-    (
-      plugin
-
-    -- * For haskell-language-server
+    ( plugin
+      -- * For haskell-language-server
     , codeAction
     , codeLens
-    , rulePackageExports
     , commandHandler
-
-    -- * For testing
+    , rulePackageExports
+      -- * For testing
     , blockCommandId
     , typeSignatureCommandId
     ) where
 
-import Control.Monad (join, guard)
-import Development.IDE.Plugin
-import Development.IDE.GHC.Compat
-import Development.IDE.Core.Rules
-import Development.IDE.Core.RuleTypes
-import Development.IDE.Core.Service
-import Development.IDE.Core.Shake
-import Development.IDE.GHC.Error
-import Development.IDE.GHC.Util
-import Development.IDE.LSP.Server
-import Development.IDE.Plugin.CodeAction.PositionIndexed
-import Development.IDE.Plugin.CodeAction.RuleTypes
-import Development.IDE.Plugin.CodeAction.Rules
-import Development.IDE.Types.Exports
-import Development.IDE.Types.Location
-import Development.IDE.Types.Options
-import Development.Shake (Rules)
-import qualified Data.HashMap.Strict as Map
-import qualified Language.Haskell.LSP.Core as LSP
-import Language.Haskell.LSP.VFS
-import Language.Haskell.LSP.Messages
-import Language.Haskell.LSP.Types
-import qualified Data.Rope.UTF16 as Rope
-import Data.Aeson.Types (toJSON, fromJSON, Value(..), Result(..))
-import Data.Char
-import Data.Maybe
-import Data.List.Extra
-import qualified Data.Text as T
-import Data.Tuple.Extra ((&&&))
-import HscTypes
-import Parser
-import Text.Regex.TDFA (mrAfter, (=~), (=~~))
-import Outputable (ppr, showSDocUnsafe)
-import DynFlags (xFlags, FlagSpec(..))
-import GHC.LanguageExtensions.Type (Extension)
-import Data.Function
-import Control.Arrow ((>>>))
-import Data.Functor
-import Control.Applicative ((<|>))
-import Safe (atMay)
-import Bag (isEmptyBag)
-import qualified Data.HashSet as Set
-import Control.Concurrent.Extra (threadDelay, readVar)
+import           Bag                                               (isEmptyBag)
+import           Control.Applicative                               ((<|>))
+import           Control.Arrow                                     ((>>>))
+import           Control.Concurrent.Extra                          (readVar, threadDelay)
+import           Control.Monad                                     (guard, join)
+import           Data.Aeson.Types                                  (Result (..), Value (..), fromJSON, toJSON)
+import           Data.Char
+import           Data.Function
+import           Data.Functor
+import qualified Data.HashMap.Strict                               as Map
+import qualified Data.HashSet                                      as Set
+import           Data.List.Extra
+import           Data.Maybe
+import qualified Data.Rope.UTF16                                   as Rope
+import qualified Data.Text                                         as T
+import           Data.Tuple.Extra                                  ((&&&))
+import           Development.IDE.Core.RuleTypes
+import           Development.IDE.Core.Rules
+import           Development.IDE.Core.Service
+import           Development.IDE.Core.Shake
+import           Development.IDE.GHC.Compat
+import           Development.IDE.GHC.Error
+import           Development.IDE.GHC.Util
+import           Development.IDE.LSP.Server
+import           Development.IDE.Plugin
+import           Development.IDE.Plugin.CodeAction.PositionIndexed
+import           Development.IDE.Plugin.CodeAction.RuleTypes
+import           Development.IDE.Plugin.CodeAction.Rules
+import           Development.IDE.Types.Exports
+import           Development.IDE.Types.Location
+import           Development.IDE.Types.Options
+import           Development.Shake                                 (Rules)
+import           DynFlags                                          (FlagSpec (..), xFlags)
+import           GHC.LanguageExtensions.Type                       (Extension)
+import           HscTypes
+import qualified Language.Haskell.LSP.Core                         as LSP
+import           Language.Haskell.LSP.Messages
+import           Language.Haskell.LSP.Types
+import           Language.Haskell.LSP.VFS
+import           Outputable                                        (ppr, showSDocUnsafe)
+import           Parser
+import           Safe                                              (atMay)
+import           Text.Regex.TDFA                                   (mrAfter, (=~), (=~~))
 
 plugin :: Plugin c
 plugin = codeActionPluginWithRules rules codeAction <> Plugin mempty setHandlersCodeLens
@@ -171,7 +168,7 @@ suggestAction dflags packageExports ideOptions parsedModule text diag = concat
     , removeRedundantConstraints text diag
     , suggestAddTypeAnnotationToSatisfyContraints text diag
     ] ++ concat
-    [  suggestConstraint pm text diag  
+    [  suggestConstraint pm text diag
     ++ suggestNewDefinition ideOptions pm text diag
     ++ suggestRemoveRedundantImport pm text diag
     ++ suggestNewImport packageExports pm diag
@@ -667,7 +664,7 @@ suggestConstraint parsedModule mContents diag@Diagnostic {..}
   | Just contents <- mContents
   , Just missingConstraint <- findMissingConstraint _message
   = let codeAction = if _message =~ ("the type signature for:" :: String)
-                        then suggestFunctionConstraint parsedModule 
+                        then suggestFunctionConstraint parsedModule
                         else suggestInstanceConstraint contents
      in codeAction diag missingConstraint
   | otherwise = []
@@ -769,14 +766,14 @@ suggestFunctionConstraint ParsedModule{pm_parsed_source = L _ HsModule{hsmodDecl
   | Just typeSignatureName <- findTypeSignatureName _message
   = let mExistingConstraints = findExistingConstraints _message
         newConstraint = buildNewConstraints missingConstraint mExistingConstraints
-     in case findRangeOfContextForFunctionNamed typeSignatureName of 
+     in case findRangeOfContextForFunctionNamed typeSignatureName of
        Just range -> [(actionTitle missingConstraint typeSignatureName, [TextEdit range newConstraint])]
        Nothing -> []
   | otherwise = []
     where
-      findRangeOfContextForFunctionNamed :: T.Text -> Maybe Range 
+      findRangeOfContextForFunctionNamed :: T.Text -> Maybe Range
       findRangeOfContextForFunctionNamed typeSignatureName = do
-          locatedType <- listToMaybe 
+          locatedType <- listToMaybe
               [ locatedType
               | L _ (SigD _ (TypeSig _ identifiers (HsWC _ (HsIB _ locatedType)))) <- hsmodDecls
               , any (`isSameName` T.unpack typeSignatureName) $ fmap unLoc identifiers

@@ -1,14 +1,14 @@
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE DeriveAnyClass            #-}
+{-# LANGUAGE DerivingStrategies        #-}
 -- Copyright (c) 2019 The DAML Authors. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
 
-{-# LANGUAGE ExistentialQuantification  #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE RecursiveDo #-}
-{-# LANGUAGE TypeFamilies               #-}
-{-# LANGUAGE ConstraintKinds            #-}
-{-# LANGUAGE PatternSynonyms            #-}
+{-# LANGUAGE ConstraintKinds           #-}
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE PatternSynonyms           #-}
+{-# LANGUAGE RankNTypes                #-}
+{-# LANGUAGE RecursiveDo               #-}
+{-# LANGUAGE TypeFamilies              #-}
 
 -- | A Shake implementation of the compiler service.
 --
@@ -23,109 +23,136 @@
 -- * The 'Values' type stores a map of keys to values. These values are
 --   always stored as real Haskell values, whereas Shake serialises all 'A' values
 --   between runs. To deserialise a Shake value, we just consult Values.
-module Development.IDE.Core.Shake(
-    IdeState, shakeExtras,
-    ShakeExtras(..), getShakeExtras, getShakeExtrasRules,
-    KnownTargets, Target(..), toKnownFiles,
-    IdeRule, IdeResult,
-    GetModificationTime(GetModificationTime, GetModificationTime_, missingFileDiagnostics),
-    shakeOpen, shakeShut,
-    shakeRestart,
-    shakeEnqueue,
-    shakeProfile,
-    use, useNoFile, uses, useWithStaleFast, useWithStaleFast', delayedAction,
-    FastResult(..),
-    use_, useNoFile_, uses_,
-    useWithStale, usesWithStale,
-    useWithStale_, usesWithStale_,
-    define, defineEarlyCutoff, defineOnDisk, needOnDisk, needOnDisks,
-    getDiagnostics, unsafeClearDiagnostics,
-    getHiddenDiagnostics,
-    IsIdeGlobal, addIdeGlobal, addIdeGlobalExtras, getIdeGlobalState, getIdeGlobalAction,
-    getIdeGlobalExtras,
-    getIdeOptions,
-    getIdeOptionsIO,
-    GlobalIdeOptions(..),
-    garbageCollect,
-    knownTargets,
-    setPriority,
-    sendEvent,
-    ideLogger,
-    actionLogger,
-    FileVersion(..),
-    Priority(..),
-    updatePositionMapping,
-    deleteValue,
-    OnDiskRule(..),
-    WithProgressFunc, WithIndefiniteProgressFunc,
-    ProgressEvent(..),
-    DelayedAction, mkDelayedAction,
-    IdeAction(..), runIdeAction,
-    mkUpdater,
-    -- Exposed for testing.
-    Q(..),
+module Development.IDE.Core.Shake
+    ( DelayedAction
+    , FastResult (..)
+    , FileVersion (..)
+    , GetModificationTime (GetModificationTime, GetModificationTime_, missingFileDiagnostics)
+    , GlobalIdeOptions (..)
+    , IdeAction (..)
+    , IdeResult
+    , IdeRule
+    , IdeState
+    , IsIdeGlobal
+    , KnownTargets
+    , OnDiskRule (..)
+    , Priority (..)
+    , ProgressEvent (..)
+    , ShakeExtras (..)
+    , Target (..)
+    , WithIndefiniteProgressFunc
+    , WithProgressFunc
+    , actionLogger
+    , addIdeGlobal
+    , addIdeGlobalExtras
+    , define
+    , defineEarlyCutoff
+    , defineOnDisk
+    , delayedAction
+    , deleteValue
+    , garbageCollect
+    , getDiagnostics
+    , getHiddenDiagnostics
+    , getIdeGlobalAction
+    , getIdeGlobalExtras
+    , getIdeGlobalState
+    , getIdeOptions
+    , getIdeOptionsIO
+    , getShakeExtras
+    , getShakeExtrasRules
+    , ideLogger
+    , knownTargets
+    , mkDelayedAction
+    , mkUpdater
+    , needOnDisk
+    , needOnDisks
+    , runIdeAction
+    , sendEvent
+    , setPriority
+    , shakeEnqueue
+    , shakeExtras
+    , shakeOpen
+    , shakeProfile
+    , shakeRestart
+    , shakeShut
+    , toKnownFiles
+    , unsafeClearDiagnostics
+    , updatePositionMapping
+    , use
+    , useNoFile
+    , useNoFile_
+    , useWithStale
+    , useWithStaleFast
+    , useWithStaleFast'
+    , useWithStale_
+    , use_
+    , uses
+    , usesWithStale
+    , usesWithStale_
+    , uses_
+      -- Exposed for testing.
+    , Q (..)
     ) where
 
-import           Development.Shake hiding (ShakeValue, doesFileExist, Info)
-import           Development.Shake.Database
-import           Development.Shake.Classes
-import           Development.Shake.Rule
-import           Data.HashMap.Strict (HashMap)
-import qualified Data.HashMap.Strict as HMap
-import qualified Data.Map.Strict as Map
-import qualified Data.ByteString.Char8 as BS
-import           Data.Dynamic
-import           Data.Maybe
-import           Data.Map.Strict (Map)
-import           Data.List.Extra (partition, takeEnd)
-import           Data.HashSet (HashSet)
-import qualified Data.Set as Set
-import qualified Data.Text as T
-import Data.Tuple.Extra
-import Data.Unique
-import Development.IDE.Core.Debouncer
-import Development.IDE.GHC.Compat (ModuleName, NameCacheUpdater(..), upNameCache )
-import Development.IDE.GHC.Orphans ()
-import Development.IDE.Core.PositionMapping
-import Development.IDE.Types.Action
-import Development.IDE.Types.Logger hiding (Priority)
-import qualified Development.IDE.Types.Logger as Logger
-import Language.Haskell.LSP.Diagnostics
-import qualified Data.SortedList as SL
-import           Development.IDE.Types.Diagnostics
-import Development.IDE.Types.Exports
-import Development.IDE.Types.Location
-import Development.IDE.Types.Options
 import           Control.Concurrent.Async
 import           Control.Concurrent.Extra
-import           Control.Concurrent.STM (readTVar, writeTVar, newTVarIO, atomically)
+import           Control.Concurrent.STM               (atomically, newTVarIO, readTVar, writeTVar)
 import           Control.DeepSeq
 import           Control.Exception.Extra
-import           System.Time.Extra
-import           Data.Typeable
-import qualified Language.Haskell.LSP.Core as LSP
-import qualified Language.Haskell.LSP.Messages as LSP
-import qualified Language.Haskell.LSP.Types as LSP
-import           System.FilePath hiding (makeRelative)
-import qualified Development.Shake as Shake
 import           Control.Monad.Extra
+import           Control.Monad.IO.Class
+import           Control.Monad.Reader
+import qualified Control.Monad.STM                    as STM
+import           Control.Monad.Trans.Maybe
+import qualified Data.ByteString.Char8                as BS
+import           Data.Dynamic
+import           Data.HashMap.Strict                  (HashMap)
+import qualified Data.HashMap.Strict                  as HMap
+import           Data.HashSet                         (HashSet)
+import qualified Data.HashSet                         as HSet
+import           Data.Hashable
+import           Data.IORef
+import           Data.Int                             (Int64)
+import           Data.List.Extra                      (partition, takeEnd)
+import           Data.Map.Strict                      (Map)
+import qualified Data.Map.Strict                      as Map
+import           Data.Maybe
+import qualified Data.Set                             as Set
+import qualified Data.SortedList                      as SL
+import qualified Data.Text                            as T
 import           Data.Time
+import           Data.Traversable
+import           Data.Tuple.Extra
+import           Data.Typeable
+import           Data.Unique
+import           Development.IDE.Core.Debouncer
+import           Development.IDE.Core.PositionMapping
+import           Development.IDE.GHC.Compat           (ModuleName, NameCacheUpdater (..), upNameCache)
+import           Development.IDE.GHC.Orphans          ()
+import           Development.IDE.Types.Action
+import           Development.IDE.Types.Diagnostics
+import           Development.IDE.Types.Exports
+import           Development.IDE.Types.Location
+import           Development.IDE.Types.Logger         hiding (Priority)
+import qualified Development.IDE.Types.Logger         as Logger
+import           Development.IDE.Types.Options
+import           Development.Shake                    hiding (Info, ShakeValue, doesFileExist)
+import qualified Development.Shake                    as Shake
+import           Development.Shake.Classes
+import           Development.Shake.Database
+import           Development.Shake.Rule
 import           GHC.Generics
+import qualified Language.Haskell.LSP.Core            as LSP
+import           Language.Haskell.LSP.Diagnostics
+import qualified Language.Haskell.LSP.Messages        as LSP
+import           Language.Haskell.LSP.Types
+import qualified Language.Haskell.LSP.Types           as LSP
+import           NameCache
+import           PrelInfo
+import           System.FilePath                      hiding (makeRelative)
 import           System.IO.Unsafe
-import Language.Haskell.LSP.Types
-import qualified Control.Monad.STM as STM
-import Control.Monad.IO.Class
-import Control.Monad.Reader
-import Control.Monad.Trans.Maybe
-import Data.Traversable
-import Data.Hashable
-
-import Data.IORef
-import NameCache
-import UniqSupply
-import PrelInfo
-import Data.Int (Int64)
-import qualified Data.HashSet as HSet
+import           System.Time.Extra
+import           UniqSupply
 
 -- information we stash inside the shakeExtra field
 data ShakeExtras = ShakeExtras

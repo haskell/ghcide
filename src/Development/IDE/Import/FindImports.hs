@@ -5,34 +5,31 @@
 #include "ghc-api-version.h"
 
 module Development.IDE.Import.FindImports
-  ( locateModule
-  , Import(..)
-  , ArtifactsLocation(..)
-  , modSummaryToArtifactsLocation
-  , isBootLocation
-  , mkImportDirs
-  ) where
+    ( ArtifactsLocation (..)
+    , Import (..)
+    , isBootLocation
+    , locateModule
+    , mkImportDirs
+    , modSummaryToArtifactsLocation
+    ) where
 
-import           Development.IDE.GHC.Error as ErrUtils
-import Development.IDE.GHC.Orphans()
-import Development.IDE.Types.Diagnostics
-import Development.IDE.Types.Location
-import Development.IDE.GHC.Compat
--- GHC imports
-import           FastString
-import qualified Module                      as M
-import           Packages
-import           Outputable                  (showSDoc, ppr, pprPanic)
-import           Finder
-import Control.DeepSeq
-
--- standard imports
+import           Control.DeepSeq
 import           Control.Monad.Extra
 import           Control.Monad.IO.Class
+import           Data.List                         (isSuffixOf)
+import           Data.Maybe
+import           Development.IDE.GHC.Compat
+import           Development.IDE.GHC.Error         as ErrUtils
+import           Development.IDE.GHC.Orphans       ()
+import           Development.IDE.Types.Diagnostics
+import           Development.IDE.Types.Location
+import           DriverPhases
+import           FastString
+import           Finder
+import qualified Module                            as M
+import           Outputable                        (ppr, pprPanic, showSDoc)
+import           Packages
 import           System.FilePath
-import DriverPhases
-import Data.Maybe
-import Data.List (isSuffixOf)
 
 data Import
   = FileImport !ArtifactsLocation

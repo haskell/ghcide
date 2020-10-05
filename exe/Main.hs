@@ -3,53 +3,54 @@
 {-# OPTIONS_GHC -Wno-dodgy-imports #-} -- GHC no longer exports def in GHC 8.6 and above
 {-# LANGUAGE TemplateHaskell #-}
 
-module Main(main) where
+module Main
+    ( main
+    ) where
 
-import Arguments
-import Control.Concurrent.Extra
-import Control.Monad.Extra
-import Control.Lens ( (^.) )
-import Data.Default
-import Data.List.Extra
-import Data.Maybe
-import qualified Data.Text as T
-import qualified Data.Text.IO as T
-import Data.Version
-import Development.IDE.Core.Debouncer
-import Development.IDE.Core.FileStore
-import Development.IDE.Core.OfInterest
-import Development.IDE.Core.Service
-import Development.IDE.Core.Rules
-import Development.IDE.Core.Shake
-import Development.IDE.Core.RuleTypes
-import Development.IDE.LSP.Protocol
-import Development.IDE.Types.Location
-import Development.IDE.Types.Diagnostics
-import Development.IDE.Types.Options
-import Development.IDE.Types.Logger
-import Development.IDE.Plugin
-import Development.IDE.Plugin.Completions as Completions
-import Development.IDE.Plugin.CodeAction as CodeAction
-import Development.IDE.Plugin.Test as Test
-import Development.IDE.Session
-import qualified Language.Haskell.LSP.Core as LSP
-import Language.Haskell.LSP.Messages
-import Language.Haskell.LSP.Types
-import Language.Haskell.LSP.Types.Lens (params, initializationOptions)
-import Development.IDE.LSP.LanguageServer
-import qualified System.Directory.Extra as IO
-import System.Environment
-import System.IO
-import System.Info
-import System.Exit
-import System.FilePath
-import System.Time.Extra
-import Paths_ghcide
-import Development.GitRev
-import qualified Data.HashMap.Strict as HashMap
-import qualified Data.Aeson as J
-
-import HIE.Bios.Cradle
+import           Arguments
+import           Control.Concurrent.Extra
+import           Control.Lens                       ((^.))
+import           Control.Monad.Extra
+import qualified Data.Aeson                         as J
+import           Data.Default
+import qualified Data.HashMap.Strict                as HashMap
+import           Data.List.Extra
+import           Data.Maybe
+import qualified Data.Text                          as T
+import qualified Data.Text.IO                       as T
+import           Data.Version
+import           Development.GitRev
+import           Development.IDE.Core.Debouncer
+import           Development.IDE.Core.FileStore
+import           Development.IDE.Core.OfInterest
+import           Development.IDE.Core.RuleTypes
+import           Development.IDE.Core.Rules
+import           Development.IDE.Core.Service
+import           Development.IDE.Core.Shake
+import           Development.IDE.LSP.LanguageServer
+import           Development.IDE.LSP.Protocol
+import           Development.IDE.Plugin
+import           Development.IDE.Plugin.CodeAction  as CodeAction
+import           Development.IDE.Plugin.Completions as Completions
+import           Development.IDE.Plugin.Test        as Test
+import           Development.IDE.Session
+import           Development.IDE.Types.Diagnostics
+import           Development.IDE.Types.Location
+import           Development.IDE.Types.Logger
+import           Development.IDE.Types.Options
+import           HIE.Bios.Cradle
+import qualified Language.Haskell.LSP.Core          as LSP
+import           Language.Haskell.LSP.Messages
+import           Language.Haskell.LSP.Types
+import           Language.Haskell.LSP.Types.Lens    (initializationOptions, params)
+import           Paths_ghcide
+import qualified System.Directory.Extra             as IO
+import           System.Environment
+import           System.Exit
+import           System.FilePath
+import           System.IO
+import           System.Info
+import           System.Time.Extra
 
 ghcideVersion :: IO String
 ghcideVersion = do

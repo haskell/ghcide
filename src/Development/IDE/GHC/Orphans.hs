@@ -8,7 +8,9 @@
 
 -- | Orphan instances for GHC.
 --   Note that the 'NFData' instances may not be law abiding.
-module Development.IDE.GHC.Orphans() where
+module Development.IDE.GHC.Orphans
+    (
+    ) where
 
 import           Bag
 import           Control.DeepSeq

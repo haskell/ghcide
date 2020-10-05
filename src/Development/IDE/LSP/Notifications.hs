@@ -8,31 +8,28 @@ module Development.IDE.LSP.Notifications
     ( setHandlersNotifications
     ) where
 
-import           Development.IDE.LSP.Server
-import qualified Language.Haskell.LSP.Core        as LSP
-import           Language.Haskell.LSP.Types
-import qualified Language.Haskell.LSP.Types       as LSP
-import qualified Language.Haskell.LSP.Messages    as LSP
-import qualified Language.Haskell.LSP.Types.Capabilities as LSP
-
+import           Control.Monad.Extra
+import qualified Data.Aeson                              as A
+import           Data.Foldable                           as F
+import qualified Data.HashMap.Strict                     as M
+import qualified Data.HashSet                            as S
+import           Data.Maybe
+import qualified Data.Text                               as Text
+import           Development.IDE.Core.FileExists         (modifyFileExists, watchedGlobs)
+import           Development.IDE.Core.FileStore          (setFileModified, setSomethingModified, typecheckParents)
 import           Development.IDE.Core.IdeConfiguration
+import           Development.IDE.Core.OfInterest
 import           Development.IDE.Core.Service
 import           Development.IDE.Core.Shake
+import           Development.IDE.LSP.Server
 import           Development.IDE.Types.Location
 import           Development.IDE.Types.Logger
 import           Development.IDE.Types.Options
-
-import           Control.Monad.Extra
-import qualified Data.Aeson                       as A
-import           Data.Foldable                    as F
-import           Data.Maybe
-import qualified Data.HashMap.Strict              as M
-import qualified Data.HashSet                     as S
-import qualified Data.Text                        as Text
-
-import           Development.IDE.Core.FileStore   (setSomethingModified, setFileModified, typecheckParents)
-import           Development.IDE.Core.FileExists  (modifyFileExists, watchedGlobs)
-import           Development.IDE.Core.OfInterest
+import qualified Language.Haskell.LSP.Core               as LSP
+import qualified Language.Haskell.LSP.Messages           as LSP
+import           Language.Haskell.LSP.Types
+import qualified Language.Haskell.LSP.Types              as LSP
+import qualified Language.Haskell.LSP.Types.Capabilities as LSP
 
 
 whenUriFile :: Uri -> (NormalizedFilePath -> IO ()) -> IO ()

@@ -6,10 +6,10 @@ module Development.IDE.LSP.Protocol
     ( pattern EventFileDiagnostics
     ) where
 
-import Development.IDE.Types.Diagnostics
-import Development.IDE.Types.Location
-import Language.Haskell.LSP.Messages
-import Language.Haskell.LSP.Types
+import           Development.IDE.Types.Diagnostics
+import           Development.IDE.Types.Location
+import           Language.Haskell.LSP.Messages
+import           Language.Haskell.LSP.Types
 
 ----------------------------------------------------------------------------------------------------
 -- Pretty printing

@@ -1,38 +1,40 @@
 -- Copyright (c) 2019 The DAML Authors. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
 
-{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeFamilies      #-}
 
 -- | Utilities and state for the files of interest - those which are currently
 --   open in the editor. The useful function is 'getFilesOfInterest'.
-module Development.IDE.Core.OfInterest(
-    ofInterestRules,
-    getFilesOfInterest, setFilesOfInterest, modifyFilesOfInterest,
-    kick, FileOfInterestStatus(..)
+module Development.IDE.Core.OfInterest
+    ( FileOfInterestStatus (..)
+    , getFilesOfInterest
+    , kick
+    , modifyFilesOfInterest
+    , ofInterestRules
+    , setFilesOfInterest
     ) where
 
-import Control.Concurrent.Extra
-import Data.Binary
-import Data.Hashable
-import Control.DeepSeq
-import GHC.Generics
-import Data.Typeable
-import qualified Data.ByteString.UTF8 as BS
-import Control.Exception
-import Data.HashMap.Strict (HashMap)
-import qualified Data.HashMap.Strict as HashMap
-import qualified Data.Text as T
-import Data.Tuple.Extra
-import Development.Shake
-import Control.Monad (void)
-
-import Development.IDE.Types.Exports
-import Development.IDE.Types.Location
-import Development.IDE.Types.Logger
-import Development.IDE.Core.RuleTypes
-import Development.IDE.Core.Shake
-import Data.Maybe (catMaybes)
+import           Control.Concurrent.Extra
+import           Control.DeepSeq
+import           Control.Exception
+import           Control.Monad                  (void)
+import           Data.Binary
+import qualified Data.ByteString.UTF8           as BS
+import           Data.HashMap.Strict            (HashMap)
+import qualified Data.HashMap.Strict            as HashMap
+import           Data.Hashable
+import           Data.Maybe                     (catMaybes)
+import qualified Data.Text                      as T
+import           Data.Tuple.Extra
+import           Data.Typeable
+import           Development.IDE.Core.RuleTypes
+import           Development.IDE.Core.Shake
+import           Development.IDE.Types.Exports
+import           Development.IDE.Types.Location
+import           Development.IDE.Types.Logger
+import           Development.Shake
+import           GHC.Generics
 
 newtype OfInterestVar = OfInterestVar (Var (HashMap NormalizedFilePath FileOfInterestStatus))
 instance IsIdeGlobal OfInterestVar

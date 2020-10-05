@@ -1,19 +1,19 @@
 -- Copyright (c) 2019 The DAML Authors. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
 
-module Development.IDE.GHC.Warnings(withWarnings) where
-
-import GhcMonad
-import ErrUtils
-import GhcPlugins as GHC hiding (Var)
+module Development.IDE.GHC.Warnings
+    ( withWarnings
+    ) where
 
 import           Control.Concurrent.Extra
 import           Control.Monad.Extra
-import qualified           Data.Text as T
-
-import           Development.IDE.Types.Diagnostics
-import Development.IDE.GHC.Util
+import qualified Data.Text                         as T
 import           Development.IDE.GHC.Error
+import           Development.IDE.GHC.Util
+import           Development.IDE.Types.Diagnostics
+import           ErrUtils
+import           GhcMonad
+import           GhcPlugins                        as GHC hiding (Var)
 
 
 -- | Take a GHC monadic action (e.g. @typecheckModule pm@ for some

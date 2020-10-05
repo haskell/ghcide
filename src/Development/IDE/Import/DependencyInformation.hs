@@ -2,60 +2,56 @@
 -- SPDX-License-Identifier: Apache-2.0
 
 module Development.IDE.Import.DependencyInformation
-  ( DependencyInformation(..)
-  , ModuleImports(..)
-  , RawDependencyInformation(..)
-  , NodeError(..)
-  , ModuleParseError(..)
-  , TransitiveDependencies(..)
-  , FilePathId(..)
-  , NamedModuleDep(..)
+    ( BootIdMap
+    , DependencyInformation (..)
+    , FilePathId (..)
+    , ModuleImports (..)
+    , ModuleParseError (..)
+    , NamedModuleDep (..)
+    , NodeError (..)
+    , PathIdMap
+    , RawDependencyInformation (..)
+    , TransitiveDependencies (..)
+    , emptyPathIdMap
+    , getPathId
+    , idToPath
+    , immediateReverseDependencies
+    , insertBootId
+    , insertImport
+    , lookupPathToId
+    , pathToId
+    , processDependencyInformation
+    , reachableModules
+    , transitiveDeps
+    , transitiveReverseDependencies
+    ) where
 
-  , PathIdMap
-  , emptyPathIdMap
-  , getPathId
-  , lookupPathToId
-  , insertImport
-  , pathToId
-  , idToPath
-  , reachableModules
-  , processDependencyInformation
-  , transitiveDeps
-  , transitiveReverseDependencies
-  , immediateReverseDependencies
-
-  , BootIdMap
-  , insertBootId
-  ) where
-
-import Control.DeepSeq
-import Data.Bifunctor
-import Data.Coerce
-import Data.List
-import Data.Tuple.Extra hiding (first, second)
-import Development.IDE.GHC.Orphans()
-import Data.Either
-import Data.Graph
-import Data.HashMap.Strict (HashMap)
-import qualified Data.HashMap.Strict as HMS
-import Data.List.NonEmpty (NonEmpty(..), nonEmpty)
-import qualified Data.List.NonEmpty as NonEmpty
-import Data.IntMap (IntMap)
-import qualified Data.IntMap.Strict as IntMap
-import qualified Data.IntMap.Lazy as IntMapLazy
-import Data.IntSet (IntSet)
-import qualified Data.IntSet as IntSet
-import Data.Maybe
-import Data.Set (Set)
-import qualified Data.Set as Set
-import GHC.Generics (Generic)
-
-import Development.IDE.Types.Diagnostics
-import Development.IDE.Types.Location
-import Development.IDE.Import.FindImports (ArtifactsLocation(..))
-
-import GHC
-import Module
+import           Control.DeepSeq
+import           Data.Bifunctor
+import           Data.Coerce
+import           Data.Either
+import           Data.Graph
+import           Data.HashMap.Strict                (HashMap)
+import qualified Data.HashMap.Strict                as HMS
+import           Data.IntMap                        (IntMap)
+import qualified Data.IntMap.Lazy                   as IntMapLazy
+import qualified Data.IntMap.Strict                 as IntMap
+import           Data.IntSet                        (IntSet)
+import qualified Data.IntSet                        as IntSet
+import           Data.List
+import           Data.List.NonEmpty                 (NonEmpty (..), nonEmpty)
+import qualified Data.List.NonEmpty                 as NonEmpty
+import           Data.Maybe
+import           Data.Set                           (Set)
+import qualified Data.Set                           as Set
+import           Data.Tuple.Extra                   hiding (first, second)
+import           Development.IDE.GHC.Orphans        ()
+import           Development.IDE.Import.FindImports (ArtifactsLocation (..))
+import           Development.IDE.Types.Diagnostics
+import           Development.IDE.Types.Location
+import           GHC
+import           GHC.Generics                       (Generic)
+import           Module
 
 -- | The imports for a given module.
 data ModuleImports = ModuleImports

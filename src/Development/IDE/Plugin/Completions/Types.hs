@@ -1,14 +1,13 @@
-module Development.IDE.Plugin.Completions.Types (
-  module Development.IDE.Plugin.Completions.Types
-) where
+module Development.IDE.Plugin.Completions.Types
+    ( module Development.IDE.Plugin.Completions.Types
+    ) where
 
 import           Control.DeepSeq
-import qualified Data.Map  as Map
-import qualified Data.Text as T
-import SrcLoc
-
-import Development.IDE.Spans.Common
-import Language.Haskell.LSP.Types (CompletionItemKind)
+import qualified Data.Map                     as Map
+import qualified Data.Text                    as T
+import           Development.IDE.Spans.Common
+import           Language.Haskell.LSP.Types   (CompletionItemKind)
+import           SrcLoc
 
 -- From haskell-ide-engine/src/Haskell/Ide/Engine/LSP/Completions.hs
 

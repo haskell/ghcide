@@ -4,37 +4,37 @@
 
 -- | Types and functions for working with source code locations.
 module Development.IDE.Types.Location
-    ( Location(..)
-    , noFilePath
-    , noRange
-    , Position(..)
-    , showPosition
-    , Range(..)
-    , LSP.Uri(..)
+    ( LSP.NormalizedFilePath
     , LSP.NormalizedUri
-    , LSP.toNormalizedUri
+    , LSP.Uri (..)
+    , LSP.fromNormalizedFilePath
     , LSP.fromNormalizedUri
-    , LSP.NormalizedFilePath
-    , fromUri
+    , LSP.toNormalizedUri
+    , Location (..)
+    , Position (..)
+    , Range (..)
     , emptyFilePath
     , emptyPathUri
-    , toNormalizedFilePath'
-    , LSP.fromNormalizedFilePath
     , filePathToUri'
-    , uriToFilePath'
+    , fromUri
+    , noFilePath
+    , noRange
     , readSrcSpan
+    , showPosition
+    , toNormalizedFilePath'
+    , uriToFilePath'
     ) where
 
-import Control.Applicative
-import Language.Haskell.LSP.Types (Location(..), Range(..), Position(..))
-import Control.Monad
-import Data.Hashable (Hashable(hash))
-import Data.String
-import FastString
-import qualified Language.Haskell.LSP.Types as LSP
-import SrcLoc as GHC
-import Text.ParserCombinators.ReadP as ReadP
-import Data.Maybe (fromMaybe)
+import           Control.Applicative
+import           Control.Monad
+import           Data.Hashable                (Hashable (hash))
+import           Data.Maybe                   (fromMaybe)
+import           Data.String
+import           FastString
+import           Language.Haskell.LSP.Types   (Location (..), Position (..), Range (..))
+import qualified Language.Haskell.LSP.Types   as LSP
+import           SrcLoc                       as GHC
+import           Text.ParserCombinators.ReadP as ReadP
 
 toNormalizedFilePath' :: FilePath -> LSP.NormalizedFilePath
 -- We want to keep empty paths instead of normalising them to "."
