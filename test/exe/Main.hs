@@ -1711,7 +1711,7 @@ addFunctionConstraintTests = let
     , "eq :: " <> constraint <> " => Pair a b -> Pair a b -> Bool"
     , "eq (Pair x y) (Pair x' y') = x == x' && y == y'"
     ]
-  
+
   incompleteConstraintSourceCodeWithNewlinesInTypeSignature :: T.Text -> T.Text
   incompleteConstraintSourceCodeWithNewlinesInTypeSignature constraint =
     T.unlines
@@ -2234,6 +2234,7 @@ findDefinitionAndHoverTests = let
   lstL43 = Position 47 12  ;  litL   = [ExpectHoverText ["[8391 :: Int, 6268]"]]
   outL45 = Position 49  3  ;  outSig = [ExpectHoverText ["outer", "Bool"], mkR 46 0 46 5]
   innL48 = Position 52  5  ;  innSig = [ExpectHoverText ["inner", "Char"], mkR 49 2 49 7]
+  holeL60 = Position 59 7  ;  hleInfo = [ExpectHoverText ["_ ::"]]
   cccL17 = Position 17 11  ;  docLink = [ExpectHoverText ["[Documentation](file:///"]]
   imported = Position 56 13 ; importedSig = getDocUri "Foo.hs" >>= \foo -> return [ExpectHoverText ["foo", "Foo", "Haddock"], mkL foo 5 0 5 3]
   reexported = Position 55 14 ; reexportedSig = getDocUri "Bar.hs" >>= \bar -> return [ExpectHoverText ["Bar", "Bar", "Haddock"], mkL bar 3 0 3 14]
@@ -2279,6 +2280,7 @@ findDefinitionAndHoverTests = let
   , test  no     broken docL41     constr        "type constraint in hover info   #283"
   , test  broken broken outL45     outSig        "top-level signature             #310"
   , test  broken broken innL48     innSig        "inner     signature             #310"
+  , test  no     yes    holeL60    hleInfo       "hole without internal name      #847"
   , test  no     yes    cccL17     docLink       "Haddock html links"
   , testM yes    yes    imported   importedSig   "Imported symbol"
   , testM yes    yes    reexported reexportedSig "Imported symbol (reexported)"
