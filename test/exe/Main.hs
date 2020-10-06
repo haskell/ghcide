@@ -47,6 +47,7 @@ import qualified System.IO.Extra
 import System.Directory
 import System.Exit (ExitCode(ExitSuccess))
 import System.Process.Extra (readCreateProcessWithExitCode, CreateProcess(cwd), proc)
+import System.Info.Extra (isWindows)
 import Test.QuickCheck
 import Test.QuickCheck.Instances ()
 import Test.Tasty
@@ -283,16 +284,17 @@ diagnosticTests = testGroup "diagnostics"
       let contentA = T.unlines [ "module ModuleA where" ]
       _ <- createDoc "ModuleA.hs" "haskell" contentA
       expectDiagnostics [("ModuleB.hs", [])]
-  , testSessionWait "add missing module (non workspace)" $ do
+  , ignoreInWindowsBecause "Broken in windows" $ testSessionWait "add missing module (non workspace)" $ do
+      tmpDir <- liftIO getTemporaryDirectory
       let contentB = T.unlines
             [ "module ModuleB where"
             , "import ModuleA ()"
             ]
-      _ <- createDoc "/tmp/ModuleB.hs" "haskell" contentB
-      expectDiagnostics [("/tmp/ModuleB.hs", [(DsError, (1, 7), "Could not find module")])]
+      _ <- createDoc (tmpDir </> "ModuleB.hs") "haskell" contentB
+      expectDiagnostics [(tmpDir </> "ModuleB.hs", [(DsError, (1, 7), "Could not find module")])]
       let contentA = T.unlines [ "module ModuleA where" ]
-      _ <- createDoc "/tmp/ModuleA.hs" "haskell" contentA
-      expectDiagnostics [("/tmp/ModuleB.hs", [])]
+      _ <- createDoc (tmpDir </> "ModuleA.hs") "haskell" contentA
+      expectDiagnostics [(tmpDir </> "ModuleB.hs", [])]
   , testSessionWait "cyclic module dependency" $ do
       let contentA = T.unlines
             [ "module ModuleA where"
@@ -586,7 +588,8 @@ watchedFilesTests = testGroup "watched files"
       liftIO $ length watchedFileRegs @?= 1
 
   , testSession' "non workspace file" $ \sessionDir -> do
-      liftIO $ writeFile (sessionDir </> "hie.yaml") "cradle: {direct: {arguments: [\"-i/tmp\", \"A\", \"WatchedFilesMissingModule\"]}}"
+      tmpDir <- liftIO getTemporaryDirectory
+      liftIO $ writeFile (sessionDir </> "hie.yaml") ("cradle: {direct: {arguments: [\"-i" <> tmpDir <> "\", \"A\", \"WatchedFilesMissingModule\"]}}")
       _doc <- createDoc "A.hs" "haskell" "{-# LANGUAGE NoImplicitPrelude#-}\nmodule A where\nimport WatchedFilesMissingModule"
       watchedFileRegs <- getWatchedFilesSubscriptionsUntil @PublishDiagnosticsNotification
 
@@ -1667,20 +1670,18 @@ addInstanceConstraintTests = let
 
 addFunctionConstraintTests :: TestTree
 addFunctionConstraintTests = let
-  missingConstraintSourceCode :: Maybe T.Text -> T.Text
-  missingConstraintSourceCode mConstraint =
-    let constraint = maybe "" (<> " => ") mConstraint
-     in T.unlines
+  missingConstraintSourceCode :: T.Text -> T.Text
+  missingConstraintSourceCode constraint =
+    T.unlines
     [ "module Testing where"
     , ""
     , "eq :: " <> constraint <> "a -> a -> Bool"
     , "eq x y = x == y"
     ]
 
-  incompleteConstraintSourceCode :: Maybe T.Text -> T.Text
-  incompleteConstraintSourceCode mConstraint =
-    let constraint = maybe "Eq a" (\c -> "(Eq a, " <> c <> ")") mConstraint
-     in T.unlines
+  incompleteConstraintSourceCode :: T.Text -> T.Text
+  incompleteConstraintSourceCode constraint =
+    T.unlines
     [ "module Testing where"
     , ""
     , "data Pair a b = Pair a b"
@@ -1689,16 +1690,37 @@ addFunctionConstraintTests = let
     , "eq (Pair x y) (Pair x' y') = x == x' && y == y'"
     ]
 
-  incompleteConstraintSourceCode2 :: Maybe T.Text -> T.Text
-  incompleteConstraintSourceCode2 mConstraint =
-    let constraint = maybe "(Eq a, Eq b)" (\c -> "(Eq a, Eq b, " <> c <> ")") mConstraint
-     in T.unlines
+  incompleteConstraintSourceCode2 :: T.Text -> T.Text
+  incompleteConstraintSourceCode2 constraint =
+    T.unlines
     [ "module Testing where"
     , ""
     , "data Three a b c = Three a b c"
     , ""
     , "eq :: " <> constraint <> " => Three a b c -> Three a b c -> Bool"
     , "eq (Three x y z) (Three x' y' z') = x == x' && y == y' && z == z'"
+    ]
+
+  incompleteConstraintSourceCodeWithExtraCharsInContext :: T.Text -> T.Text
+  incompleteConstraintSourceCodeWithExtraCharsInContext constraint =
+    T.unlines
+    [ "module Testing where"
+    , ""
+    , "data Pair a b = Pair a b"
+    , ""
+    , "eq :: " <> constraint <> " => Pair a b -> Pair a b -> Bool"
+    , "eq (Pair x y) (Pair x' y') = x == x' && y == y'"
+    ]
+  
+  incompleteConstraintSourceCodeWithNewlinesInTypeSignature :: T.Text -> T.Text
+  incompleteConstraintSourceCodeWithNewlinesInTypeSignature constraint =
+    T.unlines
+    [ "module Testing where"
+    , "data Pair a b = Pair a b"
+    , "eq "
+    , "    :: " <> constraint
+    , "    => Pair a b -> Pair a b -> Bool"
+    , "eq (Pair x y) (Pair x' y') = x == x' && y == y'"
     ]
 
   check :: T.Text -> T.Text -> T.Text -> TestTree
@@ -1714,16 +1736,24 @@ addFunctionConstraintTests = let
   in testGroup "add function constraint"
   [ check
     "Add `Eq a` to the context of the type signature for `eq`"
-    (missingConstraintSourceCode Nothing)
-    (missingConstraintSourceCode $ Just "Eq a")
+    (missingConstraintSourceCode "")
+    (missingConstraintSourceCode "Eq a => ")
   , check
     "Add `Eq b` to the context of the type signature for `eq`"
-    (incompleteConstraintSourceCode Nothing)
-    (incompleteConstraintSourceCode $ Just "Eq b")
+    (incompleteConstraintSourceCode "Eq a")
+    (incompleteConstraintSourceCode "(Eq a, Eq b)")
   , check
     "Add `Eq c` to the context of the type signature for `eq`"
-    (incompleteConstraintSourceCode2 Nothing)
-    (incompleteConstraintSourceCode2 $ Just "Eq c")
+    (incompleteConstraintSourceCode2 "(Eq a, Eq b)")
+    (incompleteConstraintSourceCode2 "(Eq a, Eq b, Eq c)")
+  , check
+    "Add `Eq b` to the context of the type signature for `eq`"
+    (incompleteConstraintSourceCodeWithExtraCharsInContext "( Eq a )")
+    (incompleteConstraintSourceCodeWithExtraCharsInContext "(Eq a, Eq b)")
+  , check
+    "Add `Eq b` to the context of the type signature for `eq`"
+    (incompleteConstraintSourceCodeWithNewlinesInTypeSignature "(Eq a)")
+    (incompleteConstraintSourceCodeWithNewlinesInTypeSignature "(Eq a, Eq b)")
   ]
 
 removeRedundantConstraintsTests :: TestTree
@@ -2175,7 +2205,7 @@ findDefinitionAndHoverTests = let
   aaaL14 = Position 18 20  ;  aaa    = [mkR  11  0   11  3]
   dcL7   = Position 11 11  ;  tcDC   = [mkR   7 23    9 16]
   dcL12  = Position 16 11  ;
-  xtcL5  = Position  9 11  ;  xtc    = [ExpectExternFail,   ExpectHoverText ["Int", "Defined in 'GHC.Types'"]]
+  xtcL5  = Position  9 11  ;  xtc    = [ExpectExternFail,   ExpectHoverText ["Int", "Defined in ", "GHC.Types"]]
   tcL6   = Position 10 11  ;  tcData = [mkR   7  0    9 16, ExpectHoverText ["TypeConstructor", "GotoHover.hs:8:1"]]
   vvL16  = Position 20 12  ;  vv     = [mkR  20  4   20  6]
   opL16  = Position 20 15  ;  op     = [mkR  21  2   21  4]
@@ -2185,7 +2215,7 @@ findDefinitionAndHoverTests = let
   xvL20  = Position 24  8  ;  xvMsg  = [ExpectExternFail,   ExpectHoverText ["pack", ":: String -> Text", "Data.Text"]]
   clL23  = Position 27 11  ;  cls    = [mkR  25  0   26 20, ExpectHoverText ["MyClass", "GotoHover.hs:26:1"]]
   clL25  = Position 29  9
-  eclL15 = Position 19  8  ;  ecls   = [ExpectExternFail, ExpectHoverText ["Num", "Defined in 'GHC.Num'"]]
+  eclL15 = Position 19  8  ;  ecls   = [ExpectExternFail, ExpectHoverText ["Num", "Defined in ", "GHC.Num"]]
   dnbL29 = Position 33 18  ;  dnb    = [ExpectHoverText [":: ()"],   mkR  33 12   33 21]
   dnbL30 = Position 34 23
   lcbL33 = Position 37 26  ;  lcb    = [ExpectHoverText [":: Char"], mkR  37 26   37 27]
@@ -2266,7 +2296,7 @@ checkFileCompiles fp =
 
 pluginSimpleTests :: TestTree
 pluginSimpleTests =
-  testSessionWait "simple plugin" $ do
+  ignoreInWindowsAndGHCGreaterThan86 $ testSessionWait "simple plugin" $ do
     let content =
           T.unlines
             [ "{-# OPTIONS_GHC -fplugin GHC.TypeLits.KnownNat.Solver #-}"
@@ -2289,7 +2319,7 @@ pluginSimpleTests =
 
 pluginParsedResultTests :: TestTree
 pluginParsedResultTests =
-  testSessionWait "parsedResultAction plugin" $ do
+  ignoreInWindowsAndGHCGreaterThan86 $ testSessionWait "parsedResultAction plugin" $ do
     let content =
           T.unlines
             [ "{-# LANGUAGE DuplicateRecordFields, TypeApplications, FlexibleContexts, DataKinds, MultiParamTypeClasses, TypeSynonymInstances, FlexibleInstances #-}"
@@ -2300,12 +2330,12 @@ pluginParsedResultTests =
             , "display c = c.name"
             ]
     _ <- createDoc "Testing.hs" "haskell" content
-    expectNoMoreDiagnostics 1
+    expectNoMoreDiagnostics 2
 
 cppTests :: TestTree
 cppTests =
   testGroup "cpp"
-    [ testCase "cpp-error" $ do
+    [ ignoreInWindowsBecause "Throw a lsp session time out in windows for ghc-8.8 and is broken for other versions" $ testCase "cpp-error" $ do
         let content =
               T.unlines
                 [ "{-# LANGUAGE CPP #-}",
@@ -2458,7 +2488,7 @@ thTests =
         _ <- createDoc "A.hs" "haskell" sourceA
         _ <- createDoc "B.hs" "haskell" sourceB
         expectDiagnostics [ ( "B.hs", [(DsWarning, (4, 0), "Top-level binding with no type signature: main :: IO ()")] ) ]
-    , flip xfail "expect broken (#614)" $ testCase "findsTHnewNameConstructor" $ withoutStackEnv $ runWithExtraFiles "THNewName" $ \dir -> do
+    , testCase "findsTHnewNameConstructor" $ withoutStackEnv $ runWithExtraFiles "THNewName" $ \dir -> do
 
     -- This test defines a TH value with the meaning "data A = A" in A.hs
     -- Loads and export the template in B.hs
@@ -2660,6 +2690,12 @@ nonLocalCompletionTests =
       ["{-# OPTIONS_GHC -Wunused-binds #-}", "module A () where", "f = Prelude.hea"]
       (Position 2 15)
       [ ("head", CiFunction, True, True)
+      ],
+    completionTest
+      "duplicate import"
+      ["module A where", "import Data.List", "import Data.List", "f = perm"]
+      (Position 3 8)
+      [ ("permutations", CiFunction, False, False)
       ]
   ]
 
@@ -2940,6 +2976,17 @@ expectFailCabal :: String -> TestTree -> TestTree
 expectFailCabal _ = id
 #else
 expectFailCabal = expectFailBecause
+#endif
+
+ignoreInWindowsBecause :: String -> TestTree -> TestTree
+ignoreInWindowsBecause = if isWindows then ignoreTestBecause else flip const
+
+ignoreInWindowsAndGHCGreaterThan86 :: TestTree -> TestTree
+#if MIN_GHC_API_VERSION(8,8,1)
+ignoreInWindowsAndGHCGreaterThan86 =
+    ignoreInWindowsBecause "tests are unreliable for windows and ghc greater than 8.6.5"
+#else
+ignoreInWindowsAndGHCGreaterThan86 = id
 #endif
 
 data Expect
@@ -3227,8 +3274,6 @@ ifaceErrorTest = testCase "iface-error-test-1" $ withoutStackEnv $ runWithExtraF
       ResponseMessage{_result=Right hidir} -> do
         hi_exists <- doesFileExist $ hidir </> "B.hi"
         assertBool ("Couldn't find B.hi in " ++ hidir) hi_exists
-        hie_exists <- doesFileExist $ hidir </> "B.hie"
-        assertBool ("Couldn't find B.hie in " ++ hidir) hie_exists
       _ -> assertFailure $ "Got malformed response for CustomMessage hidir: " ++ show res
 
     pdoc <- createDoc pPath "haskell" pSource
@@ -3372,9 +3417,10 @@ benchmarkTests =
             , Bench.repetitions = Just 3
             , Bench.buildTool = Bench.Stack
             } in
-    withResource Bench.setup id $ \_ -> testGroup "benchmark experiments"
+    withResource Bench.setup Bench.cleanUp $ \getResource -> testGroup "benchmark experiments"
     [ expectFailCabal "Requires stack" $ testCase (Bench.name e) $ do
-        res <- Bench.runBench runInDir e
+        Bench.SetupResult{Bench.benchDir} <- getResource
+        res <- Bench.runBench (runInDir benchDir) e
         assertBool "did not successfully complete 5 repetitions" $ Bench.success res
         | e <- Bench.experiments
         , Bench.name e /= "edit" -- the edit experiment does not ever fail
