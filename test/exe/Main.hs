@@ -2296,7 +2296,7 @@ checkFileCompiles fp =
 
 pluginSimpleTests :: TestTree
 pluginSimpleTests =
-  ignoreInWindowsAndGHCGreaterThan86 $ testSessionWait "simple plugin" $ do
+  ignoreInWindowsForGHC88And810 $ testSessionWait "simple plugin" $ do
     let content =
           T.unlines
             [ "{-# OPTIONS_GHC -fplugin GHC.TypeLits.KnownNat.Solver #-}"
@@ -2319,7 +2319,7 @@ pluginSimpleTests =
 
 pluginParsedResultTests :: TestTree
 pluginParsedResultTests =
-  ignoreInWindowsAndGHCGreaterThan86 $ testSessionWait "parsedResultAction plugin" $ do
+  ignoreInWindowsForGHC88And810 $ testSessionWait "parsedResultAction plugin" $ do
     let content =
           T.unlines
             [ "{-# LANGUAGE DuplicateRecordFields, TypeApplications, FlexibleContexts, DataKinds, MultiParamTypeClasses, TypeSynonymInstances, FlexibleInstances #-}"
@@ -2981,12 +2981,20 @@ expectFailCabal = expectFailBecause
 ignoreInWindowsBecause :: String -> TestTree -> TestTree
 ignoreInWindowsBecause = if isWindows then ignoreTestBecause else flip const
 
-ignoreInWindowsAndGHCGreaterThan86 :: TestTree -> TestTree
-#if MIN_GHC_API_VERSION(8,8,1)
-ignoreInWindowsAndGHCGreaterThan86 =
-    ignoreInWindowsBecause "tests are unreliable for windows and ghc greater than 8.6.5"
+ignoreInWindowsForGHC88And810 :: TestTree -> TestTree
+#if MIN_GHC_API_VERSION(8,8,1) && !MIN_GHC_API_VERSION(9,0,0)
+ignoreInWindowsForGHC88And810 =
+    ignoreInWindowsBecause "tests are unreliable in windows for ghc 8.8 and 8.10"
 #else
-ignoreInWindowsAndGHCGreaterThan86 = id
+ignoreInWindowsForGHC88And810 = id
+#endif
+
+ignoreInWindowsForGHC88 :: TestTree -> TestTree
+#if MIN_GHC_API_VERSION(8,8,1) && !MIN_GHC_API_VERSION(8,10,1)
+ignoreInWindowsForGHC88 =
+    ignoreInWindowsBecause "tests are unreliable in windows for ghc 8.8"
+#else
+ignoreInWindowsForGHC88 = id
 #endif
 
 data Expect
