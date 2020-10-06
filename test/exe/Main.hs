@@ -2503,7 +2503,7 @@ thTests =
 
 -- | test that TH is reevaluated on typecheck
 thReloadingTest :: TestTree
-thReloadingTest = testCase "reloading-th-test" $ withoutStackEnv $ runWithExtraFiles "TH" $ \dir -> do
+thReloadingTest = ignoreInWindowsForGHC88 $ testCase "reloading-th-test" $ withoutStackEnv $ runWithExtraFiles "TH" $ \dir -> do
 
     let aPath = dir </> "THA.hs"
         bPath = dir </> "THB.hs"
