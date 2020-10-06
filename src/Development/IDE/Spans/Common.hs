@@ -6,6 +6,7 @@
 module Development.IDE.Spans.Common (
   showGhc
 , showName
+, showUnqualifiedName
 , safeTyThingId
 , safeTyThingType
 , SpanDoc(..)
@@ -29,6 +30,7 @@ import DynFlags
 import ConLike
 import DataCon
 import Var
+import Name (pprNameUnqualified)
 import NameEnv
 
 import qualified Documentation.Haddock.Parser as H
@@ -45,6 +47,12 @@ showName :: Outputable a => a -> T.Text
 showName = T.pack . prettyprint
   where
     prettyprint x = renderWithStyle unsafeGlobalDynFlags (ppr x) style
+    style = mkUserStyle unsafeGlobalDynFlags neverQualify AllTheWay
+
+showUnqualifiedName :: Name -> T.Text
+showUnqualifiedName = T.pack . prettyprint
+  where
+    prettyprint x = renderWithStyle unsafeGlobalDynFlags (pprNameUnqualified x) style
     style = mkUserStyle unsafeGlobalDynFlags neverQualify AllTheWay
 
 -- From haskell-ide-engine/src/Haskell/Ide/Engine/Support/HieExtras.hs

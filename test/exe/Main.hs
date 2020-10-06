@@ -2184,7 +2184,9 @@ findDefinitionAndHoverTests = let
   mkFindTests tests = testGroup "get"
     [ testGroup "definition" $ mapMaybe fst tests
     , testGroup "hover"      $ mapMaybe snd tests
-    , checkFileCompiles sourceFilePath
+    , checkFileCompiles sourceFilePath $
+        expectDiagnostics
+          [ ( "GotoHover.hs", [(DsError, (59, 7), "Found hole: _")]) ]
     , testGroup "type-definition" typeDefinitionTests ]
 
   typeDefinitionTests = [ tst (getTypeDefinitions, checkDefs) aaaL14 (pure tcData) "Saturated data con"
@@ -2290,11 +2292,11 @@ findDefinitionAndHoverTests = let
         broken = Just . (`xfail` "known broken")
         no = const Nothing -- don't run this test at all
 
-checkFileCompiles :: FilePath -> TestTree
-checkFileCompiles fp =
+checkFileCompiles :: FilePath -> Session () -> TestTree
+checkFileCompiles fp diag =
   testSessionWithExtraFiles "hover" ("Does " ++ fp ++ " compile") $ \dir -> do
     void (openTestDataDoc (dir </> fp))
-    expectNoMoreDiagnostics 0.5
+    diag
 
 pluginSimpleTests :: TestTree
 pluginSimpleTests =
