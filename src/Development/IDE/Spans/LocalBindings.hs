@@ -11,16 +11,18 @@ module Development.IDE.Spans.LocalBindings
   ) where
 
 import           Control.DeepSeq
+import           Control.Monad
+import           Data.Bifunctor
 import           Data.IntervalMap.FingerTree (IntervalMap, Interval (..))
 import qualified Data.IntervalMap.FingerTree as IM
+import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Set as S
-import qualified Data.List as L
 import           Development.IDE.GHC.Compat (RefMap, identType, identInfo, getScopeFromContext, getBindSiteFromContext, Scope(..), Name, Type)
-import           Development.IDE.Types.Location
 import           Development.IDE.GHC.Error
-import           SrcLoc
+import           Development.IDE.Types.Location
 import           NameEnv
+import           SrcLoc
 
 ------------------------------------------------------------------------------
 -- | Turn a 'RealSrcSpan' into an 'Interval'.
@@ -31,44 +33,39 @@ realSrcSpanToInterval rss =
     (realSrcLocToPosition $ realSrcSpanEnd   rss)
 
 bindings :: RefMap -> Bindings
-bindings ref = Bindings (localBindings ref) (bindSites ref)
+bindings = uncurry Bindings . localBindings
 
 ------------------------------------------------------------------------------
 -- | Compute which identifiers are in scope at every point in the AST. Use
 -- 'getLocalScope' to find the results.
 localBindings
     :: RefMap
-    -> IntervalMap Position (NameEnv (Name, Maybe Type))
-localBindings refmap = L.foldl' (flip (uncurry IM.insert)) mempty  $ do
+    -> ( IntervalMap Position (NameEnv (Name, Maybe Type))
+       , IntervalMap Position (NameEnv (Name, Maybe Type))
+       )
+localBindings refmap = bimap mk mk $ unzip $ do
   (ident, refs)      <- M.toList refmap
   Right name         <- pure ident
   (_, ident_details) <- refs
   let ty = identType ident_details
-  info        <- S.toList $ identInfo ident_details
-  Just scopes <- pure $ getScopeFromContext info
-  scope <- scopes >>= \case
-    LocalScope scope -> pure $ realSrcSpanToInterval scope
-    _ -> []
-  pure ( scope
-       , unitNameEnv name (name,ty)
-       )
-
-------------------------------------------------------------------------------
--- | Compute which identifiers are in scope at every point in the AST. Use
--- 'getDefiningBindings' to find the results.
-bindSites
-    :: RefMap
-    -> IntervalMap Position (NameEnv (Name, Maybe Type))
-bindSites refmap = foldr (uncurry IM.insert) mempty $ do
-  (ident, refs)      <- M.toList refmap
-  Right name         <- pure ident
-  (_, ident_details) <- refs
-  let ty = identType ident_details
-  info        <- S.toList $ identInfo ident_details
-  Just scope <- pure $ getBindSiteFromContext info
-  pure ( realSrcSpanToInterval scope
-       , unitNameEnv name (name,ty)
-       )
+  info <- S.toList $ identInfo ident_details
+  pure
+    ( do
+        Just scopes <- pure $ getScopeFromContext info
+        scope <- scopes >>= \case
+          LocalScope scope -> pure $ realSrcSpanToInterval scope
+          _ -> []
+        pure ( scope
+            , unitNameEnv name (name,ty)
+            )
+    , do
+        Just scope <- pure $ getBindSiteFromContext info
+        pure ( realSrcSpanToInterval scope
+            , unitNameEnv name (name,ty)
+            )
+    )
+  where
+    mk = L.foldl' (flip (uncurry IM.insert)) mempty . join
 
 ------------------------------------------------------------------------------
 -- | The available bindings at every point in a Haskell tree.
