@@ -6,7 +6,7 @@
 module Development.IDE.Spans.Common (
   showGhc
 , showName
-, showUnqualifiedName
+, showNameWithoutUniques
 , safeTyThingId
 , safeTyThingType
 , SpanDoc(..)
@@ -30,7 +30,6 @@ import DynFlags
 import ConLike
 import DataCon
 import Var
-import Name (pprNameUnqualified)
 import NameEnv
 
 import qualified Documentation.Haddock.Parser as H
@@ -49,11 +48,12 @@ showName = T.pack . prettyprint
     prettyprint x = renderWithStyle unsafeGlobalDynFlags (ppr x) style
     style = mkUserStyle unsafeGlobalDynFlags neverQualify AllTheWay
 
-showUnqualifiedName :: Name -> T.Text
-showUnqualifiedName = T.pack . prettyprint
+showNameWithoutUniques :: Outputable a => a -> T.Text
+showNameWithoutUniques = T.pack . prettyprint
   where
-    prettyprint x = renderWithStyle unsafeGlobalDynFlags (pprNameUnqualified x) style
-    style = mkUserStyle unsafeGlobalDynFlags neverQualify AllTheWay
+    dyn = unsafeGlobalDynFlags `gopt_set` Opt_SuppressUniques
+    prettyprint x = renderWithStyle dyn (ppr x) style
+    style = mkUserStyle dyn neverQualify AllTheWay
 
 -- From haskell-ide-engine/src/Haskell/Ide/Engine/Support/HieExtras.hs
 safeTyThingType :: TyThing -> Maybe Type
