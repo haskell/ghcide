@@ -1,5 +1,4 @@
 {-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE LambdaCase         #-}
 
 module Development.IDE.Spans.LocalBindings
   ( Bindings
