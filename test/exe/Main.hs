@@ -1711,7 +1711,7 @@ addFunctionConstraintTests = let
     , "eq :: " <> constraint <> " => Pair a b -> Pair a b -> Bool"
     , "eq (Pair x y) (Pair x' y') = x == x' && y == y'"
     ]
-  
+
   incompleteConstraintSourceCodeWithNewlinesInTypeSignature :: T.Text -> T.Text
   incompleteConstraintSourceCodeWithNewlinesInTypeSignature constraint =
     T.unlines
@@ -3477,6 +3477,7 @@ clientSettingsTest = testGroup "client settings handling"
             logNot <- skipManyTill anyMessage loggingNotification
             isMessagePresent "Updating Not supported" [getLogMessage logNot]
     ,   testSession "ghcide restarts shake session on config changes" $ do
+            void $ skipManyTill anyMessage $ message @RegisterCapabilityRequest
             sendNotification WorkspaceDidChangeConfiguration (DidChangeConfigurationParams (toJSON ("" :: String)))
             nots <- skipManyTill anyMessage $ count 3 loggingNotification
             isMessagePresent "Restarting build session" (map getLogMessage nots)
