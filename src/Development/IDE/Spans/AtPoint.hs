@@ -41,7 +41,6 @@ import           Data.Maybe
 import           Data.List
 import qualified Data.Text as T
 import qualified Data.Map as M
-import qualified Text.Regex.TDFA as R
 
 import Data.Either
 import Data.List.Extra (dropEnd1)
