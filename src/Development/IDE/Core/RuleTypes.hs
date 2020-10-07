@@ -27,7 +27,7 @@ import           Development.Shake
 import           GHC.Generics                             (Generic)
 
 import Module (InstalledUnitId)
-import HscTypes (ModGuts, hm_iface, HomeModInfo)
+import HscTypes (ModGuts, hm_iface, HomeModInfo, hm_linkable)
 
 import           Development.IDE.Spans.Common
 import           Development.IDE.Spans.LocalBindings
@@ -35,6 +35,10 @@ import           Development.IDE.Import.FindImports (ArtifactsLocation)
 import Data.ByteString (ByteString)
 import Language.Haskell.LSP.Types (NormalizedFilePath)
 import TcRnMonad (TcGblEnv)
+import qualified Data.ByteString.Char8 as BS
+
+data LinkableType = ObjectLinkable | BCOLinkable
+  deriving (Eq,Ord,Show)
 
 -- NOTATION
 --   Foo+ means Foo for the dependencies
@@ -53,9 +57,6 @@ type instance RuleResult GetDependencyInformation = DependencyInformation
 type instance RuleResult GetDependencies = TransitiveDependencies
 
 type instance RuleResult GetModuleGraph = DependencyInformation
-
--- | Does this module need object code?
-type instance RuleResult NeedsObjectCode = Bool
 
 data GetKnownTargets = GetKnownTargets
   deriving (Show, Generic, Eq, Ord)
@@ -111,7 +112,12 @@ data HiFileResult = HiFileResult
     }
 
 hiFileFingerPrint :: HiFileResult -> ByteString
-hiFileFingerPrint = fingerprintToBS . getModuleHash . hirModIface
+hiFileFingerPrint hfr = ifaceBS <> linkableBS
+  where
+    ifaceBS = fingerprintToBS . getModuleHash . hirModIface $ hfr -- will always be two bytes
+    linkableBS = case hm_linkable $ hirHomeMod hfr of
+      Nothing -> ""
+      Just l -> BS.pack $ show $ linkableTime l
 
 hirModIface :: HiFileResult -> ModIface
 hirModIface = hm_iface . hirHomeMod
@@ -213,11 +219,14 @@ instance Hashable GetLocatedImports
 instance NFData   GetLocatedImports
 instance Binary   GetLocatedImports
 
-data NeedsObjectCode = NeedsObjectCode
+-- | Does this module need to be compiled?
+type instance RuleResult NeedsCompilation = Bool
+
+data NeedsCompilation = NeedsCompilation
     deriving (Eq, Show, Typeable, Generic)
-instance Hashable NeedsObjectCode
-instance NFData   NeedsObjectCode
-instance Binary   NeedsObjectCode
+instance Hashable NeedsCompilation
+instance NFData   NeedsCompilation
+instance Binary   NeedsCompilation
 
 data GetDependencyInformation = GetDependencyInformation
     deriving (Eq, Show, Typeable, Generic)

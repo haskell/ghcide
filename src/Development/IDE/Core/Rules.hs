@@ -96,6 +96,8 @@ import qualified Data.HashSet as HashSet
 import qualified Data.HashMap.Strict as HM
 import TcRnMonad (tcg_dependent_files)
 import Data.IORef
+import Control.Concurrent.Extra
+import Module
 
 -- | This is useful for rules to convert rules that can only produce errors or
 -- a result into the more general IdeResult type that supports producing
@@ -606,8 +608,11 @@ typeCheckRuleDefinition
 typeCheckRuleDefinition hsc pm = do
   setPriority priorityTypeCheck
   IdeOptions { optDefer = defer } <- getIdeOptions
+
+  linkables_to_keep <- currentLinkables
+
   addUsageDependencies $ fmap (second (fmap snd)) $ liftIO $
-    typecheckModule defer hsc pm
+    typecheckModule defer hsc (Just linkables_to_keep) pm
   where
     addUsageDependencies :: Action (a, Maybe TcModuleResult) -> Action (a, Maybe TcModuleResult)
     addUsageDependencies a = do
@@ -616,6 +621,16 @@ typeCheckRuleDefinition hsc pm = do
         used_files <- liftIO $ readIORef $ tcg_dependent_files $ tmrTypechecked tc
         void $ uses_ GetModificationTime (map toNormalizedFilePath' used_files)
       return r
+
+-- | Get all the linkables stored in the graph, i.e. the ones we *do not* need to unload.
+-- Doesn't actually contain the code, since we don't need it to unload
+currentLinkables :: Action [Linkable]
+currentLinkables = do
+    ShakeExtras{compiledLinkables} <- getShakeExtras
+    hm <- liftIO $ readVar compiledLinkables
+    pure $ map go $ moduleEnvToList hm
+  where
+    go (mod, time) = LM time mod []
 
 -- A local rule type to get caching. We want to use newCache, but it has
 -- thread killed exception issues, so we lift it to a full rule.
@@ -691,8 +706,8 @@ getModIfaceFromDiskRule = defineEarlyCutoff $ \GetModIfaceFromDisk f -> do
       Nothing -> return (Nothing, (diags_session, Nothing))
       Just session -> do
         sourceModified <- use_ IsHiFileStable f
-        needsObj <- use_ NeedsObjectCode f
-        r <- loadInterface (hscEnv session) ms sourceModified needsObj (regenerateHiFile session f)
+        linkableType <- getLinkableType f
+        r <- loadInterface (hscEnv session) ms sourceModified linkableType (regenerateHiFile session f)
         case r of
             (diags, Just x) -> do
                 let fp = Just (hiFileFingerPrint x)
@@ -716,8 +731,8 @@ isHiFileStableRule = defineEarlyCutoff $ \IsHiFileStable f -> do
                     let imports = fmap artifactFilePath . snd <$> fileImports
                     deps <- uses_ IsHiFileStable (catMaybes imports)
                     pure $ if all (== SourceUnmodifiedAndStable) deps
-                        then SourceUnmodifiedAndStable
-                        else SourceUnmodified
+                           then SourceUnmodifiedAndStable
+                           else SourceUnmodified
     return (Just (BS.pack $ show sourceModified), ([], Just sourceModified))
 
 getModSummaryRule :: Rules ()
@@ -779,14 +794,14 @@ getModIfaceRule :: Rules ()
 getModIfaceRule = defineEarlyCutoff $ \GetModIface f -> do
 #if !defined(GHC_LIB)
   fileOfInterest <- use_ IsFileOfInterest f
-  case fileOfInterest of
+  res@(_,(_,mhmi)) <- case fileOfInterest of
     IsFOI status -> do
       -- Never load from disk for files of interest
       tmr <- use_ TypeCheck f
-      needsObj <- use_ NeedsObjectCode f
+      linkableType <- getLinkableType f
       hsc <- hscEnv <$> use_ GhcSessionDeps f
       let compile = fmap ([],) $ use GenerateCore f
-      (diags, !hiFile) <- compileToObjCodeIfNeeded hsc needsObj compile tmr
+      (diags, !hiFile) <- compileToObjCodeIfNeeded hsc linkableType compile tmr
       let fp = hiFileFingerPrint <$> hiFile
       hiDiags <- case hiFile of
         Just hiFile
@@ -798,16 +813,22 @@ getModIfaceRule = defineEarlyCutoff $ \GetModIface f -> do
       hiFile <- use GetModIfaceFromDisk f
       let fp = hiFileFingerPrint <$> hiFile
       return (fp, ([], hiFile))
+
+  -- Record the linkable so we know not to unload it
+  whenJust (hm_linkable . hirHomeMod =<< mhmi) $ \(LM time mod _) -> do
+      ShakeExtras{compiledLinkables} <- getShakeExtras
+      liftIO $ modifyVar_ compiledLinkables $ \old -> pure $ extendModuleEnv old mod time
+  pure res
 #else
     tm <- use_ TypeCheck f
     hsc <- hscEnv <$> use_ GhcSessionDeps f
-    (diags, !hiFile) <- liftIO $ compileToObjCodeIfNeeded hsc False (error "can't compile with ghc-lib") tm
+    (diags, !hiFile) <- liftIO $ compileToObjCodeIfNeeded hsc Nothing (error "can't compile with ghc-lib") tm
     let fp = hiFileFingerPrint <$> hiFile
     return (fp, (diags, hiFile))
 #endif
 
-regenerateHiFile :: HscEnvEq -> NormalizedFilePath -> Bool -> Action ([FileDiagnostic], Maybe HiFileResult)
-regenerateHiFile sess f objNeeded = do
+regenerateHiFile :: HscEnvEq -> NormalizedFilePath -> Maybe LinkableType -> Action ([FileDiagnostic], Maybe HiFileResult)
+regenerateHiFile sess f compNeeded = do
     let hsc = hscEnv sess
         -- After parsing the module remove all package imports referring to
         -- these packages as we have already dealt with what they map to.
@@ -837,7 +858,7 @@ regenerateHiFile sess f objNeeded = do
                 let compile = compileModule (RunSimplifier True) hsc (pm_mod_summary pm) $ tmrTypechecked tmr
 
                 -- Bang pattern is important to avoid leaking 'tmr'
-                (diags'', !res) <- liftIO $ compileToObjCodeIfNeeded hsc objNeeded compile tmr
+                (diags'', !res) <- liftIO $ compileToObjCodeIfNeeded hsc compNeeded compile tmr
 
                 -- Write hi file
                 hiDiags <- case res of
@@ -857,16 +878,16 @@ regenerateHiFile sess f objNeeded = do
 type CompileMod m = m (IdeResult ModGuts)
 
 -- | HscEnv should have deps included already
-compileToObjCodeIfNeeded :: MonadIO m => HscEnv -> Bool -> CompileMod m -> TcModuleResult -> m (IdeResult HiFileResult)
-compileToObjCodeIfNeeded hsc False _ tmr = liftIO $ do
+compileToObjCodeIfNeeded :: MonadIO m => HscEnv -> Maybe LinkableType -> CompileMod m -> TcModuleResult -> m (IdeResult HiFileResult)
+compileToObjCodeIfNeeded hsc Nothing _ tmr = liftIO $ do
   res <- mkHiFileResultNoCompile hsc tmr
   pure ([], Just $! res)
-compileToObjCodeIfNeeded hsc True getGuts tmr = do
+compileToObjCodeIfNeeded hsc (Just linkableType) getGuts tmr = do
   (diags, mguts) <- getGuts
   case mguts of
     Nothing -> pure (diags, Nothing)
     Just guts -> do
-      (diags', !res) <- liftIO $ mkHiFileResultCompile hsc tmr guts
+      (diags', !res) <- liftIO $ mkHiFileResultCompile hsc tmr guts linkableType
       pure (diags++diags', res)
 
 getClientSettingsRule :: Rules ()
@@ -875,15 +896,21 @@ getClientSettingsRule = defineEarlyCutOffNoFile $ \GetClientSettings -> do
   settings <- clientSettings <$> getIdeConfiguration
   return (BS.pack . show . hash $ settings, settings)
 
-needsObjectCodeRule :: Rules ()
-needsObjectCodeRule = defineEarlyCutoff $ \NeedsObjectCode file -> do
+-- | For now we always use bytecode
+getLinkableType :: NormalizedFilePath -> Action (Maybe LinkableType)
+getLinkableType f = do
+  needsComp <- use_ NeedsCompilation f
+  pure $ if needsComp then Just BCOLinkable else Nothing
+
+needsCompilationRule :: Rules ()
+needsCompilationRule = defineEarlyCutoff $ \NeedsCompilation file -> do
   (ms,_) <- useWithStale_ GetModSummaryWithoutTimestamps file
   -- A file needs object code if it uses TH or any file that depends on it uses TH
   res <-
     if uses_th_qq ms
     then pure True
     -- Treat as False if some reverse dependency header fails to parse
-    else anyM (fmap (fromMaybe False) . use NeedsObjectCode) . maybe [] (immediateReverseDependencies file)
+    else anyM (fmap (fromMaybe False) . use NeedsCompilation) . maybe [] (immediateReverseDependencies file)
            =<< useNoFile GetModuleGraph
   pure (Just $ BS.pack $ show $ hash res, ([], Just res))
   where
@@ -910,7 +937,7 @@ mainRule = do
     getClientSettingsRule
     getHieAstsRule
     getBindingsRule
-    needsObjectCodeRule
+    needsCompilationRule
     generateCoreRule
     getImportMapRule
 
