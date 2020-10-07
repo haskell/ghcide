@@ -29,6 +29,9 @@ module Development.IDE.Core.Rules(
     getParsedModule,
     ) where
 
+import Debug.Trace
+import TcRnMonad (tcg_type_env)
+import Outputable (ppr, showSDocUnsafe)
 import Fingerprint
 
 import Data.Binary hiding (get, put)
@@ -273,6 +276,7 @@ getParsedModuleRule = defineEarlyCutoff $ \GetParsedModule file -> do
         comp_pkgs = mapMaybe (fmap fst . mkImportDirs (hsc_dflags hsc)) (deps sess)
     opt <- getIdeOptions
     (modTime, contents) <- getFileContents file
+    traceShowM ("********** ParsedModule got contents", file, contents)
 
     let dflags    = hsc_dflags hsc
         mainParse = getParsedModuleDefinition hsc opt comp_pkgs file modTime contents
@@ -671,6 +675,8 @@ ghcSessionDepsDefinition file = do
         let tdeps = transitiveModuleDeps deps
         ifaces <- uses_ GetModIface tdeps
 
+        traceShowM ("deps for", file, map hiFileFingerPrint ifaces)
+
         -- Currently GetDependencies returns things in topological order so A comes before B if A imports B.
         -- We need to reverse this as GHC gets very unhappy otherwise and complains about broken interfaces.
         -- Long-term we might just want to change the order returned by GetDependencies
@@ -715,9 +721,21 @@ isHiFileStableRule = defineEarlyCutoff $ \IsHiFileStable f -> do
                     (fileImports, _) <- use_ GetLocatedImports f
                     let imports = fmap artifactFilePath . snd <$> fileImports
                     deps <- uses_ IsHiFileStable (catMaybes imports)
-                    pure $ if all (== SourceUnmodifiedAndStable) deps
-                        then SourceUnmodifiedAndStable
-                        else SourceUnmodified
+                    let depsStable = all (== SourceUnmodifiedAndStable) deps
+                    -- Finally check for obj file stability
+                    needsObj <- use_ NeedsObjectCode f
+                    if not needsObj
+                    then pure $ if depsStable then SourceUnmodifiedAndStable else SourceUnmodified
+                    else do
+                      let objFile = toNormalizedFilePath'
+                                $ ml_obj_file $ ms_location ms
+                      mbObjVersion <- use GetModificationTime_{missingFileDiagnostics=False} objFile
+                      pure $ case mbObjVersion of
+                        Nothing -> SourceModified
+                        Just objTime
+                          | modificationTime objTime <= modificationTime modVersion -> SourceModified
+                          | depsStable -> SourceUnmodifiedAndStable
+                          | otherwise -> SourceUnmodified
     return (Just (BS.pack $ show sourceModified), ([], Just sourceModified))
 
 getModSummaryRule :: Rules ()
@@ -783,6 +801,7 @@ getModIfaceRule = defineEarlyCutoff $ \GetModIface f -> do
     IsFOI status -> do
       -- Never load from disk for files of interest
       tmr <- use_ TypeCheck f
+      traceShowM (f, showSDocUnsafe $ ppr $ tcg_type_env $ tmrTypechecked tmr)
       needsObj <- use_ NeedsObjectCode f
       hsc <- hscEnv <$> use_ GhcSessionDeps f
       let compile = fmap ([],) $ use GenerateCore f
@@ -808,6 +827,7 @@ getModIfaceRule = defineEarlyCutoff $ \GetModIface f -> do
 
 regenerateHiFile :: HscEnvEq -> NormalizedFilePath -> Bool -> Action ([FileDiagnostic], Maybe HiFileResult)
 regenerateHiFile sess f objNeeded = do
+    traceShowM ("********** regenerating hi file for", f, objNeeded)
     let hsc = hscEnv sess
         -- After parsing the module remove all package imports referring to
         -- these packages as we have already dealt with what they map to.

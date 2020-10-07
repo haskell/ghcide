@@ -275,7 +275,9 @@ generateObjectCode hscEnv summary guts = do
                                 fp
                       compileFile session' StopLn (outputFilename, Just (As False))
               let unlinked = DotO dot_o_fp
-              let linkable = LM (ms_hs_date summary) (ms_mod summary) [unlinked]
+              -- Need time to be the modification time for recompilation checking
+              t <- liftIO $ getModificationTime dot_o_fp
+              let linkable = LM t (ms_mod summary) [unlinked]
               pure (map snd warnings, linkable)
 
 generateByteCode :: HscEnv -> ModSummary -> CgGuts -> IO (IdeResult Linkable)
@@ -479,7 +481,7 @@ loadModuleHome
     -> HscEnv
     -> HscEnv
 loadModuleHome mod_info e =
-    e { hsc_HPT = addToHpt (hsc_HPT e) mod_name mod_info }
+    e { hsc_HPT = addToHpt (hsc_HPT e) mod_name mod_info, hsc_type_env_var = Nothing }
     where
       mod_name = moduleName $ mi_module $ hm_iface mod_info
 

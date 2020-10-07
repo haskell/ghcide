@@ -27,7 +27,7 @@ import           Development.Shake
 import           GHC.Generics                             (Generic)
 
 import Module (InstalledUnitId)
-import HscTypes (ModGuts, hm_iface, HomeModInfo)
+import HscTypes (ModGuts, hm_iface, HomeModInfo, hm_linkable, linkableTime)
 
 import           Development.IDE.Spans.Common
 import           Development.IDE.Spans.LocalBindings
@@ -35,6 +35,8 @@ import           Development.IDE.Import.FindImports (ArtifactsLocation)
 import Data.ByteString (ByteString)
 import Language.Haskell.LSP.Types (NormalizedFilePath)
 import TcRnMonad (TcGblEnv)
+import qualified Data.ByteString.Char8 as BS
+import Debug.Trace
 
 -- NOTATION
 --   Foo+ means Foo for the dependencies
@@ -111,7 +113,13 @@ data HiFileResult = HiFileResult
     }
 
 hiFileFingerPrint :: HiFileResult -> ByteString
-hiFileFingerPrint = fingerprintToBS . getModuleHash . hirModIface
+hiFileFingerPrint hfr = traceShow (hfr, res) res
+  where
+    res = ifaceBS <> linkableBS
+    ifaceBS = fingerprintToBS . getModuleHash . hirModIface $ hfr -- will always be two bytes
+    linkableBS = case hm_linkable $ hirHomeMod hfr of
+      Nothing -> ""
+      Just l -> BS.pack $ show $ linkableTime l
 
 hirModIface :: HiFileResult -> ModIface
 hirModIface = hm_iface . hirHomeMod
