@@ -2468,7 +2468,7 @@ thTests =
         _ <- createDoc "A.hs" "haskell" sourceA
         _ <- createDoc "B.hs" "haskell" sourceB
         return ()
-    , thReloadingTest `xfail` "expect broken (#672)"
+    , ignoreInWindowsForGHC88 (thReloadingTest `xfail` "expect broken (#672)")
     -- Regression test for https://github.com/digital-asset/ghcide/issues/614
     , testSessionWait "findsTHIdentifiers" $ do
         let sourceA =
@@ -2503,7 +2503,7 @@ thTests =
 
 -- | test that TH is reevaluated on typecheck
 thReloadingTest :: TestTree
-thReloadingTest = ignoreInWindowsForGHC88 $ testCase "reloading-th-test" $ withoutStackEnv $ runWithExtraFiles "TH" $ \dir -> do
+thReloadingTest = testCase "reloading-th-test" $ withoutStackEnv $ runWithExtraFiles "TH" $ \dir -> do
 
     let aPath = dir </> "THA.hs"
         bPath = dir </> "THB.hs"
