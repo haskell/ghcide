@@ -3103,7 +3103,7 @@ loadCradleOnlyonce = testGroup "load cradle only once"
 
 dependentFileTest :: TestTree
 dependentFileTest = testGroup "addDependentFile"
-    [testGroup "file-changed" [testSession' "test" test]
+    [testGroup "file-changed" [ignoreInWindowsForGHC88 $ testSession' "test" test]
     ]
     where
       test dir = do
