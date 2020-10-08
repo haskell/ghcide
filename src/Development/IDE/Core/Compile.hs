@@ -33,6 +33,7 @@ module Development.IDE.Core.Compile
   , lookupName
   ) where
 
+import Debug.Trace
 import Development.IDE.Core.RuleTypes
 import Development.IDE.Core.Preprocessor
 import Development.IDE.Core.Shake
@@ -93,6 +94,10 @@ import Control.Exception (evaluate)
 import Exception (ExceptionMonad)
 import TcEnv (tcLookup)
 import Data.Time (UTCTime)
+import Linker (unload, showLinkerState)
+import GHCi (unloadObj)
+import LinkerTypes
+import Control.Concurrent.MVar
 
 
 -- | Given a string buffer, return the string (after preprocessing) and the 'ParsedModule'.
@@ -148,11 +153,26 @@ typecheckModule (IdeDefer defer) hsc pm = do
     where
         demoteIfDefer = if defer then demoteTypeErrorsToWarnings else id
 
+modifyPLS :: DynLinker -> (PersistentLinkerState -> IO (PersistentLinkerState, a)) -> IO a
+modifyPLS dl f =
+  modifyMVar (dl_mpls dl) (fmapFst pure . f . fromMaybe undefined)
+  where fmapFst f = fmap (\(x, y) -> (f x, y))
+
 tcRnModule :: GhcMonad m => ParsedModule -> m TcModuleResult
 tcRnModule pmod = do
   let ms = pm_mod_summary pmod
   hsc_env <- getSession
   let hsc_env_tmp = hsc_env { hsc_dflags = ms_hspp_opts ms }
+  traceM "******* UNLOADING ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^"
+  let pdflags = (hsc_dflags hsc_env_tmp) {log_action = \df _ _ _ st m -> hPutStrLn stderr $ renderWithStyle df m st}
+  liftIO $ showLinkerState (hsc_dynLinker hsc_env_tmp) pdflags
+  liftIO $ modifyPLS (hsc_dynLinker hsc_env) $ \pls@PersistentLinkerState{..} -> do
+    mapM_ (unloadObj hsc_env_tmp) [f | lnk <- objs_loaded, DotO f <- linkableUnlinked lnk]
+    pure (pls,())
+  liftIO $ unload hsc_env_tmp []
+  liftIO $ showLinkerState (hsc_dynLinker hsc_env_tmp) pdflags
+  traceM "******* UNLOADING Over ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^"
+  traceShowM ("1Typechecking", pmod, showSDocUnsafe $ pprHPT $ hsc_HPT hsc_env_tmp)
   (tc_gbl_env, mrn_info)
         <- liftIO $ hscTypecheckRename hsc_env_tmp ms $
                        HsParsedModule { hpm_module = parsedSource pmod,
@@ -192,14 +212,7 @@ mkHiFileResultCompile session' tcm simplified_guts = catchErrs $ do
   (diags, obj_res) <- generateObjectCode session ms guts
   case obj_res of
     Nothing -> do
-#if MIN_GHC_API_VERSION(8,10,0) 
-      let !partial_iface = force (mkPartialIface session details simplified_guts)
-      final_iface <- mkFullIface session partial_iface
-#else
-      (final_iface,_) <- mkIface session Nothing details simplified_guts
-#endif
-      let mod_info = HomeModInfo final_iface details Nothing
-      pure (diags, Just $ HiFileResult ms mod_info)
+      pure (diags, Nothing)
     Just linkable -> do
 #if MIN_GHC_API_VERSION(8,10,0)
       let !partial_iface = force (mkPartialIface session details simplified_guts)
@@ -264,6 +277,9 @@ generateObjectCode hscEnv summary guts = do
               let session' = session { hsc_dflags = (hsc_dflags session) { outputFile = Just dot_o }}
                   fp = replaceExtension dot_o "s"
               liftIO $ createDirectoryIfMissing True (takeDirectory fp)
+              liftIO $ do
+                exists <- doesFileExist dot_o
+                when exists $ removeFile dot_o
               (warnings, dot_o_fp) <-
                 withWarnings "object" $ \_tweak -> liftIO $ do
                       (outputFilename, _mStub, _foreign_files) <- hscGenHardCode session' guts
