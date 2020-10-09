@@ -1115,13 +1115,13 @@ suggestImportTests = testGroup "suggest import actions"
     test' waitForCheckProject wanted imps def other newImp = testSessionWithExtraFiles "hover" (T.unpack def) $ \dir -> do
       let before = T.unlines $ "module A where" : ["import " <> x | x <- imps] ++ def : other
           after  = T.unlines $ "module A where" : ["import " <> x | x <- imps] ++ [newImp] ++ def : other
-          cradle = "cradle: {direct: {arguments: [-hide-all-packages, -package, base, -package, text, -package-env, -, A, Bar, Foo, GotoHover]}}"
+          cradle = "cradle: {direct: {arguments: [-hide-all-packages, -package, base, -package, text, -package-env, -, A, Bar, Foo]}}"
       liftIO $ writeFileUTF8 (dir </> "hie.yaml") cradle
       doc <- createDoc "Test.hs" "haskell" before
       void (skipManyTill anyMessage message :: Session WorkDoneProgressEndNotification)
       _diags <- waitForDiagnostics
       -- there isn't a good way to wait until the whole project is checked atm
-      when waitForCheckProject $ liftIO $ sleep 1
+      when waitForCheckProject $ liftIO $ sleep 0.5
       let defLine = length imps + 1
           range = Range (Position defLine 0) (Position defLine maxBound)
       actions <- getCodeActions doc range
