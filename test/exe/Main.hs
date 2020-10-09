@@ -1121,7 +1121,7 @@ suggestImportTests = testGroup "suggest import actions"
       void (skipManyTill anyMessage message :: Session WorkDoneProgressEndNotification)
       _diags <- waitForDiagnostics
       -- there isn't a good way to wait until the whole project is checked atm
-      when waitForCheckProject $ liftIO $ sleep 0.5
+      when waitForCheckProject $ liftIO $ sleep 1
       let defLine = length imps + 1
           range = Range (Position defLine 0) (Position defLine maxBound)
       actions <- getCodeActions doc range
