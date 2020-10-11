@@ -31,9 +31,9 @@ module Development.IDE.Core.Compile
   , setupFinderCache
   , getDocsBatch
   , lookupName
+  , modifyPLS
   ) where
 
-import Debug.Trace
 import Development.IDE.Core.RuleTypes
 import Development.IDE.Core.Preprocessor
 import Development.IDE.Core.Shake
@@ -94,8 +94,8 @@ import Control.Exception (evaluate)
 import Exception (ExceptionMonad)
 import TcEnv (tcLookup)
 import Data.Time (UTCTime)
-import Linker (unload, showLinkerState)
-import GHCi (unloadObj)
+import Linker (unload)
+-- import GHCi (unloadObj)
 import LinkerTypes
 import Control.Concurrent.MVar
 
@@ -163,16 +163,7 @@ tcRnModule pmod = do
   let ms = pm_mod_summary pmod
   hsc_env <- getSession
   let hsc_env_tmp = hsc_env { hsc_dflags = ms_hspp_opts ms }
-  traceM "******* UNLOADING ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^"
-  let pdflags = (hsc_dflags hsc_env_tmp) {log_action = \df _ _ _ st m -> hPutStrLn stderr $ renderWithStyle df m st}
-  liftIO $ showLinkerState (hsc_dynLinker hsc_env_tmp) pdflags
-  liftIO $ modifyPLS (hsc_dynLinker hsc_env) $ \pls@PersistentLinkerState{..} -> do
-    mapM_ (unloadObj hsc_env_tmp) [f | lnk <- objs_loaded, DotO f <- linkableUnlinked lnk]
-    pure (pls,())
   liftIO $ unload hsc_env_tmp []
-  liftIO $ showLinkerState (hsc_dynLinker hsc_env_tmp) pdflags
-  traceM "******* UNLOADING Over ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^"
-  traceShowM ("1Typechecking", pmod, showSDocUnsafe $ pprHPT $ hsc_HPT hsc_env_tmp)
   (tc_gbl_env, mrn_info)
         <- liftIO $ hscTypecheckRename hsc_env_tmp ms $
                        HsParsedModule { hpm_module = parsedSource pmod,
@@ -234,8 +225,9 @@ mkHiFileResultCompile session' tcm simplified_guts = catchErrs $ do
 initPlugins :: GhcMonad m => ModSummary -> m ModSummary
 initPlugins modSummary = do
     session <- getSession
-    dflags <- liftIO $ initializePlugins session (ms_hspp_opts modSummary)
-    return modSummary{ms_hspp_opts = dflags}
+    let df0 = flip gopt_unset Opt_ExternalInterpreter $ ms_hspp_opts modSummary
+    dflags <- liftIO $ initializePlugins session df0{ ways = filter (WayDyn /=) (ways df0) }
+    return modSummary{ms_hspp_opts = flip gopt_set Opt_ExternalInterpreter $ addWay' WayDyn $ dflags}
 
 -- | Whether we should run the -O0 simplifier when generating core.
 --

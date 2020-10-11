@@ -36,7 +36,6 @@ import Data.ByteString (ByteString)
 import Language.Haskell.LSP.Types (NormalizedFilePath)
 import TcRnMonad (TcGblEnv)
 import qualified Data.ByteString.Char8 as BS
-import Debug.Trace
 
 -- NOTATION
 --   Foo+ means Foo for the dependencies
@@ -113,9 +112,8 @@ data HiFileResult = HiFileResult
     }
 
 hiFileFingerPrint :: HiFileResult -> ByteString
-hiFileFingerPrint hfr = traceShow (hfr, res) res
+hiFileFingerPrint hfr = ifaceBS <> linkableBS
   where
-    res = ifaceBS <> linkableBS
     ifaceBS = fingerprintToBS . getModuleHash . hirModIface $ hfr -- will always be two bytes
     linkableBS = case hm_linkable $ hirHomeMod hfr of
       Nothing -> ""

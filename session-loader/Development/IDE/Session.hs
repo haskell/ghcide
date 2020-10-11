@@ -371,7 +371,7 @@ emptyHscEnv :: IORef NameCache -> FilePath -> IO HscEnv
 emptyHscEnv nc libDir = do
     env <- runGhc (Just libDir) getSession
     initDynLinker env
-    pure $ setNameCache nc env
+    pure $ let x = setNameCache nc env in x {hsc_dflags = addWay' WayDyn $ gopt_set (hsc_dflags x) Opt_ExternalInterpreter }
 
 data TargetDetails = TargetDetails
   {
