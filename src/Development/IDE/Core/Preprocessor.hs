@@ -146,7 +146,7 @@ parsePragmasIntoDynFlags env fp contents = catchSrcErrors "pragmas" $ do
     liftIO $ evaluate $ rnf opts
 
     (dflags, _, _) <- parseDynamicFilePragma dflags0 opts
-    dflags' <- liftIO $ initializePlugins env $ flip gopt_unset Opt_ExternalInterpreter dflags{ways = filter (WayDyn /=) (ways dflags) }
+    dflags' <- liftIO $ initializePlugins env $ gopt_unset dflags{ways = filter (WayDyn /=) (ways dflags) } Opt_ExternalInterpreter
     return $ disableWarningsAsErrors $ flip gopt_set Opt_ExternalInterpreter $ addWay' WayDyn dflags'
 
 -- | Run (unlit) literate haskell preprocessor on a file, or buffer if set

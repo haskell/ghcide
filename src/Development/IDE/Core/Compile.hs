@@ -227,7 +227,7 @@ initPlugins modSummary = do
     session <- getSession
     let df0 = flip gopt_unset Opt_ExternalInterpreter $ ms_hspp_opts modSummary
     dflags <- liftIO $ initializePlugins session df0{ ways = filter (WayDyn /=) (ways df0) }
-    return modSummary{ms_hspp_opts = flip gopt_set Opt_ExternalInterpreter $ addWay' WayDyn $ dflags}
+    return modSummary{ms_hspp_opts = flip gopt_set Opt_ExternalInterpreter $ addWay' WayDyn dflags}
 
 -- | Whether we should run the -O0 simplifier when generating core.
 --
