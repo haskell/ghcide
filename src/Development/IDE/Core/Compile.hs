@@ -162,7 +162,7 @@ typecheckModule (IdeDefer defer) hsc pm = do
 modifyPLS :: DynLinker -> (PersistentLinkerState -> IO (PersistentLinkerState, a)) -> IO a
 modifyPLS dl f =
   modifyMVar (dl_mpls dl) (fmapFst pure . f . fromMaybe undefined)
-  where fmapFst f = fmap (\(x, y) -> (f x, y))
+  where fmapFst f = fmap (first f)
 
 modifyMbPLS_
   :: DynLinker -> (Maybe PersistentLinkerState -> IO (Maybe PersistentLinkerState)) -> IO ()
@@ -202,10 +202,10 @@ tcRnModule pmod = do
   hsc_env <- getSession
   let hsc_env_tmp = hsc_env { hsc_dflags =  ms_hspp_opts ms }
   (tc_gbl_env, mrn_info)
-        <- (liftIO $ hscTypecheckRename hsc_env_tmp ms $
+        <- liftIO $ hscTypecheckRename hsc_env_tmp ms $
                        HsParsedModule { hpm_module = parsedSource pmod,
                                         hpm_src_files = pm_extra_src_files pmod,
-                                        hpm_annotations = pm_annotations pmod })
+                                        hpm_annotations = pm_annotations pmod }
   let rn_info = case mrn_info of
         Just x -> x
         Nothing -> error "no renamed info tcRnModule"
