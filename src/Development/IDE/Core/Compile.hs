@@ -32,6 +32,7 @@ module Development.IDE.Core.Compile
   , getDocsBatch
   , lookupName
   , modifyPLS
+  , cleanupIServHook
   ) where
 
 import Development.IDE.Core.RuleTypes
@@ -94,18 +95,16 @@ import Control.Exception (evaluate)
 import Exception (ExceptionMonad)
 import TcEnv (tcLookup)
 import Data.Time (UTCTime)
-import Linker (unload, linkExpr)
 -- import GHCi (unloadObj)
 import LinkerTypes
 import Control.Concurrent.MVar
 
 import Hooks
-import TcSplice
-import SimplCore
-import CoreTidy
-import CoreLint
-import CorePrep
-import ByteCodeGen
+
+import Debug.Trace
+
+import System.Process
+import Control.Concurrent
 
 -- | Given a string buffer, return the string (after preprocessing) and the 'ParsedModule'.
 parseModule
@@ -165,55 +164,48 @@ modifyPLS dl f =
   modifyMVar (dl_mpls dl) (fmapFst pure . f . fromMaybe undefined)
   where fmapFst f = fmap (\(x, y) -> (f x, y))
 
+modifyMbPLS_
+  :: DynLinker -> (Maybe PersistentLinkerState -> IO (Maybe PersistentLinkerState)) -> IO ()
+modifyMbPLS_ dl f = modifyMVar_ (dl_mpls dl) f
 
--- | Need to uninterruptibleMask while communicating with `ghc-iserv`
-maskHooks :: DynFlags -> DynFlags
-maskHooks df =
-  df { hooks = (hooks df) { runMetaHook = Just $ modifyMetaHook (runMetaHook $ hooks df)
-                          , hscCompileCoreExprHook = Just $ hscCompileCoreExprMasked } }
+cleanupIServHook :: MVar (Maybe IServ) -> DynLinker -> DynFlags -> DynFlags
+cleanupIServHook ivar dvar df =
+  df { hooks = (hooks df) { createIservProcessHook = Just createIServHook } }
   where
-    modifyMetaHook :: Maybe (MetaHook TcM) -> (MetaHook TcM)
-    modifyMetaHook mh r e =
-      uninterruptibleMaskM_ $
-        maybe (defaultRunMeta r e) (\f -> f r e) mh
+    createIServHook cp = do
+      traceIO $ "spawning iserv: " ++ show cp
+      a@(_,_,_,ph) <- createProcess cp
+      _ <- forkIO $ do
+        -- When the process is killed by an asynchronous exception:
+        e <- waitForProcess ph
+        traceIO $ "terminated iserv with: " ++ show e
 
+        -- Grab the lock on the linker
+        modifyMbPLS_ dvar $ \_ -> do
 
-hscCompileCoreExprMasked :: HscEnv -> SrcSpan -> CoreExpr -> IO ForeignHValue
-hscCompileCoreExprMasked hsc_env srcspan ds_expr
-    = do { let dflags = hsc_dflags hsc_env
+          _ <- takeMVar ivar -- Grab the lock on the iserv
+          -- Deadlock??? GHC always seems to grab the lock on the PLS before the lock on the iserv
 
-           {- Simplify it -}
-         ; simpl_expr <- simplifyExpr dflags ds_expr
+          -- Cleanup the iserv process
+          cleanupProcess a
 
-           {- Tidy it (temporary, until coreSat does cloning) -}
-         ; let tidy_expr = tidyExpr emptyTidyEnv simpl_expr
+          -- Reset the iserv state and release the lock
+          putMVar ivar Nothing
 
-           {- Prepare for codegen -}
-         ; prepd_expr <- corePrepExpr dflags hsc_env tidy_expr
-
-           {- Lint if necessary -}
-         ; lintInteractiveExpr "hscCompileExpr" hsc_env prepd_expr
-
-           {- Convert to BCOs -}
-         ; bcos <- coreExprToBCOs hsc_env
-                     (icInteractiveModule (hsc_IC hsc_env)) prepd_expr
-
-           {- link it -}
-         ; hval <- uninterruptibleMask_ $ linkExpr hsc_env srcspan bcos
-
-         ; return hval }
+          -- Finally reset the dynlinker state and release the lock on the linker
+          pure Nothing
+      pure ph
 
 tcRnModule :: GhcMonad m => ParsedModule -> m TcModuleResult
 tcRnModule pmod = do
   let ms = pm_mod_summary pmod
   hsc_env <- getSession
-  let hsc_env_tmp = hsc_env { hsc_dflags = maskHooks $ ms_hspp_opts ms }
-  liftIO $ uninterruptibleMask_ $ unload hsc_env_tmp []
+  let hsc_env_tmp = hsc_env { hsc_dflags =  ms_hspp_opts ms }
   (tc_gbl_env, mrn_info)
-        <- liftIO $ hscTypecheckRename hsc_env_tmp ms $
+        <- (liftIO $ hscTypecheckRename hsc_env_tmp ms $
                        HsParsedModule { hpm_module = parsedSource pmod,
                                         hpm_src_files = pm_extra_src_files pmod,
-                                        hpm_annotations = pm_annotations pmod }
+                                        hpm_annotations = pm_annotations pmod })
   let rn_info = case mrn_info of
         Just x -> x
         Nothing -> error "no renamed info tcRnModule"

@@ -49,6 +49,7 @@ library
         fuzzy,
         filepath,
         fingertree,
+        process,
         Glob,
         haddock-library >= 1.8,
         hashable,

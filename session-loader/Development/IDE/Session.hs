@@ -32,6 +32,7 @@ import Data.Maybe
 import Data.Time.Clock
 import Data.Version
 import Development.IDE.Core.OfInterest
+import Development.IDE.Core.Compile
 import Development.IDE.Core.Shake
 import Development.IDE.Core.RuleTypes
 import Development.IDE.GHC.Compat hiding (Target, TargetModule, TargetFile)
@@ -60,8 +61,9 @@ import System.IO
 
 import GHCi
 import DynFlags
-import HscTypes (ic_dflags, hsc_IC, hsc_dflags, hsc_NC)
+import HscTypes (ic_dflags, hsc_IC, hsc_dflags, hsc_NC, hsc_iserv, IServ, hsc_dynLinker)
 import Linker
+import LinkerTypes
 import Module
 import NameCache
 import Packages
@@ -139,7 +141,9 @@ loadSession dir = do
                      -> IO (HscEnv, ComponentInfo, [ComponentInfo])
         packageSetup (hieYaml, cfp, opts, libDir) = do
           -- Parse DynFlags for the newly discovered component
-          hscEnv <- emptyHscEnv ideNc libDir
+          mv <- newMVar Nothing
+          dl <- uninitializedLinker
+          hscEnv <- emptyHscEnv mv dl ideNc libDir
           (df, targets) <- evalGhcEnv hscEnv $
               first optCustomDynFlags <$> setOptions opts (hsc_dflags hscEnv)
           let deps = componentDependencies opts ++ maybeToList hieYaml
@@ -183,7 +187,7 @@ loadSession dir = do
               -- It's important to keep the same NameCache though for reasons
               -- that I do not fully understand
               logInfo logger (T.pack ("Making new HscEnv" ++ show inplace))
-              hscEnv <- emptyHscEnv ideNc libDir
+              hscEnv <- emptyHscEnv mv dl ideNc libDir
               newHscEnv <-
                 -- Add the options for the current component to the HscEnv
                 evalGhcEnv hscEnv $ do
@@ -367,11 +371,12 @@ cradleToOptsAndLibDir cradle file = do
         -- Same here
         CradleNone -> return (Left [])
 
-emptyHscEnv :: IORef NameCache -> FilePath -> IO HscEnv
-emptyHscEnv nc libDir = do
-    env <- runGhc (Just libDir) getSession
-    initDynLinker env
-    pure $ let x = setNameCache nc env in x {hsc_dflags = addWay' WayDyn $ gopt_set (hsc_dflags x) Opt_ExternalInterpreter }
+emptyHscEnv :: MVar (Maybe IServ) -> DynLinker -> IORef NameCache -> FilePath -> IO HscEnv
+emptyHscEnv iserv dynLinker nc libDir = do
+    env' <- runGhc (Just libDir) getSession
+    let env = env' {hsc_iserv = iserv, hsc_dynLinker = dynLinker}
+    -- initDynLinker env
+    pure $ let x = setNameCache nc env in x {hsc_dflags = cleanupIServHook iserv dynLinker $ addWay' WayDyn $ gopt_set (hsc_dflags x) Opt_ExternalInterpreter }
 
 data TargetDetails = TargetDetails
   {
