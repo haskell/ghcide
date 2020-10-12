@@ -163,7 +163,7 @@ typecheckModule (IdeDefer defer) hsc pm = do
 
 modifyPLS :: DynLinker -> (PersistentLinkerState -> IO PersistentLinkerState) -> IO ()
 modifyPLS dl f =
-  modifyMVar_ (dl_mpls dl) (sequence . fmap f)
+  modifyMVar_ (dl_mpls dl) (mapM f)
 
 modifyMbPLS_
   :: DynLinker -> (Maybe PersistentLinkerState -> IO (Maybe PersistentLinkerState)) -> IO ()
@@ -354,7 +354,7 @@ generateByteCode hscEnv summary guts = do
               -- unload old linkable - keep everything except this linkables from this module
               liftIO $ modifyPLS (hsc_dynLinker hscEnv) $ \pls@PersistentLinkerState{..} -> uninterruptibleMask_ $ do
                 let (bcos_to_keep, bcos_to_discard) = partition ((mod/=) . linkableModule) bcos_loaded
-                if (null bcos_to_discard)
+                if null bcos_to_discard
                 then pure pls
                 else do
                   purgeLookupSymbolCache hscEnv
@@ -363,8 +363,8 @@ generateByteCode hscEnv summary guts = do
                       -- Note that we want to remove all *local*
                       -- (i.e. non-isExternal) names too (these are the
                       -- temporary bindings from the command line).
-                      keep_name (n,_) = isExternalName n &&
-                                        nameModule n `elemModuleSet` bcos_retained
+                      keep_name (n,_) = maybe False (`elemModuleSet` bcos_retained) $
+                                        nameModule_maybe n
 
                       itbl_env'     = filterNameEnv keep_name itbl_env
                       closure_env'  = filterNameEnv keep_name closure_env
