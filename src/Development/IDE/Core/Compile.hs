@@ -94,7 +94,7 @@ import           System.IO.Extra
 import Control.Exception (evaluate)
 import Exception (ExceptionMonad)
 import TcEnv (tcLookup)
-import Data.Time (UTCTime)
+import Data.Time (UTCTime, getCurrentTime)
 -- import GHCi (unloadObj)
 import LinkerTypes
 import Control.Concurrent.MVar
@@ -105,6 +105,8 @@ import Debug.Trace
 
 import System.Process
 import Control.Concurrent
+
+import GHCi
 
 -- | Given a string buffer, return the string (after preprocessing) and the 'ParsedModule'.
 parseModule
@@ -159,10 +161,9 @@ typecheckModule (IdeDefer defer) hsc pm = do
     where
         demoteIfDefer = if defer then demoteTypeErrorsToWarnings else id
 
-modifyPLS :: DynLinker -> (PersistentLinkerState -> IO (PersistentLinkerState, a)) -> IO a
+modifyPLS :: DynLinker -> (PersistentLinkerState -> IO PersistentLinkerState) -> IO ()
 modifyPLS dl f =
-  modifyMVar (dl_mpls dl) (fmapFst pure . f . fromMaybe undefined)
-  where fmapFst f = fmap (first f)
+  modifyMVar_ (dl_mpls dl) (sequence . fmap f)
 
 modifyMbPLS_
   :: DynLinker -> (Maybe PersistentLinkerState -> IO (Maybe PersistentLinkerState)) -> IO ()
@@ -303,12 +304,10 @@ generateObjectCode hscEnv summary guts = do
           catchSrcErrors "object" $ do
               session <- getSession
               let dot_o =  ml_obj_file (ms_location summary)
-              let session' = session { hsc_dflags = (hsc_dflags session) { outputFile = Just dot_o }}
+                  mod = ms_mod summary
+                  session' = session { hsc_dflags = (hsc_dflags session) { outputFile = Just dot_o }}
                   fp = replaceExtension dot_o "s"
               liftIO $ createDirectoryIfMissing True (takeDirectory fp)
-              liftIO $ do
-                exists <- doesFileExist dot_o
-                when exists $ removeFile dot_o
               (warnings, dot_o_fp) <-
                 withWarnings "object" $ \_tweak -> liftIO $ do
                       (outputFilename, _mStub, _foreign_files) <- hscGenHardCode session' guts
@@ -322,7 +321,15 @@ generateObjectCode hscEnv summary guts = do
               let unlinked = DotO dot_o_fp
               -- Need time to be the modification time for recompilation checking
               t <- liftIO $ getModificationTime dot_o_fp
-              let linkable = LM t (ms_mod summary) [unlinked]
+              let linkable = LM t mod [unlinked]
+
+              -- unload old linkable - keep everything except this linkables from this module
+              liftIO $ modifyPLS (hsc_dynLinker hscEnv) $ \pls@PersistentLinkerState{..} -> uninterruptibleMask_ $ do
+                let (objs_to_keep, objs_to_discard) = partition ((mod/=) . linkableModule) objs_loaded
+                when (not $ null objs_to_discard) $
+                  purgeLookupSymbolCache hscEnv
+                pure pls{objs_loaded = objs_to_keep}
+
               pure (map snd warnings, linkable)
 
 generateByteCode :: HscEnv -> ModSummary -> CgGuts -> IO (IdeResult Linkable)
@@ -340,7 +347,34 @@ generateByteCode hscEnv summary guts = do
                                 (_tweak summary)
 #endif
               let unlinked = BCOs bytecode sptEntries
-              let linkable = LM (ms_hs_date summary) (ms_mod summary) [unlinked]
+              time <- liftIO getCurrentTime
+              let linkable = LM time (ms_mod summary) [unlinked]
+                  mod = ms_mod summary
+
+              -- unload old linkable - keep everything except this linkables from this module
+              liftIO $ modifyPLS (hsc_dynLinker hscEnv) $ \pls@PersistentLinkerState{..} -> uninterruptibleMask_ $ do
+                let (bcos_to_keep, bcos_to_discard) = partition ((mod/=) . linkableModule) bcos_loaded
+                if (null bcos_to_discard)
+                then pure pls
+                else do
+                  purgeLookupSymbolCache hscEnv
+                  let !bcos_retained = mkModuleSet $ map linkableModule bcos_to_keep
+
+                      -- Note that we want to remove all *local*
+                      -- (i.e. non-isExternal) names too (these are the
+                      -- temporary bindings from the command line).
+                      keep_name (n,_) = isExternalName n &&
+                                        nameModule n `elemModuleSet` bcos_retained
+
+                      itbl_env'     = filterNameEnv keep_name itbl_env
+                      closure_env'  = filterNameEnv keep_name closure_env
+
+                      !new_pls = pls { itbl_env = itbl_env',
+                                       closure_env = closure_env',
+                                       bcos_loaded = bcos_to_keep
+                                     }
+                  return new_pls
+
               pure (map snd warnings, linkable)
 
 demoteTypeErrorsToWarnings :: ParsedModule -> ParsedModule
