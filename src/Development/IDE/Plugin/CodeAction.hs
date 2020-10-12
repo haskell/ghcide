@@ -90,7 +90,8 @@ codeAction lsp state (TextDocumentIdentifier uri) _range CodeActionContext{_diag
     contents <- LSP.getVirtualFileFunc lsp $ toNormalizedUri uri
     let text = Rope.toText . (_text :: VirtualFile -> Rope.Rope) <$> contents
         mbFile = toNormalizedFilePath' <$> uriToFilePath uri
-    (ideOptions, parsedModule, join -> env) <- runAction "CodeAction" state $
+    allDiagnostics <- fmap (\(_, _, d) -> d) . filter (\(p, _, _) -> mbFile == Just p) <$> getDiagnostics state
+    (ideOptions, join -> parsedModule, join -> env) <- runAction "CodeAction" state $
       (,,) <$> getIdeOptions
             <*> getParsedModule `traverse` mbFile
             <*> use GhcSession `traverse` mbFile
@@ -99,11 +100,11 @@ codeAction lsp state (TextDocumentIdentifier uri) _range CodeActionContext{_diag
     localExports <- readVar (exportsMap $ shakeExtras state)
     let exportsMap = localExports <> fromMaybe mempty pkgExports
     let dflags = hsc_dflags . hscEnv <$> env
-    pure $ Right
+    pure . Right $
         [ CACodeAction $ CodeAction title (Just CodeActionQuickFix) (Just $ List [x]) (Just edit) Nothing
-        | x <- xs, (title, tedit) <- suggestAction dflags exportsMap ideOptions ( join parsedModule ) text x
+        | x <- xs, (title, tedit) <- suggestAction dflags exportsMap ideOptions parsedModule text x
         , let edit = WorkspaceEdit (Just $ Map.singleton uri $ List tedit) Nothing
-        ]
+        ] <> removeAllRedundantImports parsedModule text allDiagnostics uri
 
 -- | Generate code lenses.
 codeLens
@@ -200,6 +201,21 @@ suggestRemoveRedundantImport ParsedModule{pm_parsed_source = L _  HsModule{hsmod
     | _message =~ ("The( qualified)? import of [^ ]* is redundant" :: String)
         = [("Remove import", [TextEdit (extendToWholeLineIfPossible contents _range) ""])]
     | otherwise = []
+
+removeAllRedundantImports :: Maybe ParsedModule -> Maybe T.Text -> [Diagnostic] -> Uri -> [CAResult]
+removeAllRedundantImports m contents diagnostics uri
+  | Just pm <- m,
+    r <- join $ map (suggestRemoveRedundantImport pm contents) diagnostics,
+    tes <- nub [ e | (_, edits) <- r, e <- edits],
+    _changes <- Just $ Map.singleton uri $ List tes,
+    _title <- "Remove all redundant imports",
+    _kind <- Just CodeActionQuickFix,
+    _diagnostics <- Nothing,
+    _documentChanges <- Nothing,
+    _edit <- Just WorkspaceEdit{..},
+    _command <- Nothing
+   =  [CACodeAction CodeAction {..}]
+  | otherwise = []
 
 suggestDeleteUnusedBinding :: ParsedModule -> Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
 suggestDeleteUnusedBinding
