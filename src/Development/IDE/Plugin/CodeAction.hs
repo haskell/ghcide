@@ -1086,10 +1086,8 @@ matchRegex message regex = case message =~~ regex of
 
 setHandlersCodeLens :: LSP.Handlers (ServerM c)
 setHandlersCodeLens = mconcat
-  [ requestHandler STextDocumentCodeLens $ \ide (RequestMessage _ _ _ params) k ->
-      k =<< codeLens ide params
-  , requestHandler SWorkspaceExecuteCommand $ \ide (RequestMessage _ _ _ params) k ->
-      k =<< commandHandler ide params
+  [ requestHandler STextDocumentCodeLens codeLens
+  , requestHandler SWorkspaceExecuteCommand commandHandler
   ]
 
 filterNewlines :: T.Text -> T.Text

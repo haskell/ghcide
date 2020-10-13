@@ -25,20 +25,20 @@ type ServerM c = ReaderT (ReactorChan, IdeState) (LspM c)
 requestHandler
   :: forall (m :: Method FromClient Request) c.
      SMethod m
-  -> (IdeState -> Handler (LspM c) m)
+  -> (IdeState -> MessageParams m -> LspM c (Either ResponseError (ResponseParams m)))
   -> Handlers (ServerM c)
-requestHandler m k = LSP.requestHandler m $ \msg@(RequestMessage{_id}) resp -> do
+requestHandler m k = LSP.requestHandler m $ \RequestMessage{_id,_params} resp -> do
   st@(chan,ide) <- ask
   env <- LSP.getLspEnv
   let resp' = flip runReaderT st . resp
-  writeChan chan $ ReactorRequest (SomeLspId _id) (LSP.runLspT env $ k ide msg resp') (LSP.runLspT env . resp' . Left)
+  writeChan chan $ ReactorRequest (SomeLspId _id) (LSP.runLspT env $ resp' =<< k ide _params) (LSP.runLspT env . resp' . Left)
 
 notificationHandler
   :: forall (m :: Method FromClient Notification) c.
      SMethod m
-  -> (IdeState -> Handler (LspM c) m)
+  -> (IdeState -> MessageParams m -> LspM c ())
   -> Handlers (ServerM c)
-notificationHandler m k = LSP.notificationHandler m $ \msg -> do
+notificationHandler m k = LSP.notificationHandler m $ \NotificationMessage{_params}-> do
   (chan,ide) <- ask
   env <- LSP.getLspEnv
-  writeChan chan $ ReactorNotification (LSP.runLspT env $ k ide msg)
+  writeChan chan $ ReactorNotification (LSP.runLspT env $ k ide _params)

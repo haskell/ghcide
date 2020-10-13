@@ -36,7 +36,7 @@ codeActionPluginWithRules :: forall c. Rules () -> (IdeState -> TextDocumentIden
 codeActionPluginWithRules rr f = Plugin rr handlers
   where
     handlers :: LSP.Handlers (ServerM c)
-    handlers = requestHandler STextDocumentCodeAction $ \state (RequestMessage _ _ _ params) k -> k =<< g state params
+    handlers = requestHandler STextDocumentCodeAction g
     g state (CodeActionParams _ _ a b c) = fmap List <$> f state a b c
 
 -- | Prefix to uniquely identify commands sent to the client.  This

@@ -161,6 +161,5 @@ getCompletionsLSP ide
       _ -> return (InL $ List [])
 
 setHandlersCompletion :: LSP.Handlers (ServerM c)
-setHandlersCompletion = requestHandler STextDocumentCompletion $ \ide (RequestMessage _ _ _ params) k ->
-  k =<< getCompletionsLSP ide params
+setHandlersCompletion = requestHandler STextDocumentCompletion getCompletionsLSP
 

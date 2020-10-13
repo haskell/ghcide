@@ -39,13 +39,10 @@ import Control.Monad.IO.Class
 whenUriFile :: Uri -> (NormalizedFilePath -> IO ()) -> IO ()
 whenUriFile uri act = whenJust (LSP.uriToFilePath uri) $ act . toNormalizedFilePath'
 
-getParams :: NotificationMessage m -> MessageParams m
-getParams (NotificationMessage _ _ params) = params
-
 setHandlersNotifications :: LSP.Handlers (ServerM c)
 setHandlersNotifications = mconcat
   [ notificationHandler LSP.STextDocumentDidOpen $
-      \ide (getParams  -> DidOpenTextDocumentParams TextDocumentItem{_uri,_version}) -> liftIO $ do
+      \ide (DidOpenTextDocumentParams TextDocumentItem{_uri,_version}) -> liftIO $ do
       updatePositionMapping ide (VersionedTextDocumentIdentifier _uri (Just _version)) (List [])
       whenUriFile _uri $ \file -> do
           -- We don't know if the file actually exists, or if the contents match those on disk
@@ -55,7 +52,7 @@ setHandlersNotifications = mconcat
           logInfo (ideLogger ide) $ "Opened text document: " <> getUri _uri
 
   , notificationHandler LSP.STextDocumentDidChange $
-      \ide (getParams  -> DidChangeTextDocumentParams identifier@VersionedTextDocumentIdentifier{_uri} changes) -> liftIO $ do
+      \ide (DidChangeTextDocumentParams identifier@VersionedTextDocumentIdentifier{_uri} changes) -> liftIO $ do
         updatePositionMapping ide identifier changes
         whenUriFile _uri $ \file -> do
           modifyFilesOfInterest ide (M.insert file Modified)
@@ -63,14 +60,14 @@ setHandlersNotifications = mconcat
         logInfo (ideLogger ide) $ "Modified text document: " <> getUri _uri
 
   , notificationHandler LSP.STextDocumentDidSave $
-      \ide (getParams  -> DidSaveTextDocumentParams TextDocumentIdentifier{_uri} _) -> liftIO $ do
+      \ide (DidSaveTextDocumentParams TextDocumentIdentifier{_uri} _) -> liftIO $ do
         whenUriFile _uri $ \file -> do
             modifyFilesOfInterest ide (M.insert file OnDisk)
             setFileModified ide True file
         logInfo (ideLogger ide) $ "Saved text document: " <> getUri _uri
 
   , notificationHandler LSP.STextDocumentDidClose $
-        \ide (getParams  -> DidCloseTextDocumentParams TextDocumentIdentifier{_uri}) -> liftIO $ do
+        \ide (DidCloseTextDocumentParams TextDocumentIdentifier{_uri}) -> liftIO $ do
           whenUriFile _uri $ \file -> do
               modifyFilesOfInterest ide (M.delete file)
               -- Refresh all the files that depended on this
@@ -79,7 +76,7 @@ setHandlersNotifications = mconcat
               logInfo (ideLogger ide) $ "Closed text document: " <> getUri _uri
 
   , notificationHandler LSP.SWorkspaceDidChangeWatchedFiles $
-      \ide (getParams  -> DidChangeWatchedFilesParams fileEvents) -> liftIO $ do
+      \ide (DidChangeWatchedFilesParams fileEvents) -> liftIO $ do
         -- See Note [File existence cache and LSP file watchers] which explains why we get these notifications and
         -- what we do with them
         let events =
@@ -95,7 +92,7 @@ setHandlersNotifications = mconcat
         setSomethingModified ide
 
   , notificationHandler LSP.SWorkspaceDidChangeWorkspaceFolders $
-      \ide (getParams -> DidChangeWorkspaceFoldersParams events) -> liftIO $ do
+      \ide (DidChangeWorkspaceFoldersParams events) -> liftIO $ do
         let add       = S.union
             substract = flip S.difference
         modifyWorkspaceFolders ide
@@ -103,7 +100,7 @@ setHandlersNotifications = mconcat
           . substract (foldMap (S.singleton . parseWorkspaceFolder) (_removed events))
 
   , notificationHandler LSP.SWorkspaceDidChangeConfiguration $
-      \ide (getParams -> DidChangeConfigurationParams cfg) -> liftIO $ do
+      \ide (DidChangeConfigurationParams cfg) -> liftIO $ do
         let msg = Text.pack $ show cfg
         logInfo (ideLogger ide) $ "Configuration changed: " <> msg
         modifyClientSettings ide (const $ Just cfg)

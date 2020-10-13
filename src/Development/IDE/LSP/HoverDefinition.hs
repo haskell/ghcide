@@ -41,14 +41,14 @@ foundHover (mbRange, contents) =
 
 setIdeHandlers :: LSP.Handlers (ServerM c)
 setIdeHandlers = mconcat
-  [ requestHandler STextDocumentDefinition $ \ide (RequestMessage _ _ _ DefinitionParams{..}) k ->
-      k =<< gotoDefinition ide TextDocumentPositionParams{..}
-  , requestHandler STextDocumentHover $ \ide (RequestMessage _ _ _ HoverParams{..}) k ->
-      k =<< hover ide TextDocumentPositionParams{..}
-  , requestHandler STextDocumentTypeDefinition $ \ide (RequestMessage _ _ _ TypeDefinitionParams{..}) k ->
-      k =<< gotoTypeDefinition ide TextDocumentPositionParams{..}
-  , requestHandler STextDocumentDocumentHighlight $ \ide (RequestMessage _ _ _ DocumentHighlightParams{..}) k ->
-      k =<< documentHighlight ide TextDocumentPositionParams{..}
+  [ requestHandler STextDocumentDefinition $ \ide DefinitionParams{..} ->
+      gotoDefinition ide TextDocumentPositionParams{..}
+  , requestHandler STextDocumentHover $ \ide HoverParams{..} ->
+      hover ide TextDocumentPositionParams{..}
+  , requestHandler STextDocumentTypeDefinition $ \ide TypeDefinitionParams{..} ->
+      gotoTypeDefinition ide TextDocumentPositionParams{..}
+  , requestHandler STextDocumentDocumentHighlight $ \ide DocumentHighlightParams{..} ->
+      documentHighlight ide TextDocumentPositionParams{..}
   ]
 
 -- | Respond to and log a hover or go-to-definition request

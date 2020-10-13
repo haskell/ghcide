@@ -47,31 +47,31 @@ plugin = Plugin {
 
 customRequestHandler ::  Handlers (ServerM c)
 customRequestHandler = mconcat
-  [ requestHandler (SCustomMethod "ghcide/blocking/request") $ \_s (RequestMessage _ _ _ params) k -> case fromJSON params of
+  [ requestHandler (SCustomMethod "ghcide/blocking/request") $ \_s params -> case fromJSON params of
       Success (BlockSeconds secs) -> do
         sendNotification (SCustomMethod "ghcide/blocking/notification") $
           toJSON secs
         liftIO $ sleep secs
-        k (Right Null)
-      Error err -> k (Left $ ResponseError InvalidParams (T.pack err) Nothing)
-  , requestHandler (SCustomMethod "ghcide/hidir") $ \s (RequestMessage _ _ _ params) k -> case fromJSON params of
+        pure $ Right Null
+      Error err -> pure $ Left $ ResponseError InvalidParams (T.pack err) Nothing
+  , requestHandler (SCustomMethod "ghcide/hidir") $ \s params -> case fromJSON params of
       Success (GetInterfaceFilesDir fp) -> do
         let nfp = toNormalizedFilePath fp
         sess <- liftIO $ runAction "Test - GhcSession" s $ use_ GhcSession nfp
         let hiPath = hiDir $ hsc_dflags $ hscEnv sess
-        k $ Right (toJSON hiPath)
-      Error err -> k (Left $ ResponseError InvalidParams (T.pack err) Nothing)
-  , requestHandler (SCustomMethod "ghcide/queue/count") $ \s (RequestMessage _ _ _ params) k -> case fromJSON params of
+        pure $ Right (toJSON hiPath)
+      Error err -> pure $ Left $ ResponseError InvalidParams (T.pack err) Nothing
+  , requestHandler (SCustomMethod "ghcide/queue/count") $ \s params -> case fromJSON params of
       Success GetShakeSessionQueueCount -> do
         n <- liftIO $ atomically $ countQueue $ actionQueue $ shakeExtras s
-        k $ Right (toJSON n)
-      Error err -> k (Left $ ResponseError InvalidParams (T.pack err) Nothing)
-  , requestHandler (SCustomMethod "ghcide/blocking/queue") $ \s (RequestMessage _ _ _ params) k -> case fromJSON params of
+        pure $ Right (toJSON n)
+      Error err -> pure $ Left $ ResponseError InvalidParams (T.pack err) Nothing
+  , requestHandler (SCustomMethod "ghcide/blocking/queue") $ \s params -> case fromJSON params of
       Success WaitForShakeQueue -> do
         liftIO $ atomically $ do
             n <- countQueue $ actionQueue $ shakeExtras s
             when (n>0) retry
-        k $ Right Null
-      Error err -> k (Left $ ResponseError InvalidParams (T.pack err) Nothing)
+        pure $ Right Null
+      Error err -> pure $ Left $ ResponseError InvalidParams (T.pack err) Nothing
  ]
 

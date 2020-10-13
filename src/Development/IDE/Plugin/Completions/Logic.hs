@@ -33,7 +33,7 @@ import Pair
 import Coercion
 #endif
 
-import Language.Haskell.LSP.Types hiding (L, R)
+import Language.Haskell.LSP.Types
 import Language.Haskell.LSP.Types.Capabilities
 import qualified Language.Haskell.LSP.VFS as VFS
 import Development.IDE.Core.Compile

@@ -34,8 +34,7 @@ import           Outputable                     ( Outputable
                                                 )
 
 setHandlersOutline :: LSP.Handlers (ServerM c)
-setHandlersOutline = requestHandler STextDocumentDocumentSymbol $ \ide (RequestMessage _ _ _ params) k ->
-  k =<< moduleOutline ide params
+setHandlersOutline = requestHandler STextDocumentDocumentSymbol moduleOutline
 
 moduleOutline
   :: IdeState -> DocumentSymbolParams -> LSP.LspM c (Either ResponseError (List DocumentSymbol |? List SymbolInformation))
