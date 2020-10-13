@@ -8,9 +8,9 @@
 {-# LANGUAGE GADTs #-}
 module Development.IDE.LSP.Server where
 
-import Language.Haskell.LSP.Types
-import qualified Language.Haskell.LSP.Core as LSP
-import           Language.Haskell.LSP.Core (Handlers, LspM, Handler)
+import Language.LSP.Types
+import qualified Language.LSP.Core as LSP
+import           Language.LSP.Core (Handlers, LspM, Handler)
 import Development.IDE.Core.Shake
 import UnliftIO.Chan
 import Control.Monad.Reader

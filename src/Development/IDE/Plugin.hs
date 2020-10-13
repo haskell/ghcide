@@ -8,11 +8,11 @@ import Data.Default
 import qualified Data.Text as T
 import Development.Shake
 
-import           Language.Haskell.LSP.Types
+import           Language.LSP.Types
 import Development.IDE.Compat
 import Development.IDE.Core.Rules
 import Development.IDE.LSP.Server
-import qualified Language.Haskell.LSP.Core as LSP
+import qualified Language.LSP.Core as LSP
 
 data Plugin c = Plugin
     {pluginRules :: Rules ()

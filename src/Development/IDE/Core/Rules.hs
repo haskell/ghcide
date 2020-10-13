@@ -66,7 +66,7 @@ import           Development.Shake                        hiding (Diagnostic)
 import Development.IDE.Core.RuleTypes
 import qualified Data.ByteString.Char8 as BS
 import Development.IDE.Core.PositionMapping
-import           Language.Haskell.LSP.Types (DocumentHighlight (..))
+import           Language.LSP.Types (DocumentHighlight (..))
 
 import qualified GHC.LanguageExtensions as LangExt
 import HscTypes hiding (TargetModule, TargetFile)
@@ -532,7 +532,7 @@ getHieAstsRule =
 getHieAstRuleDefinition :: NormalizedFilePath -> HscEnv -> TcModuleResult -> Action (IdeResult HieAstResult)
 getHieAstRuleDefinition f hsc tmr = do
   (diags, masts) <- liftIO $ generateHieAsts hsc tmr
- 
+
   isFoi <- use_ IsFileOfInterest f
   diagsWrite <- case isFoi of
     IsFOI Modified -> pure []
@@ -540,7 +540,7 @@ getHieAstRuleDefinition f hsc tmr = do
           source <- getSourceFileSource f
           liftIO $ writeHieFile hsc (tmrModSummary tmr) (tcg_exports $ tmrTypechecked tmr) asts source
     _ -> pure []
- 
+
   let refmap = generateReferencesMap . getAsts <$> masts
   pure (diags <> diagsWrite, HAR (ms_mod  $ tmrModSummary tmr) <$> masts <*> refmap)
 

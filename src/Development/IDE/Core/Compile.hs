@@ -45,7 +45,7 @@ import qualified GHC.LanguageExtensions.Type as GHC
 import Development.IDE.Types.Options
 import Development.IDE.Types.Location
 
-import Language.Haskell.LSP.Types (DiagnosticTag(..))
+import Language.LSP.Types (DiagnosticTag(..))
 
 import LoadIface (loadModuleInterface)
 import DriverPhases
@@ -192,7 +192,7 @@ mkHiFileResultCompile session' tcm simplified_guts = catchErrs $ do
   (diags, obj_res) <- generateObjectCode session ms guts
   case obj_res of
     Nothing -> do
-#if MIN_GHC_API_VERSION(8,10,0) 
+#if MIN_GHC_API_VERSION(8,10,0)
       let !partial_iface = force (mkPartialIface session details simplified_guts)
       final_iface <- mkFullIface session partial_iface
 #else

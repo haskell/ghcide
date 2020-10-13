@@ -26,8 +26,8 @@ import           Development.IDE.Core.FileExists (fileExistsRules)
 import           Development.IDE.Core.OfInterest
 import Development.IDE.Types.Logger as Logger
 import           Development.Shake
-import qualified Language.Haskell.LSP.Core as LSP
-import qualified Language.Haskell.LSP.Types as LSP
+import qualified Language.LSP.Core as LSP
+import qualified Language.LSP.Types as LSP
 
 import           Development.IDE.Core.Shake
 import Control.Monad

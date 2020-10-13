@@ -9,7 +9,7 @@ module Development.IDE.LSP.Protocol
 
 import Development.IDE.Types.Diagnostics
 import Development.IDE.Types.Location
-import Language.Haskell.LSP.Types
+import Language.LSP.Types
 
 ----------------------------------------------------------------------------------------------------
 -- Pretty printing

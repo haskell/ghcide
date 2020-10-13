@@ -8,7 +8,7 @@ import qualified Data.Text as T
 import SrcLoc
 
 import Development.IDE.Spans.Common
-import Language.Haskell.LSP.Types (CompletionItemKind)
+import Language.LSP.Types (CompletionItemKind)
 
 -- From haskell-ide-engine/src/Haskell/Ide/Engine/LSP/Completions.hs
 

@@ -35,7 +35,7 @@ import           SrcLoc (RealLocated)
 import           GhcMonad
 import           Packages
 import           Name
-import           Language.Haskell.LSP.Types (getUri, filePathToUri)
+import           Language.LSP.Types (getUri, filePathToUri)
 import           TcRnTypes
 import           ExtractDocs
 import           NameEnv
@@ -87,7 +87,7 @@ getDocumentationsTryGhc mod sources names = do
 
     mkSpanDocText name =
       pure (SpanDocText (getDocumentation sources name)) <*> getUris name
-   
+
     -- Get the uris to the documentation and source html pages if they exist
     getUris name = do
       df <- getSessionDynFlags
@@ -211,8 +211,8 @@ lookupHtmlForModule mkDocPath df m = do
     go pkgDocDir = map (mkDocPath pkgDocDir) mns
     ui = moduleUnitId m
     -- try to locate html file from most to least specific name e.g.
-    --  first Language.Haskell.LSP.Types.Uri.html and Language-Haskell-LSP-Types-Uri.html
-    --  then Language.Haskell.LSP.Types.html and Language-Haskell-LSP-Types.html etc.
+    --  first Language.LSP.Types.Uri.html and Language-Haskell-LSP-Types-Uri.html
+    --  then Language.LSP.Types.html and Language-Haskell-LSP-Types.html etc.
     mns = do
       chunks <- (reverse . drop1 . inits . splitOn ".") $ (moduleNameString . moduleName) m
       -- The file might use "." or "-" as separator
@@ -220,6 +220,6 @@ lookupHtmlForModule mkDocPath df m = do
 
 lookupHtmls :: DynFlags -> UnitId -> Maybe [FilePath]
 lookupHtmls df ui =
-  -- use haddockInterfaces instead of haddockHTMLs: GHC treats haddockHTMLs as URL not path 
+  -- use haddockInterfaces instead of haddockHTMLs: GHC treats haddockHTMLs as URL not path
   -- and therefore doesn't expand $topdir on Windows
   map takeDirectory . haddockInterfaces <$> lookupPackage df ui

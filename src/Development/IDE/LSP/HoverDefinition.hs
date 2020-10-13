@@ -21,8 +21,8 @@ import           Development.IDE.Core.Shake
 import           Development.IDE.LSP.Server
 import           Development.IDE.Types.Location
 import           Development.IDE.Types.Logger
-import qualified Language.Haskell.LSP.Core       as LSP
-import           Language.Haskell.LSP.Types
+import qualified Language.LSP.Core       as LSP
+import           Language.LSP.Types
 
 import qualified Data.Text as T
 

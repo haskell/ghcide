@@ -31,7 +31,7 @@ import Development.Shake
 import Development.IDE.GHC.Util
 import           GHC hiding (parseModule, typecheckModule)
 import           GhcPlugins                     as GHC hiding (fst3, (<>))
-import qualified Language.Haskell.LSP.Types.Capabilities as LSP
+import qualified Language.LSP.Types.Capabilities as LSP
 import qualified Data.Text as T
 import Development.IDE.Types.Diagnostics
 import Control.DeepSeq (NFData(..))

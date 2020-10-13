@@ -33,7 +33,7 @@ import           Development.IDE.Spans.Common
 import           Development.IDE.Spans.LocalBindings
 import           Development.IDE.Import.FindImports (ArtifactsLocation)
 import Data.ByteString (ByteString)
-import Language.Haskell.LSP.Types (NormalizedFilePath)
+import Language.LSP.Types (NormalizedFilePath)
 import TcRnMonad (TcGblEnv)
 
 -- NOTATION
@@ -132,10 +132,10 @@ data HieAstResult
   -- Lazyness can't cause leaks here because the lifetime of `refMap` will be the same
   -- as that of `hieAst`
   }
- 
+
 instance NFData HieAstResult where
     rnf (HAR m hf _rm) = rnf m `seq` rwhnf hf
- 
+
 instance Show HieAstResult where
     show = show . hieModule
 

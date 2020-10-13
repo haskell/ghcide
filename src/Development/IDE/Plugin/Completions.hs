@@ -10,10 +10,10 @@ module Development.IDE.Plugin.Completions
     , getCompletionsLSP
     ) where
 
-import Language.Haskell.LSP.Types
-import qualified Language.Haskell.LSP.Core as LSP
-import qualified Language.Haskell.LSP.VFS as VFS
-import Language.Haskell.LSP.Types.Capabilities
+import Language.LSP.Types
+import qualified Language.LSP.Core as LSP
+import qualified Language.LSP.VFS as VFS
+import Language.LSP.Types.Capabilities
 import Development.Shake.Classes
 import Development.Shake
 import GHC.Generics

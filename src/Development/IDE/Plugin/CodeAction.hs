@@ -44,9 +44,9 @@ import Development.IDE.Types.Options
 import Development.IDE.LSP.Server
 import Development.Shake (Rules)
 import qualified Data.HashMap.Strict as Map
-import qualified Language.Haskell.LSP.Core as LSP
-import Language.Haskell.LSP.VFS
-import Language.Haskell.LSP.Types
+import qualified Language.LSP.Core as LSP
+import Language.LSP.VFS
+import Language.LSP.Types
 import qualified Data.Rope.UTF16 as Rope
 import Data.Aeson.Types (toJSON, fromJSON, Value(..), Result(..))
 import Data.Char
@@ -172,7 +172,7 @@ suggestAction dflags packageExports ideOptions parsedModule text diag = concat
     , removeRedundantConstraints text diag
     , suggestAddTypeAnnotationToSatisfyContraints text diag
     ] ++ concat
-    [  suggestConstraint pm text diag  
+    [  suggestConstraint pm text diag
     ++ suggestNewDefinition ideOptions pm text diag
     ++ suggestRemoveRedundantImport pm text diag
     ++ suggestNewImport packageExports pm diag
@@ -556,7 +556,7 @@ processHoleSuggestions mm = (holeSuggestions, refSuggestions)
       Valid refinement hole fits include
         fromMaybe (_ :: LSP.Handlers) (_ :: Maybe LSP.Handlers)
         fromJust (_ :: Maybe LSP.Handlers)
-        haskell-lsp-types-0.22.0.0:Language.Haskell.LSP.Types.Window.$sel:_value:ProgressParams (_ :: ProgressParams
+        haskell-lsp-types-0.22.0.0:Language.LSP.Types.Window.$sel:_value:ProgressParams (_ :: ProgressParams
                                                                                                         LSP.Handlers)
         T.foldl (_ :: LSP.Handlers -> Char -> LSP.Handlers)
                 (_ :: LSP.Handlers)
@@ -668,7 +668,7 @@ suggestConstraint parsedModule mContents diag@Diagnostic {..}
   | Just contents <- mContents
   , Just missingConstraint <- findMissingConstraint _message
   = let codeAction = if _message =~ ("the type signature for:" :: String)
-                        then suggestFunctionConstraint parsedModule 
+                        then suggestFunctionConstraint parsedModule
                         else suggestInstanceConstraint contents
      in codeAction diag missingConstraint
   | otherwise = []
@@ -770,14 +770,14 @@ suggestFunctionConstraint ParsedModule{pm_parsed_source = L _ HsModule{hsmodDecl
   | Just typeSignatureName <- findTypeSignatureName _message
   = let mExistingConstraints = findExistingConstraints _message
         newConstraint = buildNewConstraints missingConstraint mExistingConstraints
-     in case findRangeOfContextForFunctionNamed typeSignatureName of 
+     in case findRangeOfContextForFunctionNamed typeSignatureName of
        Just range -> [(actionTitle missingConstraint typeSignatureName, [TextEdit range newConstraint])]
        Nothing -> []
   | otherwise = []
     where
-      findRangeOfContextForFunctionNamed :: T.Text -> Maybe Range 
+      findRangeOfContextForFunctionNamed :: T.Text -> Maybe Range
       findRangeOfContextForFunctionNamed typeSignatureName = do
-          locatedType <- listToMaybe 
+          locatedType <- listToMaybe
               [ locatedType
               | L _ (SigD _ (TypeSig _ identifiers (HsWC _ (HsIB _ locatedType)))) <- hsmodDecls
               , any (`isSameName` T.unpack typeSignatureName) $ fmap unLoc identifiers

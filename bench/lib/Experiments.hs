@@ -34,9 +34,9 @@ import qualified Data.Text as T
 import Data.Version
 import Development.IDE.Plugin.Test
 import Experiments.Types
-import Language.Haskell.LSP.Test
-import Language.Haskell.LSP.Types
-import Language.Haskell.LSP.Types.Capabilities
+import Language.LSP.Test
+import Language.LSP.Types
+import Language.LSP.Types.Capabilities
 import Numeric.Natural
 import Options.Applicative
 import System.Directory

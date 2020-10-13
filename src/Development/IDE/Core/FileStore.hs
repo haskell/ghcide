@@ -56,9 +56,9 @@ import qualified System.Posix.Error as Posix
 
 import qualified Development.IDE.Types.Logger as L
 
-import Language.Haskell.LSP.Core hiding (getVirtualFile)
-import qualified Language.Haskell.LSP.Core as LSP
-import Language.Haskell.LSP.VFS
+import Language.LSP.Core hiding (getVirtualFile)
+import qualified Language.LSP.Core as LSP
+import Language.LSP.VFS
 
 -- | haskell-lsp manages the VFS internally and automatically so we cannot use
 -- the builtin VFS without spawning up an LSP server. To be able to test things

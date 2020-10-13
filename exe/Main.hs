@@ -31,9 +31,9 @@ import Development.IDE.Plugin.Completions as Completions
 import Development.IDE.Plugin.CodeAction as CodeAction
 import Development.IDE.Plugin.Test as Test
 import Development.IDE.Session
-import qualified Language.Haskell.LSP.Core as LSP
-import Language.Haskell.LSP.Types
-import Language.Haskell.LSP.Types.Lens (params, initializationOptions)
+import qualified Language.LSP.Core as LSP
+import Language.LSP.Types
+import Language.LSP.Types.Lens (params, initializationOptions)
 import Development.IDE.LSP.LanguageServer
 import qualified System.Directory.Extra as IO
 import System.Environment

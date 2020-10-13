@@ -23,10 +23,10 @@ import Control.Monad.IO.Class
 import Data.Bifunctor (second)
 import qualified Data.Map.Strict as Map
 import qualified Data.Text as T
-import Language.Haskell.LSP.Test hiding (message)
-import qualified Language.Haskell.LSP.Test as LspTest
-import Language.Haskell.LSP.Types
-import Language.Haskell.LSP.Types.Lens as Lsp
+import Language.LSP.Test hiding (message)
+import qualified Language.LSP.Test as LspTest
+import Language.LSP.Types
+import Language.LSP.Types.Lens as Lsp
 import System.Time.Extra
 import Test.Tasty.HUnit
 import System.Directory (canonicalizePath)

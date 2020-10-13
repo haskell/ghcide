@@ -38,11 +38,11 @@ import Development.IDE.Test.Runfiles
 import Development.IDE.Types.Location
 import Development.Shake (getDirectoryFilesIO)
 import qualified Experiments as Bench
-import Language.Haskell.LSP.Test
-import Language.Haskell.LSP.Types
-import Language.Haskell.LSP.Types.Capabilities
-import qualified Language.Haskell.LSP.Types.Lens as Lsp (diagnostics, params, message)
-import Language.Haskell.LSP.VFS (applyChange)
+import Language.LSP.Test
+import Language.LSP.Types
+import Language.LSP.Types.Capabilities
+import qualified Language.LSP.Types.Lens as Lsp (diagnostics, params, message)
+import Language.LSP.VFS (applyChange)
 import Network.URI
 import System.Environment.Blank (getEnv, setEnv, unsetEnv)
 import System.FilePath
@@ -1730,7 +1730,7 @@ addFunctionConstraintTests = let
     , "eq :: " <> constraint <> " => Pair a b -> Pair a b -> Bool"
     , "eq (Pair x y) (Pair x' y') = x == x' && y == y'"
     ]
-  
+
   incompleteConstraintSourceCodeWithNewlinesInTypeSignature :: T.Text -> T.Text
   incompleteConstraintSourceCodeWithNewlinesInTypeSignature constraint =
     T.unlines

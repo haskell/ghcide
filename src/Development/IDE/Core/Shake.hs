@@ -90,7 +90,7 @@ import Development.IDE.Core.PositionMapping
 import Development.IDE.Types.Action
 import Development.IDE.Types.Logger hiding (Priority)
 import qualified Development.IDE.Types.Logger as Logger
-import Language.Haskell.LSP.Diagnostics
+import Language.LSP.Diagnostics
 import qualified Data.SortedList as SL
 import           Development.IDE.Types.Diagnostics
 import Development.IDE.Types.Exports
@@ -102,15 +102,15 @@ import           Control.Concurrent.STM (readTVar, writeTVar, newTVarIO, atomica
 import           Control.DeepSeq
 import           System.Time.Extra
 import           Data.Typeable
-import qualified Language.Haskell.LSP.Core as LSP
-import qualified Language.Haskell.LSP.Types as LSP
+import qualified Language.LSP.Core as LSP
+import qualified Language.LSP.Types as LSP
 import           System.FilePath hiding (makeRelative)
 import qualified Development.Shake as Shake
 import           Control.Monad.Extra
 import           Data.Time
 import           GHC.Generics
 import           System.IO.Unsafe
-import Language.Haskell.LSP.Types
+import Language.LSP.Types
 import qualified Control.Monad.STM as STM
 import Control.Monad.IO.Class
 import Control.Monad.Reader
@@ -471,10 +471,10 @@ shakeOpen lspEnv logger debouncer
                 -- a "noticable amount of time" (we often expect a thread kill to arrive before the sleep finishes)
                 liftIO $ unless testing $ sleep 0.1
                 u <- ProgressTextToken . T.pack . show . hashUnique <$> liftIO newUnique
-                
+
                 void $ LSP.sendRequest LSP.SWindowWorkDoneProgressCreate
                     LSP.WorkDoneProgressCreateParams { _token = u } $ const (pure ())
-                    
+
                 bracket_
                   (start u)
                   (stop u)

@@ -49,8 +49,8 @@ import HIE.Bios
 import HIE.Bios.Environment hiding (getCacheDir)
 import HIE.Bios.Types
 import Hie.Implicit.Cradle (loadImplicitHieCradle)
-import Language.Haskell.LSP.Core
-import Language.Haskell.LSP.Types
+import Language.LSP.Core
+import Language.LSP.Types
 import System.Directory
 import qualified System.Directory.Extra as IO
 import System.FilePath

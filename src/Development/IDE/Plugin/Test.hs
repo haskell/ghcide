@@ -17,8 +17,8 @@ import Development.IDE.LSP.Server
 import Development.IDE.Types.Action
 import GHC.Generics (Generic)
 import GhcPlugins (HscEnv(hsc_dflags))
-import Language.Haskell.LSP.Core hiding (requestHandler, notificationHandler)
-import Language.Haskell.LSP.Types
+import Language.LSP.Core hiding (requestHandler, notificationHandler)
+import Language.LSP.Types
 import System.Time.Extra
 import Development.IDE.Core.RuleTypes
 import Control.Monad

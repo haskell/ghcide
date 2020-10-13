@@ -25,9 +25,9 @@ import           Development.IDE.Types.Options
 import           Development.Shake
 import           Development.Shake.Classes
 import           GHC.Generics
-import           Language.Haskell.LSP.Core hiding (getVirtualFile)
-import           Language.Haskell.LSP.Types
-import           Language.Haskell.LSP.Types.Capabilities
+import           Language.LSP.Core hiding (getVirtualFile)
+import           Language.LSP.Types
+import           Language.LSP.Types.Capabilities
 import qualified System.Directory as Dir
 import qualified System.FilePath.Glob as Glob
 
@@ -157,7 +157,7 @@ fileExistsRules lspEnv vfs = do
       case () of
         _ | Just WorkspaceClientCapabilities{_didChangeWatchedFiles} <- _workspace
           , Just DidChangeWatchedFilesClientCapabilities{_dynamicRegistration} <- _didChangeWatchedFiles
-          , Just True <- _dynamicRegistration 
+          , Just True <- _dynamicRegistration
           -> pure True
         _ -> pure False
     Nothing -> pure False

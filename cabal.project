@@ -1,7 +1,16 @@
 packages: .
-					~/hie-lsp/haskell-lsp
-					~/hie-lsp/haskell-lsp-types
-					~/hie-lsp/haskell-lsp/lsp-test
+
+source-repository-package
+    type: git
+    location: https://github.com/alanz/lsp
+    tag: ba6a7409f830be09f815489265a76499d7b7debb
+    subdir: .
+            ./lsp-types
+
+source-repository-package
+    type: git
+    location: https://github.com/wz1000/lsp-test
+    tag: cf9e06e2eb79b113ff861866690f14166d1fa4e7
 
 test-show-details: direct
 

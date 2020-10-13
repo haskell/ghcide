@@ -12,8 +12,8 @@ module Development.IDE.LSP.Outline
   )
 where
 
-import qualified Language.Haskell.LSP.Core     as LSP
-import           Language.Haskell.LSP.Types
+import qualified Language.LSP.Core     as LSP
+import           Language.LSP.Types
 import           Control.Monad.IO.Class
 import           Data.Functor
 import           Data.Generics

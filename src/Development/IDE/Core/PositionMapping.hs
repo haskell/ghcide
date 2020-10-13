@@ -22,7 +22,7 @@ module Development.IDE.Core.PositionMapping
 
 import Control.Monad
 import qualified Data.Text as T
-import Language.Haskell.LSP.Types
+import Language.LSP.Types
 import Data.List
 
 -- | Either an exact position, or the range of text that was substituted
