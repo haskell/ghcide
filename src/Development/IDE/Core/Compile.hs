@@ -197,19 +197,16 @@ mkHiFileResultCompile session' tcm simplified_guts ltype = catchErrs $ do
         ObjectLinkable -> generateObjectCode
         BCOLinkable -> generateByteCode
 
-  (diags, res) <- genLinkable session ms guts
-  case res of
-    Nothing -> do
-      pure (diags, Nothing)
-    Just linkable -> do
+  (diags, linkable) <- genLinkable session ms guts
 #if MIN_GHC_API_VERSION(8,10,0)
-      let !partial_iface = force (mkPartialIface session details simplified_guts)
-      final_iface <- mkFullIface session partial_iface
+  let !partial_iface = force (mkPartialIface session details simplified_guts)
+  final_iface <- mkFullIface session partial_iface
 #else
-      (final_iface,_) <- mkIface session Nothing details simplified_guts
+  (final_iface,_) <- mkIface session Nothing details simplified_guts
 #endif
-      let mod_info = HomeModInfo final_iface details (Just linkable)
-      pure (diags, Just $! HiFileResult ms mod_info)
+  let mod_info = HomeModInfo final_iface details linkable
+  pure (diags, Just $! HiFileResult ms mod_info)
+
   where
     dflags = hsc_dflags session'
     source = "compile"
