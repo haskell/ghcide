@@ -26,8 +26,7 @@ module Development.IDE.Core.Compile
   , getModSummaryFromImports
   , loadHieFile
   , loadInterface
-  , loadDepModule
-  , loadModuleHome
+  , loadModulesHome
   , setupFinderCache
   , getDocsBatch
   , lookupName
@@ -447,56 +446,44 @@ handleGenerationErrors' dflags source action =
 
 -- | Initialise the finder cache, dependencies should be topologically
 -- sorted.
-setupFinderCache :: GhcMonad m => [ModSummary] -> m ()
-setupFinderCache mss = do
-    session <- getSession
-
-    -- set the target and module graph in the session
-    let graph = mkModuleGraph mss
-    setSession session { hsc_mod_graph = graph }
+setupFinderCache :: [ModSummary] -> HscEnv -> IO HscEnv
+setupFinderCache mss session = do
 
     -- Make modules available for others that import them,
     -- by putting them in the finder cache.
     let ims  = map (InstalledModule (thisInstalledUnitId $ hsc_dflags session) . moduleName . ms_mod) mss
         ifrs = zipWith (\ms -> InstalledFound (ms_location ms)) mss ims
+    -- set the target and module graph in the session
+        graph = mkModuleGraph mss
+
     -- We have to create a new IORef here instead of modifying the existing IORef as
     -- it is shared between concurrent compilations.
-    prevFinderCache <- liftIO $ readIORef $ hsc_FC session
+    prevFinderCache <- readIORef $ hsc_FC session
     let newFinderCache =
             foldl'
                 (\fc (im, ifr) -> GHC.extendInstalledModuleEnv fc im ifr) prevFinderCache
                 $ zip ims ifrs
-    newFinderCacheVar <- liftIO $ newIORef $! newFinderCache
-    modifySession $ \s -> s { hsc_FC = newFinderCacheVar }
+    newFinderCacheVar <- newIORef $! newFinderCache
+
+    pure $ session { hsc_FC = newFinderCacheVar, hsc_mod_graph = graph }
 
 
--- | Load a module, quickly. Input doesn't need to be desugared.
+-- | Load modules, quickly. Input doesn't need to be desugared.
 -- A module must be loaded before dependent modules can be typechecked.
 -- This variant of loadModuleHome will *never* cause recompilation, it just
 -- modifies the session.
---
 -- The order modules are loaded is important when there are hs-boot files.
 -- In particular you should make sure to load the .hs version of a file after the
 -- .hs-boot version.
-loadModuleHome
-    :: HomeModInfo
+loadModulesHome
+    :: [HomeModInfo]
     -> HscEnv
     -> HscEnv
-loadModuleHome mod_info e =
-    e { hsc_HPT = addToHpt (hsc_HPT e) mod_name mod_info, hsc_type_env_var = Nothing }
+loadModulesHome mod_infos e =
+    e { hsc_HPT = addListToHpt (hsc_HPT e) [(mod_name x, x) | x <- mod_infos]
+      , hsc_type_env_var = Nothing }
     where
-      mod_name = moduleName $ mi_module $ hm_iface mod_info
-
--- | Load module interface.
-loadDepModuleIO :: HomeModInfo -> HscEnv -> IO HscEnv
-loadDepModuleIO mod_info hsc = do
-    return $ loadModuleHome mod_info hsc
-
-loadDepModule :: GhcMonad m => HomeModInfo -> m ()
-loadDepModule mod_info = do
-  e <- getSession
-  e' <- liftIO $ loadDepModuleIO mod_info e
-  setSession e'
+      mod_name = moduleName . mi_module . hm_iface
 
 -- | GhcMonad function to chase imports of a module given as a StringBuffer. Returns given module's
 -- name and its imports.

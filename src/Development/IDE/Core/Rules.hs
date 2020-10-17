@@ -682,18 +682,22 @@ ghcSessionDepsDefinition :: NormalizedFilePath -> Action (IdeResult HscEnvEq)
 ghcSessionDepsDefinition file = do
         env <- use_ GhcSession file
         let hsc = hscEnv env
+        (ms,_) <- useWithStale_ GetModSummaryWithoutTimestamps file
         (deps,_) <- useWithStale_ GetDependencies file
         let tdeps = transitiveModuleDeps deps
-        ifaces <- uses_ GetModIface tdeps
+            uses_th_qq =
+              xopt LangExt.TemplateHaskell dflags || xopt LangExt.QuasiQuotes dflags
+            dflags = ms_hspp_opts ms
+        ifaces <- if uses_th_qq
+                  then uses_ GetModIface tdeps
+                  else uses_ GetModIfaceWithoutLinkable tdeps
 
         -- Currently GetDependencies returns things in topological order so A comes before B if A imports B.
         -- We need to reverse this as GHC gets very unhappy otherwise and complains about broken interfaces.
         -- Long-term we might just want to change the order returned by GetDependencies
         let inLoadOrder = reverse (map hirHomeMod ifaces)
 
-        (session',_) <- liftIO $ runGhcEnv hsc $ do
-            setupFinderCache (map hirModSummary ifaces)
-            mapM_ loadDepModule inLoadOrder
+        session' <- liftIO $ loadModulesHome inLoadOrder <$> setupFinderCache (map hirModSummary ifaces) hsc
 
         res <- liftIO $ newHscEnvEqWithImportPaths (envImportPaths env) session' []
         return ([], Just res)
@@ -827,6 +831,13 @@ getModIfaceRule = defineEarlyCutoff $ \GetModIface f -> do
     return (fp, (diags, hiFile))
 #endif
 
+getModIfaceWithoutLinkableRule :: Rules ()
+getModIfaceWithoutLinkableRule = defineEarlyCutoff $ \GetModIfaceWithoutLinkable f -> do
+  mhfr <- use GetModIface f
+  let mhfr' = fmap (\x -> x{ hirHomeMod = (hirHomeMod x){ hm_linkable = Just (error msg) } }) mhfr
+      msg = "tried to look at linkable for GetModIfaceWithoutLinkable for " ++ show f
+  pure (fingerprintToBS . getModuleHash . hirModIface <$> mhfr', ([],mhfr'))
+
 regenerateHiFile :: HscEnvEq -> NormalizedFilePath -> Maybe LinkableType -> Action ([FileDiagnostic], Maybe HiFileResult)
 regenerateHiFile sess f compNeeded = do
     let hsc = hscEnv sess
@@ -930,6 +941,7 @@ mainRule = do
     loadGhcSession
     getModIfaceFromDiskRule
     getModIfaceRule
+    getModIfaceWithoutLinkableRule
     getModSummaryRule
     isHiFileStableRule
     getModuleGraphRule
