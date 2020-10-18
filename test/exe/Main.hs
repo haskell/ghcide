@@ -930,45 +930,35 @@ removeImportTests = testGroup "remove import actions"
             ]
       liftIO $ expectedContentAfterAction @=? contentAfterAction
   , testSession "remove all" $ do
-      let contentA = T.unlines
-            [ "module ModuleA where"
-            , "staffA :: Integer"
-            , "staffA = 123"
-            , "staffB = True"
-            , "data D = A | B"
-            ]
-      _docA <- createDoc "ModuleA.hs" "haskell" contentA     
-      let contentB = T.unlines
-            [ "module ModuleB where"
-            , "staffC = ()"
-            , "staffD = False"
-            , "data E = F"
-            ]
-      _docB <- createDoc "ModuleB.hs" "haskell" contentB
-      let contentC = T.unlines
+      let content = T.unlines
             [ "{-# OPTIONS_GHC -Wunused-imports #-}"
-            , "module ModuleC where"
-            , "import ModuleA (staffA, staffB, D(A, B))"
-            , "import ModuleB (staffC, staffD, E(F))"
-            , "x = staffA"
-            , "y = staffD"
-            , "z = A"
+            , "module ModuleA where"
+            , "import Data.Function (fix, (&))"
+            , "import qualified Data.Functor.Const"
+            , "import Data.Functor.Identity"
+            , "import Data.Functor.Sum (Sum (InL, InR))"
+            , "import qualified Data.Kind as K (Constraint, Type)"
+            , "x = InL (Identity 123)"
+            , "y = fix id"
+            , "type T = K.Type"
             ]
-      docC <- createDoc "ModuleC.hs" "haskell" contentC
+      doc <- createDoc "ModuleC.hs" "haskell" content
       _ <- waitForDiagnostics
-      [_, _, CACodeAction action@CodeAction { _title = actionTitle }]
-          <- getCodeActions docC (Range (Position 2 0) (Position 2 5))
+      [_, _, _, _, CACodeAction action@CodeAction { _title = actionTitle }]
+          <- getCodeActions doc (Range (Position 2 0) (Position 2 5))
       liftIO $ "Remove all redundant imports" @=? actionTitle
       executeCodeAction action
-      contentAfterAction <- documentContents docC
+      contentAfterAction <- documentContents doc
       let expectedContentAfterAction = T.unlines
             [ "{-# OPTIONS_GHC -Wunused-imports #-}"
-            , "module ModuleC where"
-            , "import ModuleA (staffA, D(A))"
-            , "import ModuleB (staffD)"
-            , "x = staffA"
-            , "y = staffD"
-            , "z = A"
+            , "module ModuleA where"
+            , "import Data.Function (fix)"
+            , "import Data.Functor.Identity"
+            , "import Data.Functor.Sum (Sum (InL))"
+            , "import qualified Data.Kind as K (Type)"
+            , "x = InL (Identity 123)"
+            , "y = fix id"
+            , "type T = K.Type"
             ]
       liftIO $ expectedContentAfterAction @=? contentAfterAction
   ]
