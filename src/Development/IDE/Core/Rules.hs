@@ -626,7 +626,7 @@ typeCheckRuleDefinition hsc pm = do
 -- Doesn't actually contain the code, since we don't need it to unload
 currentLinkables :: Action [Linkable]
 currentLinkables = do
-    ShakeExtras{compiledLinkables} <- getShakeExtras
+    compiledLinkables <- getCompiledLinkables <$> getIdeGlobalAction
     hm <- liftIO $ readVar compiledLinkables
     pure $ map go $ moduleEnvToList hm
   where
@@ -820,7 +820,7 @@ getModIfaceRule = defineEarlyCutoff $ \GetModIface f -> do
 
   -- Record the linkable so we know not to unload it
   whenJust (hm_linkable . hirHomeMod =<< mhmi) $ \(LM time mod _) -> do
-      ShakeExtras{compiledLinkables} <- getShakeExtras
+      compiledLinkables <- getCompiledLinkables <$> getIdeGlobalAction
       liftIO $ modifyVar_ compiledLinkables $ \old -> pure $ extendModuleEnv old mod time
   pure res
 #else
@@ -928,9 +928,15 @@ needsCompilationRule = defineEarlyCutoff $ \NeedsCompilation file -> do
     uses_th_qq (ms_hspp_opts -> dflags) =
       xopt LangExt.TemplateHaskell dflags || xopt LangExt.QuasiQuotes dflags
 
+-- | Tracks which linkables are current, so we don't need to unload them
+newtype CompiledLinkables = CompiledLinkables { getCompiledLinkables :: Var (ModuleEnv UTCTime) }
+instance IsIdeGlobal CompiledLinkables
+
 -- | A rule that wires per-file rules together
 mainRule :: Rules ()
 mainRule = do
+    linkables <- liftIO $ newVar emptyModuleEnv
+    addIdeGlobal $ CompiledLinkables linkables
     getParsedModuleRule
     getLocatedImportsRule
     getDependencyInformationRule
