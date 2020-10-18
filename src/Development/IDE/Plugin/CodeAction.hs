@@ -213,16 +213,14 @@ caRemoveRedundantImports m contents digs ctxDigs uri
       = caRemoveCtx ++ caRemoveAll
   | otherwise = []
   where
-    removeSingle title tedit diagnostic
-      | _changes <- Just $ Map.singleton uri $ List tedit,
-        _title <- title,
-        _kind <- Just CodeActionQuickFix,
-        _diagnostics <- Just $ List [diagnostic],
-        _documentChanges <- Nothing,
-        _edit <- Just WorkspaceEdit{..},
-        _command <- Nothing
-         = [CACodeAction CodeAction {..}]
-      | otherwise = []
+    removeSingle title tedit diagnostic = [CACodeAction CodeAction{..}] where
+        _changes = Just $ Map.singleton uri $ List tedit
+        _title = title
+        _kind = Just CodeActionQuickFix
+        _diagnostics = Just $ List [diagnostic]
+        _documentChanges = Nothing
+        _edit = Just WorkspaceEdit{..}
+        _command = Nothing
     removeAll tedit
       | _changes <- Just $ Map.singleton uri $ List tedit,
         _title <- "Remove all redundant imports",
