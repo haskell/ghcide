@@ -756,7 +756,7 @@ removeImportTests = testGroup "remove import actions"
             ]
       docB <- createDoc "ModuleB.hs" "haskell" contentB
       _ <- waitForDiagnostics
-      [CACodeAction action@CodeAction { _title = actionTitle }]
+      [CACodeAction action@CodeAction { _title = actionTitle }, _]
           <- getCodeActions docB (Range (Position 2 0) (Position 2 5))
       liftIO $ "Remove import" @=? actionTitle
       executeCodeAction action
@@ -782,7 +782,7 @@ removeImportTests = testGroup "remove import actions"
             ]
       docB <- createDoc "ModuleB.hs" "haskell" contentB
       _ <- waitForDiagnostics
-      [CACodeAction action@CodeAction { _title = actionTitle }]
+      [CACodeAction action@CodeAction { _title = actionTitle }, _]
           <- getCodeActions docB (Range (Position 2 0) (Position 2 5))
       liftIO $ "Remove import" @=? actionTitle
       executeCodeAction action
@@ -811,7 +811,7 @@ removeImportTests = testGroup "remove import actions"
             ]
       docB <- createDoc "ModuleB.hs" "haskell" contentB
       _ <- waitForDiagnostics
-      [CACodeAction action@CodeAction { _title = actionTitle }]
+      [CACodeAction action@CodeAction { _title = actionTitle }, _]
           <- getCodeActions docB (Range (Position 2 0) (Position 2 5))
       liftIO $ "Remove stuffA, stuffC from import" @=? actionTitle
       executeCodeAction action
@@ -840,7 +840,7 @@ removeImportTests = testGroup "remove import actions"
             ]
       docB <- createDoc "ModuleB.hs" "haskell" contentB
       _ <- waitForDiagnostics
-      [CACodeAction action@CodeAction { _title = actionTitle }]
+      [CACodeAction action@CodeAction { _title = actionTitle }, _]
           <- getCodeActions docB (Range (Position 2 0) (Position 2 5))
       liftIO $ "Remove !!, <?> from import" @=? actionTitle
       executeCodeAction action
@@ -868,7 +868,7 @@ removeImportTests = testGroup "remove import actions"
             ]
       docB <- createDoc "ModuleB.hs" "haskell" contentB
       _ <- waitForDiagnostics
-      [CACodeAction action@CodeAction { _title = actionTitle }]
+      [CACodeAction action@CodeAction { _title = actionTitle }, _]
           <- getCodeActions docB (Range (Position 2 0) (Position 2 5))
       liftIO $ "Remove A from import" @=? actionTitle
       executeCodeAction action
@@ -895,7 +895,7 @@ removeImportTests = testGroup "remove import actions"
             ]
       docB <- createDoc "ModuleB.hs" "haskell" contentB
       _ <- waitForDiagnostics
-      [CACodeAction action@CodeAction { _title = actionTitle }]
+      [CACodeAction action@CodeAction { _title = actionTitle }, _]
           <- getCodeActions docB (Range (Position 2 0) (Position 2 5))
       liftIO $ "Remove A, E, F from import" @=? actionTitle
       executeCodeAction action
@@ -919,7 +919,7 @@ removeImportTests = testGroup "remove import actions"
             ]
       docB <- createDoc "ModuleB.hs" "haskell" contentB
       _ <- waitForDiagnostics
-      [CACodeAction action@CodeAction { _title = actionTitle }]
+      [CACodeAction action@CodeAction { _title = actionTitle }, _]
           <- getCodeActions docB (Range (Position 2 0) (Position 2 5))
       liftIO $ "Remove import" @=? actionTitle
       executeCodeAction action
@@ -927,6 +927,48 @@ removeImportTests = testGroup "remove import actions"
       let expectedContentAfterAction = T.unlines
             [ "{-# OPTIONS_GHC -Wunused-imports #-}"
             , "module ModuleB where"
+            ]
+      liftIO $ expectedContentAfterAction @=? contentAfterAction
+  , testSession "remove all" $ do
+      let contentA = T.unlines
+            [ "module ModuleA where"
+            , "staffA :: Integer"
+            , "staffA = 123"
+            , "staffB = True"
+            , "data D = A | B"
+            ]
+      _docA <- createDoc "ModuleA.hs" "haskell" contentA     
+      let contentB = T.unlines
+            [ "module ModuleB where"
+            , "staffC = ()"
+            , "staffD = False"
+            , "data E = F"
+            ]
+      _docB <- createDoc "ModuleB.hs" "haskell" contentB
+      let contentC = T.unlines
+            [ "{-# OPTIONS_GHC -Wunused-imports #-}"
+            , "module ModuleC where"
+            , "import ModuleA (staffA, staffB, D(A, B))"
+            , "import ModuleB (staffC, staffD, E(F))"
+            , "x = staffA"
+            , "y = staffD"
+            , "z = A"
+            ]
+      docC <- createDoc "ModuleC.hs" "haskell" contentC
+      _ <- waitForDiagnostics
+      [_, _, CACodeAction action@CodeAction { _title = actionTitle }]
+          <- getCodeActions docC (Range (Position 2 0) (Position 2 5))
+      liftIO $ "Remove all redundant imports" @=? actionTitle
+      executeCodeAction action
+      contentAfterAction <- documentContents docC
+      let expectedContentAfterAction = T.unlines
+            [ "{-# OPTIONS_GHC -Wunused-imports #-}"
+            , "module ModuleC where"
+            , "import ModuleA (staffA, D(A))"
+            , "import ModuleB (staffD)"
+            , "x = staffA"
+            , "y = staffD"
+            , "z = A"
             ]
       liftIO $ expectedContentAfterAction @=? contentAfterAction
   ]
