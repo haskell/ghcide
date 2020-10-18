@@ -221,16 +221,14 @@ caRemoveRedundantImports m contents digs ctxDigs uri
         _documentChanges = Nothing
         _edit = Just WorkspaceEdit{..}
         _command = Nothing
-    removeAll tedit
-      | _changes <- Just $ Map.singleton uri $ List tedit,
-        _title <- "Remove all redundant imports",
-        _kind <- Just CodeActionQuickFix,
-        _diagnostics <- Nothing,
-        _documentChanges <- Nothing,
-        _edit <- Just WorkspaceEdit{..},
-        _command <- Nothing
-          = [CACodeAction CodeAction {..}]
-      | otherwise = []
+    removeAll tedit = [CACodeAction CodeAction {..}] where
+        _changes = Just $ Map.singleton uri $ List tedit
+        _title = "Remove all redundant imports"
+        _kind = Just CodeActionQuickFix
+        _diagnostics = Nothing
+        _documentChanges = Nothing
+        _edit = Just WorkspaceEdit{..}
+        _command = Nothing
 
 suggestDeleteUnusedBinding :: ParsedModule -> Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
 suggestDeleteUnusedBinding
