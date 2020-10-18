@@ -9,6 +9,7 @@ module Development.IDE.GHC.Error
   , diagFromStrings
   , diagFromGhcException
   , catchSrcErrors
+  , catchSrcErrors'
 
   -- * utilities working with spans
   , srcSpanToLocation
@@ -142,9 +143,13 @@ realSpan = \case
 catchSrcErrors :: (HasDynFlags m, ExceptionMonad m) => T.Text -> m a -> m (Either [FileDiagnostic] a)
 catchSrcErrors fromWhere ghcM = do
       dflags <- getDynFlags
-      handleGhcException (ghcExceptionToDiagnostics dflags) $
-        handleSourceError (sourceErrorToDiagnostics dflags) $
-        Right <$> ghcM
+      catchSrcErrors' dflags fromWhere ghcM
+
+catchSrcErrors' :: ExceptionMonad m => DynFlags -> T.Text -> m a -> m (Either [FileDiagnostic] a)
+catchSrcErrors' dflags fromWhere ghcM = do
+    handleGhcException (ghcExceptionToDiagnostics dflags) $
+      handleSourceError (sourceErrorToDiagnostics dflags) $
+      Right <$> ghcM
     where
         ghcExceptionToDiagnostics dflags = return . Left . diagFromGhcException fromWhere dflags
         sourceErrorToDiagnostics dflags = return . Left . diagFromErrMsgs fromWhere dflags . srcErrorMessages
