@@ -452,7 +452,7 @@ shakeOpen getLspId eventer withProgress withIndefiniteProgress logger debouncer
     shakeSession <- newMVar initSession
     let ideState = IdeState{..}
 
-    startTelemetry "Values map" (state shakeExtras) =<< (optOTProfiling <$> getIdeOptionsIO shakeExtras)
+    startTelemetry shakeExtras
 
     return ideState
     where
@@ -1182,34 +1182,38 @@ updatePositionMapping IdeState{shakeExtras = ShakeExtras{positionMapping}} Versi
   where
     shared_change = mkDelta changes
 
-startTelemetry :: String -> Var Values -> IdeOTProfiling -> IO ()
-startTelemetry _ _ (IdeOTProfiling False) = return ()
-startTelemetry name valuesRef (IdeOTProfiling True) = do
-  mapBytesInstrument <- mkValueObserver (BS.pack name <> " size_bytes")
+startTelemetry :: ShakeExtras -> IO ()
+startTelemetry shakeExtras = do
+    IdeOptions{ optOTProfiling = (IdeOTProfiling otProfilingEnabled) } <- getIdeOptionsIO shakeExtras
 
-  mapCountInstrument <- mkValueObserver (BS.pack name <> " count")
-  _ <- regularly 10000 $ -- 100 times/s
-    withSpan_ "Measure length" $
-      readVar valuesRef
-      >>= observe mapCountInstrument . length
+    when otProfilingEnabled $ do
+        let ShakeExtras { state = stateRef } = shakeExtras
 
-  _ <- regularly 500000 $
-    withSpan_ "Measure Memory" $ do
-      performGC
-      values <- readVar valuesRef
-      let groupedValues =
-              HMap.toList values
-              <&> (\((f, k), v) -> (k, [(f, v)]))
-              & HMap.fromListWith (++)
-      valuesSize <- sequence $ HMap.mapWithKey (\k v -> withSpan ("Measure " <> (BS.pack $ show k)) $ \sp -> do
-            { byteSize <- (sizeOf (undefined :: Word) *) <$> recursiveSizeNoGC v
-            ; setTag sp "size" (BS.pack $ (show byteSize ++ " bytes"))
-            ; return byteSize
-            })
-            groupedValues
-      observe mapBytesInstrument (sum valuesSize)
-  return ()
+        mapBytesInstrument <- mkValueObserver ("value map size_bytes")
+        mapCountInstrument <- mkValueObserver ("values map count")
 
-  where
-    regularly :: Int -> IO () -> IO (Async ())
-    regularly delay act = async $ forever (act >> threadDelay delay)
+        _ <- regularly 10000 $ -- 100 times/s
+            withSpan_ "Measure length" $
+            readVar stateRef
+            >>= observe mapCountInstrument . length
+
+        _ <- regularly 500000 $
+            withSpan_ "Measure Memory" $ do
+            performGC
+            values <- readVar stateRef
+            let groupedValues =
+                    HMap.toList values
+                    <&> (\((f, k), v) -> (k, [(f, v)]))
+                    & HMap.fromListWith (++)
+            valuesSize <- sequence $ HMap.mapWithKey (\k v -> withSpan ("Measure " <> (BS.pack $ show k)) $ \sp -> do
+                    { byteSize <- (sizeOf (undefined :: Word) *) <$> recursiveSizeNoGC v
+                    ; setTag sp "size" (BS.pack $ (show byteSize ++ " bytes"))
+                    ; return byteSize
+                    })
+                    groupedValues
+            observe mapBytesInstrument (sum valuesSize)
+        return ()
+
+    where
+        regularly :: Int -> IO () -> IO (Async ())
+        regularly delay act = async $ forever (act >> threadDelay delay)
