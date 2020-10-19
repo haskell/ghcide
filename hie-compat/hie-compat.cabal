@@ -13,11 +13,23 @@ maintainer:          zubin.duggal@gmail.com
 build-type:          Simple
 extra-source-files:  CHANGELOG.md
 
+
+flag ghc-lib
+  description: build against ghc-lib instead of the ghc package
+  default: False
+  manual: True
+
 library
-  build-depends:
-     ghc >= 8.6, base, array, bytestring, containers, directory, filepath,
-     ghc-boot, transformers
   default-language:    Haskell2010
+  build-depends:
+     base, array, bytestring, containers, directory, filepath, transformers
+  if flag(ghc-lib)
+    build-depends:
+      ghc-lib
+  else
+    build-depends:
+      ghc,
+      ghc-boot
 
   if (impl(ghc > 8.5) && impl(ghc < 8.7))
     hs-source-dirs: src-ghc86
