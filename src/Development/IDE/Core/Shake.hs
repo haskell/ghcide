@@ -1197,7 +1197,7 @@ startTelemetry shakeExtras = do
             readVar stateRef
             >>= observe mapCountInstrument . length
 
-        _ <- regularly 500000 $
+        _ <- regularly 0 $
             withSpan_ "Measure Memory" $ do
             performGC
             values <- readVar stateRef
