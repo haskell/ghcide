@@ -69,7 +69,7 @@ mkDocMap env sources rm this_mod =
 
 lookupKind :: HscEnv -> Module -> Name -> IO (Maybe TyThing)
 lookupKind env mod =
-    fmap (either (const Nothing) id) . catchSrcErrors' (hsc_dflags env) "span" . lookupName env mod
+    fmap (either (const Nothing) id) . catchSrcErrors (hsc_dflags env) "span" . lookupName env mod
 
 getDocumentationTryGhc :: HscEnv -> Module -> [ParsedModule] -> Name -> IO SpanDoc
 getDocumentationTryGhc env mod deps n = head <$> getDocumentationsTryGhc env mod deps [n]
@@ -78,7 +78,7 @@ getDocumentationsTryGhc :: HscEnv -> Module -> [ParsedModule] -> [Name] -> IO [S
 -- Interfaces are only generated for GHC >= 8.6.
 -- In older versions, interface files do not embed Haddocks anyway
 getDocumentationsTryGhc env mod sources names = do
-  res <- catchSrcErrors' (hsc_dflags env) "docs" $ getDocsBatch env mod names
+  res <- catchSrcErrors (hsc_dflags env) "docs" $ getDocsBatch env mod names
   case res of
       Left _ -> mapM mkSpanDocText names
       Right res -> zipWithM unwrap res names

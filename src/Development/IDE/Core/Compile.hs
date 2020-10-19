@@ -129,7 +129,7 @@ typecheckModule :: IdeDefer
                 -> IO (IdeResult TcModuleResult)
 typecheckModule (IdeDefer defer) hsc keep_lbls pm = do
     fmap (either (,Nothing) id) $
-      catchSrcErrors' (hsc_dflags hsc) "typecheck" $ do
+      catchSrcErrors (hsc_dflags hsc) "typecheck" $ do
 
         let modSummary = pm_mod_summary pm
             dflags = ms_hspp_opts modSummary
@@ -233,7 +233,7 @@ compileModule
     -> IO (IdeResult ModGuts)
 compileModule (RunSimplifier simplify) session ms tcg =
     fmap (either (, Nothing) (second Just)) $
-        catchSrcErrors' (hsc_dflags session) "compile" $ do
+        catchSrcErrors (hsc_dflags session) "compile" $ do
             (warnings,desugared_guts) <- withWarnings "compile" $ \tweak -> do
                let ms' = tweak ms
                    session' = session{ hsc_dflags = ms_hspp_opts ms'}
@@ -248,7 +248,7 @@ compileModule (RunSimplifier simplify) session ms tcg =
 generateObjectCode :: HscEnv -> ModSummary -> CgGuts -> IO (IdeResult Linkable)
 generateObjectCode session summary guts = do
     fmap (either (, Nothing) (second Just)) $
-          catchSrcErrors' (hsc_dflags session) "object" $ do
+          catchSrcErrors (hsc_dflags session) "object" $ do
               let dot_o =  ml_obj_file (ms_location summary)
                   mod = ms_mod summary
                   fp = replaceExtension dot_o "s"
@@ -275,7 +275,7 @@ generateObjectCode session summary guts = do
 generateByteCode :: HscEnv -> ModSummary -> CgGuts -> IO (IdeResult Linkable)
 generateByteCode hscEnv summary guts = do
     fmap (either (, Nothing) (second Just)) $
-          catchSrcErrors' (hsc_dflags hscEnv) "bytecode" $ do
+          catchSrcErrors (hsc_dflags hscEnv) "bytecode" $ do
               (warnings, (_, bytecode, sptEntries)) <-
                 withWarnings "bytecode" $ \_tweak -> do
                       let summary' = _tweak summary

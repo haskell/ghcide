@@ -295,7 +295,7 @@ cacheDataProducer packageState tm deps = do
       toCompItem :: Module -> ModuleName -> Name -> IO CompItem
       toCompItem m mn n = do
         docs <- getDocumentationTryGhc packageState curMod (tmrParsed tm : deps) n
-        ty <- catchSrcErrors' (hsc_dflags packageState) "completion" $ do
+        ty <- catchSrcErrors (hsc_dflags packageState) "completion" $ do
                 name' <- lookupName packageState m n
                 return $ name' >>= safeTyThingType
         return $ mkNameCompItem n mn (either (const Nothing) id ty) Nothing docs

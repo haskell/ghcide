@@ -135,7 +135,7 @@ parsePragmasIntoDynFlags
     -> FilePath
     -> SB.StringBuffer
     -> IO (Either [FileDiagnostic] DynFlags)
-parsePragmasIntoDynFlags env fp contents = catchSrcErrors' dflags0 "pragmas" $ do
+parsePragmasIntoDynFlags env fp contents = catchSrcErrors dflags0 "pragmas" $ do
     let opts = Hdr.getOptions dflags0 contents fp
 
     -- Force bits that might keep the dflags and stringBuffer alive unnecessarily
