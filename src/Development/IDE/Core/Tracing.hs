@@ -2,24 +2,14 @@ module Development.IDE.Core.Tracing
     ( otTraced
     , otTracedHandler
     , otTracedAction
-    , startTelemetry
     )
 where
 
-import           Control.Concurrent
 import           Control.Exception
-import           Control.Monad
 import           Development.Shake
-import           Development.IDE.Types.Options
 import           Language.Haskell.LSP.Types
 import           OpenTelemetry.Eventlog
 import qualified Data.ByteString.Char8         as BS
-import           Control.Concurrent.Extra
-import           Control.Concurrent.Async
-import           HeapSize
-import qualified Data.HashMap.Strict as HMap
-import           Data.Functor
-import           System.Mem (performGC)
 
 -- | Trace an action using OpenTelemetry. Adds various useful info into tags in the OpenTelemetry span.
 otTraced :: BS.ByteString -> IO a -> IO a
@@ -54,24 +44,3 @@ otTracedAction key file act = actionBracket
     )
     endSpan
     (const act)
-
-startTelemetry :: Show k => String -> Var (HMap.HashMap k v) -> IdeOTProfiling -> IO ()
-startTelemetry _ _ (IdeOTProfiling False) = return ()
-startTelemetry name valuesRef (IdeOTProfiling True) = do
-  mapBytesInstrument <- mkValueObserver (BS.pack name <> " size_bytes")
-  mapCountInstrument <- mkValueObserver (BS.pack name <> " count")
-
-  regularly 500000 performGC
-  _ <- regularly 10000 $ -- 100 times/s
-    withSpan_ "Measure length" $
-      readVar valuesRef
-      >>= observe mapCountInstrument . length
-  _ <- regularly 500000 $ -- 2 times/s (If it could run that fast)
-    withSpan_ "Measure Memory" $
-      readVar valuesRef
-      >>= recursiveSize
-      >>= observe mapBytesInstrument
-  return ()
-
-regularly :: Int -> IO () -> IO (Async ())
-regularly delay act = async $ forever (act >> threadDelay delay)

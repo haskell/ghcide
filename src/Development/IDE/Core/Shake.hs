@@ -128,6 +128,12 @@ import UniqSupply
 import PrelInfo
 import Data.Int (Int64)
 import qualified Data.HashSet as HSet
+import OpenTelemetry.Eventlog (observe, mkValueObserver, withSpan, setTag, withSpan_)
+import System.Mem (performGC)
+import HeapSize (recursiveSizeNoGC)
+import Data.Functor ((<&>))
+import Data.Function ((&))
+import Foreign (Storable(sizeOf))
 
 -- information we stash inside the shakeExtra field
 data ShakeExtras = ShakeExtras
@@ -1175,3 +1181,35 @@ updatePositionMapping IdeState{shakeExtras = ShakeExtras{positionMapping}} Versi
         pure $! HMap.insert uri updatedMapping allMappings
   where
     shared_change = mkDelta changes
+
+startTelemetry :: String -> Var Values -> IdeOTProfiling -> IO ()
+startTelemetry _ _ (IdeOTProfiling False) = return ()
+startTelemetry name valuesRef (IdeOTProfiling True) = do
+  mapBytesInstrument <- mkValueObserver (BS.pack name <> " size_bytes")
+
+  mapCountInstrument <- mkValueObserver (BS.pack name <> " count")
+  _ <- regularly 10000 $ -- 100 times/s
+    withSpan_ "Measure length" $
+      readVar valuesRef
+      >>= observe mapCountInstrument . length
+
+  _ <- regularly 500000 $
+    withSpan_ "Measure Memory" $ do
+      performGC
+      values <- readVar valuesRef
+      let groupedValues =
+              HMap.toList values
+              <&> (\((f, k), v) -> (k, [(f, v)]))
+              & HMap.fromListWith (++)
+      valuesSize <- sequence $ HMap.mapWithKey (\k v -> withSpan ("Measure " <> (BS.pack $ show k)) $ \sp -> do
+            { byteSize <- (sizeOf (undefined :: Word) *) <$> recursiveSizeNoGC v
+            ; setTag sp "size" (BS.pack $ (show byteSize ++ " bytes"))
+            ; return byteSize
+            })
+            groupedValues
+      observe mapBytesInstrument (sum valuesSize)
+  return ()
+
+  where
+    regularly :: Int -> IO () -> IO (Async ())
+    regularly delay act = async $ forever (act >> threadDelay delay)
