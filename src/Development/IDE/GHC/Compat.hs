@@ -57,8 +57,14 @@ module Development.IDE.GHC.Compat(
     module GHC,
     initializePlugins,
     applyPluginsParsedResultAction,
+
+#ifdef GHC_LIB
+    module HieTypes,
+    module HieUtils,
+#else
     module Compat.HieTypes,
     module Compat.HieUtils,
+#endif
 
     ) where
 
@@ -77,10 +83,18 @@ import NameCache
 import qualified Data.ByteString as BS
 import MkIface
 import TcRnTypes
+
+#ifdef GHC_LIB
+import HieAst (mkHieFile,enrichHie)
+import HieBin
+import HieTypes
+import HieUtils
+#else
 import Compat.HieAst (mkHieFile,enrichHie)
 import Compat.HieBin
 import Compat.HieTypes
 import Compat.HieUtils
+#endif
 
 #if MIN_GHC_API_VERSION(8,10,0)
 import GHC.Hs.Extension

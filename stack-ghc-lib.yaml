@@ -22,8 +22,6 @@ nix:
 flags:
   ghcide:
     ghc-lib: True
-  hie-compat:
-    ghc-lib: True
 ghc-options:
   ghc-lib-parser: -O0
   ghc-lib: -O0
