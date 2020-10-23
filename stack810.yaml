@@ -27,7 +27,10 @@ extra-deps:
 - statestack-0.3
 - implicit-hie-0.1.1.0
 - implicit-hie-cradle-0.2.0.1
-- haddock-api-2.24.0
+- github: haskell/haddock
+  commit: b78efc7feda9e1786cd9191cfbf2008d9dee375b
+  subdirs:
+    - haddock-api
 
 nix:
   packages: [zlib]
