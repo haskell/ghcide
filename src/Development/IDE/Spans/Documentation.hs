@@ -13,6 +13,7 @@ module Development.IDE.Spans.Documentation (
   , mkDocMap
   ) where
 
+import           Control.Arrow (Arrow((&&&)))
 import           Control.Monad
 import           Control.Monad.Extra (findM)
 import           Data.Either
@@ -29,6 +30,7 @@ import           Development.IDE.Spans.Common
 import           Development.IDE.Core.RuleTypes
 import           System.Directory
 import           System.FilePath
+import qualified Documentation.Haddock as H
 
 import           FastString
 import           SrcLoc (RealLocated)
@@ -48,14 +50,17 @@ mkDocMap
   -> m DocAndKindMap
 mkDocMap sources rm this_mod =
   do let (_ , DeclDocMap this_docs, _) = extractDocs this_mod
-     d <- foldrM getDocs (mkNameEnv $ M.toList $ fmap (`SpanDocString` SpanDocUris Nothing Nothing) this_docs) names
+     df <- getSessionDynFlags
+     nml <- findNameToHaddockModuleLinks df names
+     d <- foldrM (getDocs nml) (mkNameEnv $ M.toList $ fmap (`SpanDocString` SpanDocUris Nothing Nothing) this_docs) names
+
      k <- foldrM getType (tcg_type_env this_mod) names
      pure $ DKMap d k
   where
-    getDocs n map
+    getDocs nml n map
       | maybe True (mod ==) $ nameModule_maybe n = pure map -- we already have the docs in this_docs, or they do not exist
       | otherwise = do
-      doc <- getDocumentationTryGhc mod sources n
+      doc <- getDocumentationTryGhc nml mod sources n
       pure $ extendNameEnv map n doc
     getType n map
       | isTcOcc $ occName n = do
@@ -70,13 +75,13 @@ lookupKind :: GhcMonad m => Module -> Name -> m (Maybe TyThing)
 lookupKind mod =
     fmap (either (const Nothing) id) . catchSrcErrors "span" . lookupName mod
 
-getDocumentationTryGhc :: GhcMonad m => Module -> [ParsedModule] -> Name -> m SpanDoc
-getDocumentationTryGhc mod deps n = head <$> getDocumentationsTryGhc mod deps [n]
+getDocumentationTryGhc :: GhcMonad m => M.Map Name (FilePath, ModuleName) -> Module -> [ParsedModule] -> Name -> m SpanDoc
+getDocumentationTryGhc nml mod deps n = head <$> getDocumentationsTryGhc nml mod deps [n]
 
-getDocumentationsTryGhc :: GhcMonad m => Module -> [ParsedModule] -> [Name] -> m [SpanDoc]
+getDocumentationsTryGhc :: GhcMonad m => M.Map Name (FilePath, ModuleName) -> Module -> [ParsedModule] -> [Name] -> m [SpanDoc]
 -- Interfaces are only generated for GHC >= 8.6.
 -- In older versions, interface files do not embed Haddocks anyway
-getDocumentationsTryGhc mod sources names = do
+getDocumentationsTryGhc nml mod sources names = do
   res <- catchSrcErrors "docs" $ getDocsBatch mod names
   case res of
       Left _ -> mapM mkSpanDocText names
@@ -94,7 +99,8 @@ getDocumentationsTryGhc mod sources names = do
       (docFu, srcFu) <-
         case nameModule_maybe name of
           Just mod -> liftIO $ do
-            doc <- toFileUriText $ lookupDocHtmlForModule df mod
+            -- doc <- toFileUriText $ lookupDocHtmlForModule df mod
+            doc <- toFileUriText $ lookupHtmlDocForName (\pkgDocDir modDocName -> pkgDocDir </> modDocName <.> "html") nml name
             src <- toFileUriText $ lookupSrcHtmlForModule df mod
             return (doc, src)
           Nothing -> pure (Nothing, Nothing)
@@ -185,13 +191,6 @@ docHeaders = mapMaybe (\(L _ x) -> wrk x)
 
 -- These are taken from haskell-ide-engine's Haddock plugin
 
--- | Given a module finds the local @doc/html/Foo-Bar-Baz.html@ page.
--- An example for a cabal installed module:
--- @~/.cabal/store/ghc-8.10.1/vctr-0.12.1.2-98e2e861/share/doc/html/Data-Vector-Primitive.html@
-lookupDocHtmlForModule :: DynFlags -> Module -> IO (Maybe FilePath)
-lookupDocHtmlForModule =
-  lookupHtmlForModule (\pkgDocDir modDocName -> pkgDocDir </> modDocName <.> "html")
-
 -- | Given a module finds the hyperlinked source @doc/html/src/Foo.Bar.Baz.html@ page.
 -- An example for a cabal installed module:
 -- @~/.cabal/store/ghc-8.10.1/vctr-0.12.1.2-98e2e861/share/doc/html/src/Data.Vector.Primitive.html@
@@ -223,3 +222,55 @@ lookupHtmls df ui =
   -- use haddockInterfaces instead of haddockHTMLs: GHC treats haddockHTMLs as URL not path 
   -- and therefore doesn't expand $topdir on Windows
   map takeDirectory . haddockInterfaces <$> lookupPackage df ui
+
+
+lookupHtmlDocForName :: (FilePath -> FilePath -> FilePath) -> M.Map Name (FilePath, ModuleName) -> Name -> IO (Maybe FilePath)
+lookupHtmlDocForName mkDocPath nml n = do
+  let mfs = concatMap go dirs
+  html <- findM doesFileExist mfs
+  -- canonicalize located html to remove /../ indirection which can break some clients
+  -- (vscode on Windows at least)
+  traverse canonicalizePath html
+  where
+    go pkgDocDir = map (mkDocPath pkgDocDir) mns
+    x = M.lookup n nml
+    dirs = fromMaybe [] $ (:[]) . fst <$> x
+    chunks = splitOn "." $ fromMaybe "" $ (moduleNameString . snd <$> x)
+    mns = map (`intercalate` chunks) [".", "-"]
+
+
+findNameToHaddockModuleLinks :: GhcMonad m => DynFlags -> [Name] -> m (M.Map Name (FilePath, ModuleName))
+findNameToHaddockModuleLinks df names = M.fromList . concat <$> mapM findNameUris fins
+  where
+    readInterfaceFile fi =
+      H.readInterfaceFile
+        H.nameCacheFromGhc
+        fi
+#if MIN_GHC_API_VERSION(8,8,0)
+        False
+#endif
+    findNameUris (fi, ns) = do
+      -- TODO: resolve mangled html file name and anchor using Haddock api? is it possible?
+      -- TODO: fall back to old guesswork solution if haddock doesn't work ? 
+      -- TODO : clean up / ugly
+        
+      let dir = takeDirectory fi
+      exists <- liftIO $ doesFileExist fi
+      if exists
+        then do
+          ioe <- readInterfaceFile fi
+          case ioe of
+            Left _ -> return []
+            Right (i :: H.InterfaceFile) ->
+              let le = H.ifLinkEnv i
+              in return $ catMaybes $ map (\n -> (n,) . (dir,) . moduleName <$> (M.lookup n le)) ns
+        else
+          return []
+
+    nameHaddockInterface_maybe n = do
+      m <- nameModule_maybe n
+      p <- lookupPackage df $ moduleUnitId m
+      i <- listToMaybe $ haddockInterfaces p
+      return (i, n)
+    fins = map (fst . head &&& map snd) $ groupOn fst $ catMaybes $ map nameHaddockInterface_maybe names
+

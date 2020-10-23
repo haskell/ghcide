@@ -27,6 +27,7 @@ extra-deps:
 - statestack-0.3
 - implicit-hie-0.1.1.0
 - implicit-hie-cradle-0.2.0.1
+- haddock-api-2.24.0
 
 nix:
   packages: [zlib]

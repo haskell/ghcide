@@ -139,7 +139,13 @@ haddockToMarkdown (H.DocExamples es)
 haddockToMarkdown (H.DocHyperlink (H.Hyperlink url Nothing))
   = "<" ++ url ++ ">"
 haddockToMarkdown (H.DocHyperlink (H.Hyperlink url (Just label)))
-  = "[" ++ haddockToMarkdown label ++ "](" ++ url ++ ")"
+  = "[" ++ f label ++ "](" ++ url ++ ")"
+  where
+#if MIN_GHC_API_VERSION(8,8,0)
+    f = haddockToMarkdown
+#else
+    f = id
+#endif
 haddockToMarkdown (H.DocPic (H.Picture url Nothing))
   = "![](" ++ url ++ ")"
 haddockToMarkdown (H.DocPic (H.Picture url (Just label)))

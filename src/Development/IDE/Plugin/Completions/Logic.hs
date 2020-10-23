@@ -289,12 +289,12 @@ cacheDataProducer packageState tm deps = do
       varToCompl var = do
         let typ = Just $ varType var
             name = Var.varName var
-        docs <- evalGhcEnv packageState $ getDocumentationTryGhc curMod (tmrParsed tm : deps) name
+        docs <- evalGhcEnv packageState $ getDocumentationTryGhc Map.empty curMod (tmrParsed tm : deps) name
         return $ mkNameCompItem name curModName typ Nothing docs
 
       toCompItem :: Module -> ModuleName -> Name -> IO CompItem
       toCompItem m mn n = do
-        docs <- evalGhcEnv packageState $ getDocumentationTryGhc curMod (tmrParsed tm : deps) n
+        docs <- evalGhcEnv packageState $ getDocumentationTryGhc Map.empty curMod (tmrParsed tm : deps) n
         ty <- evalGhcEnv packageState $ catchSrcErrors "completion" $ do
                 name' <- lookupName m n
                 return $ name' >>= safeTyThingType
