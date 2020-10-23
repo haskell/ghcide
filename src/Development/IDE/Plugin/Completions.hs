@@ -22,18 +22,17 @@ import Development.IDE.Core.Service
 import Development.IDE.Core.PositionMapping
 import Development.IDE.Plugin.Completions.Logic
 import Development.IDE.Types.Location
-import Development.IDE.Types.Options
 import Development.IDE.Core.Compile
 import Development.IDE.Core.RuleTypes
 import Development.IDE.Core.Shake
-import Development.IDE.GHC.Compat (hsmodExports, ParsedModule(..), ModSummary (ms_hspp_buf))
+import Development.IDE.GHC.Compat
 
 import Development.IDE.GHC.Util
 import Development.IDE.LSP.Server
 import Control.Monad.Trans.Except (runExceptT)
 import HscTypes (HscEnv(hsc_dflags))
+import TcRnDriver (tcRnImportDecls)
 import Data.Maybe
-import Data.Functor ((<&>))
 
 #if defined(GHC_LIB)
 import Development.IDE.Import.DependencyInformation
@@ -83,17 +82,11 @@ produceCompletions = do
                 pm <- liftIO $ runExceptT $ parseHeader dflags f buf
                 case pm of
                     Right (_diags, hsMod) -> do
-                        let hsModNoExports = hsMod <&> \x -> x{hsmodExports = Nothing}
-                            pm = ParsedModule
-                                    { pm_mod_summary = ms
-                                    , pm_parsed_source = hsModNoExports
-                                    , pm_extra_src_files = [] -- src imports not allowed
-                                    , pm_annotations = mempty
-                                    }
-                        tm <- liftIO $ typecheckModule (IdeDefer True) env Nothing pm
-                        case tm of
-                            (_, Just tcm) -> do
-                                cdata <- liftIO $ cacheDataProducer env tcm parsedDeps
+                        let imps = hsmodImports $ unLoc hsMod
+                        res <- liftIO $ tcRnImportDecls env imps
+                        case res of
+                            (_, Just rdrEnv) -> do
+                                cdata <- liftIO $ cacheDataProducer env (ms_mod ms) rdrEnv imps parsedDeps
                                 -- Do not return diags from parsing as they would duplicate
                                 -- the diagnostics from typechecking
                                 return ([], Just cdata)

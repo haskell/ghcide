@@ -124,7 +124,7 @@ computePackageDeps env pkg = do
 
 typecheckModule :: IdeDefer
                 -> HscEnv
-                -> Maybe [Linkable] -- ^ linkables not to unload, if Nothing don't unload anything
+                -> [Linkable] -- ^ linkables not to unload
                 -> ParsedModule
                 -> IO (IdeResult TcModuleResult)
 typecheckModule (IdeDefer defer) hsc keep_lbls pm = do
@@ -146,12 +146,12 @@ typecheckModule (IdeDefer defer) hsc keep_lbls pm = do
     where
         demoteIfDefer = if defer then demoteTypeErrorsToWarnings else id
 
-tcRnModule :: HscEnv -> Maybe [Linkable] -> ParsedModule -> IO TcModuleResult
+tcRnModule :: HscEnv -> [Linkable] -> ParsedModule -> IO TcModuleResult
 tcRnModule hsc_env keep_lbls pmod = do
   let ms = pm_mod_summary pmod
       hsc_env_tmp = hsc_env { hsc_dflags = ms_hspp_opts ms }
 
-  whenJust keep_lbls $ unload hsc_env_tmp
+  unload hsc_env_tmp keep_lbls
   (tc_gbl_env, mrn_info) <-
       hscTypecheckRename hsc_env_tmp ms $
                 HsParsedModule { hpm_module = parsedSource pmod,

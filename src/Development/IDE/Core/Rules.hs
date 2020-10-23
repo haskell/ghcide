@@ -611,7 +611,7 @@ typeCheckRuleDefinition hsc pm = do
   linkables_to_keep <- currentLinkables
 
   addUsageDependencies $ liftIO $
-    typecheckModule defer hsc (Just linkables_to_keep) pm
+    typecheckModule defer hsc linkables_to_keep pm
   where
     addUsageDependencies :: Action (a, Maybe TcModuleResult) -> Action (a, Maybe TcModuleResult)
     addUsageDependencies a = do
