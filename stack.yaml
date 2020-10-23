@@ -31,3 +31,4 @@ nix:
 
 ghc-options:
   ghcide: -DSTACK
+  "$everything": -haddock
