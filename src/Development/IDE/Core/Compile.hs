@@ -642,12 +642,12 @@ parseFileContents env customPreprocessor filename ms = do
                --   - filter out the .hs/.lhs source filename if we have one
                --
                let n_hspp  = normalise filename
-                   srcs0 = nub $ filter (not . (tmpDir dflags `isPrefixOf`))
-                               $ filter (not . (== n_hspp))
-                               $ map normalise
-                               $ filter (not . isPrefixOf "<")
-                               $ map unpackFS
-                               $ srcfiles pst
+                   srcs0 = nubOrd $ filter (not . (tmpDir dflags `isPrefixOf`))
+                                  $ filter (/= n_hspp)
+                                  $ map normalise
+                                  $ filter (not . isPrefixOf "<")
+                                  $ map unpackFS
+                                  $ srcfiles pst
                    srcs1 = case ml_hs_file (ms_location ms) of
                              Just f  -> filter (/= normalise f) srcs0
                              Nothing -> srcs0
