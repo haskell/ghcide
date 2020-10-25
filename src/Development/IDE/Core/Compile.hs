@@ -630,11 +630,38 @@ parseFileContents env customPreprocessor filename ms = do
 
                let preproc_warnings = diagFromStrings "parser" DsWarning preproc_warns
                parsed' <- liftIO $ applyPluginsParsedResultAction env dflags ms hpm_annotations parsed
+
+               -- To get the list of extra source files, we take the list
+               -- that the parser gave us,
+               --   - eliminate files beginning with '<'.  gcc likes to use
+               --     pseudo-filenames like "<built-in>" and "<command-line>"
+               --   - normalise them (eliminate differences between ./f and f)
+               --   - filter out the preprocessed source file
+               --   - filter out anything beginning with tmpdir
+               --   - remove duplicates
+               --   - filter out the .hs/.lhs source filename if we have one
+               --
+               let n_hspp  = normalise filename
+                   srcs0 = nub $ filter (not . (tmpDir dflags `isPrefixOf`))
+                               $ filter (not . (== n_hspp))
+                               $ map normalise
+                               $ filter (not . isPrefixOf "<")
+                               $ map unpackFS
+                               $ srcfiles pst
+                   srcs1 = case ml_hs_file (ms_location ms) of
+                             Just f  -> filter (/= normalise f) srcs0
+                             Nothing -> srcs0
+
+               -- sometimes we see source files from earlier
+               -- preprocessing stages that cannot be found, so just
+               -- filter them out:
+               srcs2 <- liftIO $ filterM doesFileExist srcs1
+
                let pm =
                      ParsedModule {
                          pm_mod_summary = ms
                        , pm_parsed_source = parsed'
-                       , pm_extra_src_files= []
+                       , pm_extra_src_files = srcs2
                        , pm_annotations = hpm_annotations
                       }
                    warnings = diagFromErrMsgs "parser" dflags warns

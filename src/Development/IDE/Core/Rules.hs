@@ -274,7 +274,7 @@ getParsedModuleRule = defineEarlyCutoff $ \GetParsedModule file -> do
         mainParse = getParsedModuleDefinition hsc opt file ms
 
     -- Parse again (if necessary) to capture Haddock parse errors
-    if gopt Opt_Haddock dflags
+    res@(_, (_,pmod)) <- if gopt Opt_Haddock dflags
         then
             liftIO mainParse
         else do
@@ -300,7 +300,9 @@ getParsedModuleRule = defineEarlyCutoff $ \GetParsedModule file -> do
               -- This seems to be the correct behaviour because the Haddock flag is added
               -- by us and not the user, so our IDE shouldn't stop working because of it.
               _ -> pure (fp, (diagsM, res))
-
+    -- Add dependencies on included files
+    _ <- uses GetModificationTime $ map toNormalizedFilePath' (maybe [] pm_extra_src_files pmod)
+    pure res
 
 withOptHaddock :: ModSummary -> ModSummary
 withOptHaddock ms = ms{ms_hspp_opts= gopt_set (ms_hspp_opts ms) Opt_Haddock}
@@ -337,7 +339,7 @@ getLocatedImportsRule =
         env_eq <- use_ GhcSession file
         let env = hscEnvWithImportPaths env_eq
         let import_dirs = deps env_eq
-        let dflags = ms_hspp_opts ms
+        let dflags = hsc_dflags env
             isImplicitCradle = isNothing $ envImportPaths env_eq
         dflags <- return $ if isImplicitCradle
                     then addRelativeImport file (moduleName $ ms_mod ms) dflags
