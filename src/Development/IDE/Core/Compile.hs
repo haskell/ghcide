@@ -99,14 +99,13 @@ import Maybes (orElse)
 parseModule
     :: IdeOptions
     -> HscEnv
-    -> [PackageName]
     -> FilePath
     -> ModSummary
     -> IO (IdeResult ParsedModule)
-parseModule IdeOptions{..} env comp_pkgs filename ms =
+parseModule IdeOptions{..} env filename ms =
     fmap (either (, Nothing) id) $
     runExceptT $ do
-        (diag, modu) <- parseFileContents env optPreprocessor comp_pkgs filename ms
+        (diag, modu) <- parseFileContents env optPreprocessor filename ms
         return (diag, Just modu)
 
 
@@ -589,11 +588,10 @@ parseHeader dflags filename contents = do
 parseFileContents
        :: HscEnv
        -> (GHC.ParsedSource -> IdePreprocessedSource)
-       -> [PackageName] -- ^ The package imports to ignore
        -> FilePath  -- ^ the filename (for source locations)
        -> ModSummary
        -> ExceptT [FileDiagnostic] IO ([FileDiagnostic], ParsedModule)
-parseFileContents env customPreprocessor comp_pkgs filename ms = do
+parseFileContents env customPreprocessor filename ms = do
    let loc  = mkRealSrcLoc (mkFastString filename) 1 1
        dflags = ms_hspp_opts ms
        contents = fromJust $ ms_hspp_buf ms
@@ -631,30 +629,17 @@ parseFileContents env customPreprocessor comp_pkgs filename ms = do
                   throwE $ diagFromStrings "parser" DsError errs
 
                let preproc_warnings = diagFromStrings "parser" DsWarning preproc_warns
-                   parsed' = removePackageImports comp_pkgs parsed
-               parsed'' <- liftIO $ applyPluginsParsedResultAction env dflags ms hpm_annotations parsed'
+               parsed' <- liftIO $ applyPluginsParsedResultAction env dflags ms hpm_annotations parsed
                let pm =
                      ParsedModule {
                          pm_mod_summary = ms
-                       , pm_parsed_source = parsed''
-                       , pm_extra_src_files=[] -- src imports not allowed
+                       , pm_parsed_source = parsed'
+                       , pm_extra_src_files= []
                        , pm_annotations = hpm_annotations
                       }
                    warnings = diagFromErrMsgs "parser" dflags warns
                pure (warnings ++ preproc_warnings, pm)
 
--- | After parsing the module remove all package imports referring to
--- these packages as we have already dealt with what they map to.
-removePackageImports :: [PackageName] -> GHC.ParsedSource -> GHC.ParsedSource
-removePackageImports pkgs (L l h@HsModule {hsmodImports} ) = L l (h { hsmodImports = imports' })
-  where
-    imports' = map do_one_import hsmodImports
-    do_one_import (L l i@ImportDecl{ideclPkgQual}) =
-      case PackageName . sl_fs <$> ideclPkgQual of
-        Just pn | pn `elem` pkgs -> L l (i { ideclPkgQual = Nothing })
-        _ -> L l i
-    do_one_import l = l
- 
 loadHieFile :: Compat.NameCacheUpdater -> FilePath -> IO GHC.HieFile
 loadHieFile ncu f = do
   GHC.hie_file_result <$> GHC.readHieFile ncu f

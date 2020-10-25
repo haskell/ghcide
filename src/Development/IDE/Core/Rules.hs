@@ -69,7 +69,6 @@ import           Language.Haskell.LSP.Types (DocumentHighlight (..))
 
 import qualified GHC.LanguageExtensions as LangExt
 import HscTypes hiding (TargetModule, TargetFile)
-import PackageConfig
 import DynFlags (gopt_set, xopt)
 import GHC.Generics(Generic)
 
@@ -269,20 +268,17 @@ getParsedModuleRule = defineEarlyCutoff $ \GetParsedModule file -> do
     (ms, _) <- use_ GetModSummary file
     sess <- use_ GhcSession file
     let hsc = hscEnv sess
-        -- These packages are used when removing PackageImports from a
-        -- parsed module
-        comp_pkgs = mapMaybe (fmap fst . mkImportDirs (hsc_dflags hsc)) (deps sess)
     opt <- getIdeOptions
 
-    let dflags    = hsc_dflags hsc
-        mainParse = getParsedModuleDefinition hsc opt comp_pkgs file ms
+    let dflags    = ms_hspp_opts ms
+        mainParse = getParsedModuleDefinition hsc opt file ms
 
     -- Parse again (if necessary) to capture Haddock parse errors
     if gopt Opt_Haddock dflags
         then
             liftIO mainParse
         else do
-            let haddockParse = getParsedModuleDefinition hsc opt comp_pkgs file (withOptHaddock ms)
+            let haddockParse = getParsedModuleDefinition hsc opt file (withOptHaddock ms)
 
             -- parse twice, with and without Haddocks, concurrently
             -- we cannot ignore Haddock parse errors because files of
@@ -322,10 +318,10 @@ mergeParseErrorsHaddock normal haddock = normal ++
     fixMessage x | "parse error " `T.isPrefixOf` x = "Haddock " <> x
                  | otherwise = "Haddock: " <> x
 
-getParsedModuleDefinition :: HscEnv -> IdeOptions -> [PackageName] -> NormalizedFilePath -> ModSummary -> IO (Maybe ByteString, ([FileDiagnostic], Maybe ParsedModule))
-getParsedModuleDefinition packageState opt comp_pkgs file ms = do
+getParsedModuleDefinition :: HscEnv -> IdeOptions -> NormalizedFilePath -> ModSummary -> IO (Maybe ByteString, ([FileDiagnostic], Maybe ParsedModule))
+getParsedModuleDefinition packageState opt file ms = do
     let fp = fromNormalizedFilePath file
-    (diag, res) <- parseModule opt packageState comp_pkgs fp ms
+    (diag, res) <- parseModule opt packageState fp ms
     case res of
         Nothing -> pure (Nothing, (diag, Nothing))
         Just modu -> do
@@ -341,7 +337,7 @@ getLocatedImportsRule =
         env_eq <- use_ GhcSession file
         let env = hscEnvWithImportPaths env_eq
         let import_dirs = deps env_eq
-        let dflags = hsc_dflags env
+        let dflags = ms_hspp_opts ms
             isImplicitCradle = isNothing $ envImportPaths env_eq
         dflags <- return $ if isImplicitCradle
                     then addRelativeImport file (moduleName $ ms_mod ms) dflags
@@ -836,18 +832,15 @@ getModIfaceWithoutLinkableRule = defineEarlyCutoff $ \GetModIfaceWithoutLinkable
 regenerateHiFile :: HscEnvEq -> NormalizedFilePath -> ModSummary -> Maybe LinkableType -> Action ([FileDiagnostic], Maybe HiFileResult)
 regenerateHiFile sess f ms compNeeded = do
     let hsc = hscEnv sess
-        -- After parsing the module remove all package imports referring to
-        -- these packages as we have already dealt with what they map to.
-        comp_pkgs = mapMaybe (fmap fst . mkImportDirs (hsc_dflags hsc)) (deps sess)
     opt <- getIdeOptions
 
     -- Embed haddocks in the interface file
-    (_, (diags, mb_pm)) <- liftIO $ getParsedModuleDefinition hsc opt comp_pkgs f (withOptHaddock ms)
+    (_, (diags, mb_pm)) <- liftIO $ getParsedModuleDefinition hsc opt f (withOptHaddock ms)
     (diags, mb_pm) <- case mb_pm of
         Just _ -> return (diags, mb_pm)
         Nothing -> do
             -- if parsing fails, try parsing again with Haddock turned off
-            (_, (diagsNoHaddock, mb_pm)) <- liftIO $ getParsedModuleDefinition hsc opt comp_pkgs f ms
+            (_, (diagsNoHaddock, mb_pm)) <- liftIO $ getParsedModuleDefinition hsc opt f ms
             return (mergeParseErrorsHaddock diagsNoHaddock diags, mb_pm)
     case mb_pm of
         Nothing -> return (diags, Nothing)
