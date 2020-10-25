@@ -45,7 +45,7 @@ import Development.IDE.Types.Location
 
 import Language.Haskell.LSP.Types (DiagnosticTag(..))
 
-import LoadIface (loadModuleInterface)
+import LoadIface (loadModuleInterface, readIface)
 import DriverPhases
 import HscTypes
 import DriverPipeline hiding (unP)
@@ -94,6 +94,7 @@ import qualified GHC.LanguageExtensions as LangExt
 import PrelNames
 import HeaderInfo
 import Maybes (orElse)
+import qualified Maybes as ME
 
 -- | Given a string buffer, return the string (after preprocessing) and the 'ParsedModule'.
 parseModule
@@ -682,39 +683,55 @@ loadInterface
   -> (Maybe LinkableType -> m ([FileDiagnostic], Maybe HiFileResult)) -- ^ Action to regenerate an interface
   -> m ([FileDiagnostic], Maybe HiFileResult)
 loadInterface session ms sourceMod linkableNeeded regen = do
-    res <- liftIO $ checkOldIface session ms sourceMod Nothing
-    case res of
-          (UpToDate, Just iface)
-            -- If the module used TH splices when it was last
-            -- compiled, then the recompilation check is not
-            -- accurate enough (https://gitlab.haskell.org/ghc/ghc/-/issues/481)
-            -- and we must ignore
-            -- it.  However, if the module is stable (none of
-            -- the modules it depends on, directly or
-            -- indirectly, changed), then we *can* skip
-            -- recompilation. This is why the SourceModified
-            -- type contains SourceUnmodifiedAndStable, and
-            -- it's pretty important: otherwise ghc --make
-            -- would always recompile TH modules, even if
-            -- nothing at all has changed. Stability is just
-            -- the same check that make is doing for us in
-            -- one-shot mode.
-            | not (mi_used_th iface) || SourceUnmodifiedAndStable == sourceMod
-            -> do
-             linkable <- case linkableNeeded of
-               Just ObjectLinkable -> liftIO $ findObjectLinkableMaybe (ms_mod ms) (ms_location ms)
-               _ -> pure Nothing
+    let session' = session {hsc_dflags = foldl' gopt_set (ms_hspp_opts ms) [Opt_IgnoreOptimChanges,Opt_IgnoreHpcChanges]}
 
-             -- We don't need to regenerate if the object is up do date, or we don't need one
-             let objUpToDate = isNothing linkableNeeded || case linkable of
-                   Nothing -> False
-                   Just (LM obj_time _ _) -> obj_time > ms_hs_date ms
-             if objUpToDate
-             then do
-               hmi <- liftIO $ mkDetailsFromIface session iface linkable
+    -- We need to read in an old iface, because checkOldIface won't if the source is changed
+    -- (since we set HscNothing)
+    mold_iface <- liftIO $ initIfaceCheck (text "loadInterface") session' $
+      readIface (ms_mod ms) (msHiFilePath ms)
+    let maybe_old_iface = case mold_iface of
+          ME.Failed _ -> Nothing
+          ME.Succeeded iface -> Just iface
+    res <- liftIO $ checkOldIface session' ms sourceMod maybe_old_iface
+    case res of
+      (obj_needs_recomp, Just iface)
+        -> case linkableNeeded of
+             -- If we don't need a linkable, make details and return
+             Nothing -> liftIO $ do
+               hmi <- mkDetailsFromIface session iface Nothing
                return ([], Just $ HiFileResult ms hmi)
-             else regen linkableNeeded
-          (_reason, _) -> regen linkableNeeded
+
+             -- If we need an object linkable, and don't need to recompile
+             Just ObjectLinkable
+               | not (recompileRequired obj_needs_recomp)
+               -- If the module used TH splices when it was last
+               -- compiled, then the recompilation check is not
+               -- accurate enough (https://gitlab.haskell.org/ghc/ghc/-/issues/481)
+               -- and we must ignore
+               -- it.  However, if the module is stable (none of
+               -- the modules it depends on, directly or
+               -- indirectly, changed), then we *can* skip
+               -- recompilation. This is why the SourceModified
+               -- type contains SourceUnmodifiedAndStable, and
+               -- it's pretty important: otherwise ghc --make
+               -- would always recompile TH modules, even if
+               -- nothing at all has changed. Stability is just
+               -- the same check that make is doing for us in
+               -- one-shot mode.
+               , not (mi_used_th iface) || SourceUnmodifiedAndStable == sourceMod
+               -> do
+                 -- Look for the old obj if we don't need recompilation
+                 mb_linkable <- liftIO $ findObjectLinkableMaybe (ms_mod ms) (ms_location ms)
+                 case mb_linkable of
+                   Just linkable@(LM obj_time _ _) | obj_time > ms_hs_date ms -> liftIO $ do
+                     hmi <- mkDetailsFromIface session iface (Just linkable)
+                     return ([], Just $ HiFileResult ms hmi)
+                   -- Object doesn't exist, need to recompile anyway
+                   _ -> regen (Just ObjectLinkable)
+             -- If we need a BCOLinkable or we need to recompile the object
+             _ -> regen linkableNeeded
+
+      (_reason, _) -> regen linkableNeeded
 
 mkDetailsFromIface :: HscEnv -> ModIface -> Maybe Linkable -> IO HomeModInfo
 mkDetailsFromIface session iface linkable = do
