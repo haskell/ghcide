@@ -565,8 +565,11 @@ suggestFillHole :: Diagnostic -> [(T.Text, [TextEdit])]
 suggestFillHole Diagnostic{_range=_range,..}
     | Just holeName <- extractHoleName _message
     , (holeFits, refFits) <- processHoleSuggestions (T.lines _message)
-    = map (proposeHoleFit holeName False) holeFits
-    ++ map (proposeHoleFit holeName True) refFits
+    = let candidates = map (proposeHoleFit holeName False) holeFits
+                     ++ map (proposeHoleFit holeName True) refFits
+      in if length candidates > numberOfHolesLimit
+           then []
+           else candidates
     | otherwise = []
     where
       extractHoleName = fmap head . flip matchRegexUnifySpaces "Found hole: ([^ ]*)"
@@ -574,6 +577,11 @@ suggestFillHole Diagnostic{_range=_range,..}
           ( "replace " <> holeName <> " with " <> name
           , [TextEdit _range $ if parenthise then parens name else name])
       parens x = "(" <> x <> ")"
+      -- If there are more than this many holes, don't return any as they're
+      -- not likely to be specific enought to be useful
+      -- See https://github.com/haskell/haskell-language-server/issues/532
+      -- 5 chosen arbitrarily
+      numberOfHolesLimit = 5
 
 processHoleSuggestions :: [T.Text] -> ([T.Text], [T.Text])
 processHoleSuggestions mm = (holeSuggestions, refSuggestions)
