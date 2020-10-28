@@ -48,6 +48,9 @@ import Development.IDE.Spans.Common
 import Development.IDE.GHC.Util
 import Outputable (Outputable)
 import qualified Data.Set as Set
+import qualified Documentation.Haddock as H
+import           Data.HashMap.Strict (HashMap)
+import qualified Control.Concurrent.Extra as C
 
 -- From haskell-ide-engine/hie-plugin-api/Haskell/Ide/Engine/Context.hs
 
@@ -232,8 +235,12 @@ mkPragmaCompl label insertText =
     Nothing Nothing Nothing Nothing Nothing (Just insertText) (Just Snippet)
     Nothing Nothing Nothing Nothing Nothing
 
-cacheDataProducer :: HscEnv -> TcModuleResult -> [ParsedModule] -> IO CachedCompletions
-cacheDataProducer packageState tm deps = do
+cacheDataProducer :: HscEnv 
+  -> TcModuleResult 
+  -> [ParsedModule] 
+  -> C.Var (HashMap FilePath (Maybe H.LinkEnv))
+  -> IO CachedCompletions
+cacheDataProducer packageState tm deps linkEnvs = do
   let parsedMod = tmrParsed tm
       dflags = hsc_dflags packageState
       curMod = ms_mod $ pm_mod_summary parsedMod
@@ -289,12 +296,12 @@ cacheDataProducer packageState tm deps = do
       varToCompl var = do
         let typ = Just $ varType var
             name = Var.varName var
-        docs <- evalGhcEnv packageState $ getDocumentationTryGhc Map.empty curMod (tmrParsed tm : deps) name
+        docs <- evalGhcEnv packageState $ getDocumentationTryGhc curMod (tmrParsed tm : deps) name linkEnvs
         return $ mkNameCompItem name curModName typ Nothing docs
 
       toCompItem :: Module -> ModuleName -> Name -> IO CompItem
       toCompItem m mn n = do
-        docs <- evalGhcEnv packageState $ getDocumentationTryGhc Map.empty curMod (tmrParsed tm : deps) n
+        docs <- evalGhcEnv packageState $ getDocumentationTryGhc curMod (tmrParsed tm : deps) n linkEnvs
         ty <- evalGhcEnv packageState $ catchSrcErrors "completion" $ do
                 name' <- lookupName m n
                 return $ name' >>= safeTyThingType

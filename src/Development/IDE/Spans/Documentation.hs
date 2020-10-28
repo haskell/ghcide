@@ -13,7 +13,7 @@ module Development.IDE.Spans.Documentation (
   , mkDocMap
   ) where
 
-import           Control.Arrow (Arrow((&&&)))
+import Control.Concurrent.Extra
 import           Control.Monad
 import           Control.Monad.Extra (findM)
 import           Data.Either
@@ -31,7 +31,8 @@ import           Development.IDE.Core.RuleTypes
 import           System.Directory
 import           System.FilePath
 import qualified Documentation.Haddock as H
-
+import           Data.HashMap.Strict (HashMap)
+import qualified Data.HashMap.Strict as HMap
 import           FastString
 import           SrcLoc (RealLocated)
 import           GhcMonad
@@ -41,26 +42,26 @@ import           Language.Haskell.LSP.Types (getUri, filePathToUri)
 import           TcRnTypes
 import           ExtractDocs
 import           NameEnv
+import Control.Monad.Trans.Maybe
 
 mkDocMap
   :: GhcMonad m
   => [ParsedModule]
   -> RefMap
   -> TcGblEnv
+  -> Var (HashMap FilePath (Maybe H.LinkEnv))
   -> m DocAndKindMap
-mkDocMap sources rm this_mod =
+mkDocMap sources rm this_mod linkEnvs =
   do let (_ , DeclDocMap this_docs, _) = extractDocs this_mod
-     df <- getSessionDynFlags
-     nml <- findNameToHaddockModuleLinks df names
-     d <- foldrM (getDocs nml) (mkNameEnv $ M.toList $ fmap (`SpanDocString` SpanDocUris Nothing Nothing) this_docs) names
+     d <- foldrM getDocs (mkNameEnv $ M.toList $ fmap (`SpanDocString` SpanDocUris Nothing Nothing) this_docs) names
 
      k <- foldrM getType (tcg_type_env this_mod) names
      pure $ DKMap d k
   where
-    getDocs nml n map
+    getDocs n map
       | maybe True (mod ==) $ nameModule_maybe n = pure map -- we already have the docs in this_docs, or they do not exist
       | otherwise = do
-      doc <- getDocumentationTryGhc nml mod sources n
+      doc <- getDocumentationTryGhc mod sources n linkEnvs
       pure $ extendNameEnv map n doc
     getType n map
       | isTcOcc $ occName n = do
@@ -75,13 +76,21 @@ lookupKind :: GhcMonad m => Module -> Name -> m (Maybe TyThing)
 lookupKind mod =
     fmap (either (const Nothing) id) . catchSrcErrors "span" . lookupName mod
 
-getDocumentationTryGhc :: GhcMonad m => M.Map Name (FilePath, ModuleName) -> Module -> [ParsedModule] -> Name -> m SpanDoc
-getDocumentationTryGhc nml mod deps n = head <$> getDocumentationsTryGhc nml mod deps [n]
+getDocumentationTryGhc :: GhcMonad m => Module 
+  -> [ParsedModule] 
+  -> Name 
+  -> Var (HashMap FilePath (Maybe H.LinkEnv))
+  -> m SpanDoc
+getDocumentationTryGhc mod deps n linkEnvs = head <$> getDocumentationsTryGhc mod deps [n] linkEnvs
 
-getDocumentationsTryGhc :: GhcMonad m => M.Map Name (FilePath, ModuleName) -> Module -> [ParsedModule] -> [Name] -> m [SpanDoc]
+getDocumentationsTryGhc :: GhcMonad m => Module
+  -> [ParsedModule]
+  -> [Name]
+  -> Var (HashMap FilePath (Maybe H.LinkEnv))
+  -> m [SpanDoc]
 -- Interfaces are only generated for GHC >= 8.6.
 -- In older versions, interface files do not embed Haddocks anyway
-getDocumentationsTryGhc nml mod sources names = do
+getDocumentationsTryGhc mod sources names linkEnvs = do
   res <- catchSrcErrors "docs" $ getDocsBatch mod names
   case res of
       Left _ -> mapM mkSpanDocText names
@@ -98,10 +107,9 @@ getDocumentationsTryGhc nml mod sources names = do
       df <- getSessionDynFlags
       (docFu, srcFu) <-
         case nameModule_maybe name of
-          Just mod -> liftIO $ do
-            -- doc <- toFileUriText $ lookupDocHtmlForModule df mod
-            doc <- toFileUriText $ lookupHtmlDocForName (\pkgDocDir modDocName -> pkgDocDir </> modDocName <.> "html") nml name
-            src <- toFileUriText $ lookupSrcHtmlForModule df mod
+          Just mod -> do
+            doc <- toFileUriText $ lookupHtmlDocForName df name linkEnvs
+            src <- toFileUriText . liftIO $ lookupSrcHtmlForModule df mod
             return (doc, src)
           Nothing -> pure (Nothing, Nothing)
       let docUri = (<> "#" <> selector <> showName name) <$> docFu
@@ -224,24 +232,34 @@ lookupHtmls df ui =
   map takeDirectory . haddockInterfaces <$> lookupPackage df ui
 
 
-lookupHtmlDocForName :: (FilePath -> FilePath -> FilePath) -> M.Map Name (FilePath, ModuleName) -> Name -> IO (Maybe FilePath)
-lookupHtmlDocForName mkDocPath nml n = do
-  let mfs = concatMap go dirs
-  html <- findM doesFileExist mfs
+lookupHtmlDocForName :: GhcMonad m => DynFlags
+  -> Name 
+  -> Var (HashMap FilePath (Maybe H.LinkEnv)) 
+  -> m (Maybe FilePath)
+lookupHtmlDocForName df n linkEnvs = runMaybeT $ do
+  (dir, mn) <- findNameHaddockDirAndModule df n linkEnvs
+  let chunks = splitOn "." $ moduleNameString mn
+  -- TODO: code duplication
+  let mfs = map ((\modDocName -> dir </> modDocName <.> "html") . (`intercalate` chunks)) [".", "-"]
+  html <- (MaybeT . liftIO) $ findM doesFileExist mfs
   -- canonicalize located html to remove /../ indirection which can break some clients
   -- (vscode on Windows at least)
-  traverse canonicalizePath html
-  where
-    go pkgDocDir = map (mkDocPath pkgDocDir) mns
-    x = M.lookup n nml
-    dirs = fromMaybe [] $ (:[]) . fst <$> x
-    chunks = splitOn "." $ fromMaybe "" $ (moduleNameString . snd <$> x)
-    mns = map (`intercalate` chunks) [".", "-"]
+  liftIO $ canonicalizePath html
 
-
-findNameToHaddockModuleLinks :: GhcMonad m => DynFlags -> [Name] -> m (M.Map Name (FilePath, ModuleName))
-findNameToHaddockModuleLinks df names = M.fromList . concat <$> mapM findNameUris fins
+findNameHaddockDirAndModule :: GhcMonad m => DynFlags 
+  -> Name
+  -> Var (HashMap FilePath (Maybe H.LinkEnv))
+  -> MaybeT m (FilePath, ModuleName)
+findNameHaddockDirAndModule df name linkEnvs = do
+    fm <- (MaybeT . return) $ nameHaddockInterface_maybe name
+    MaybeT $ findNameUri fm
   where
+    nameHaddockInterface_maybe n = do
+      m <- nameModule_maybe n
+      p <- lookupPackage df $ moduleUnitId m
+      i <- listToMaybe $ haddockInterfaces p
+      return (i, n)
+
     readInterfaceFile fi =
       H.readInterfaceFile
         H.nameCacheFromGhc
@@ -249,28 +267,35 @@ findNameToHaddockModuleLinks df names = M.fromList . concat <$> mapM findNameUri
 #if MIN_GHC_API_VERSION(8,8,0)
         False
 #endif
-    findNameUris (fi, ns) = do
+    readLinkEnvironment fi = do
+      envs <- liftIO $ readVar linkEnvs
+      case HMap.lookup fi envs of
+        -- load and cache link environment
+        Nothing -> 
+          do
+            ioe <- readInterfaceFile fi
+            let mle =
+                  case ioe of
+                    Left _ -> Nothing
+                    Right i -> Just $ H.ifLinkEnv i
+            liftIO $ modifyVar_ linkEnvs (return . HMap.insert fi mle)
+            return mle
+        -- get cached
+        Just mle ->
+          return mle
+
+    findNameUri (fi, name) = do
       -- TODO: resolve mangled html file name and anchor using Haddock api? is it possible?
       -- TODO: fall back to old guesswork solution if haddock doesn't work ? 
       -- TODO : clean up / ugly
-        
       let dir = takeDirectory fi
       exists <- liftIO $ doesFileExist fi
       if exists
         then do
-          ioe <- readInterfaceFile fi
-          case ioe of
-            Left _ -> return []
-            Right (i :: H.InterfaceFile) ->
-              let le = H.ifLinkEnv i
-              in return $ catMaybes $ map (\n -> (n,) . (dir,) . moduleName <$> (M.lookup n le)) ns
+          mle <- readLinkEnvironment fi
+          case mle of
+            Nothing -> return Nothing
+            Just le ->
+              return $ (dir,) . moduleName <$> (M.lookup name le)
         else
-          return []
-
-    nameHaddockInterface_maybe n = do
-      m <- nameModule_maybe n
-      p <- lookupPackage df $ moduleUnitId m
-      i <- listToMaybe $ haddockInterfaces p
-      return (i, n)
-    fins = map (fst . head &&& map snd) $ groupOn fst $ catMaybes $ map nameHaddockInterface_maybe names
-
+          return Nothing

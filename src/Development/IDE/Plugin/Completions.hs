@@ -93,7 +93,8 @@ produceCompletions = do
                         tm <- liftIO $ typecheckModule (IdeDefer True) env Nothing pm
                         case tm of
                             (_, Just (_,tcm)) -> do
-                                cdata <- liftIO $ cacheDataProducer env tcm parsedDeps
+                                ShakeExtras{haddockLinkEnvs} <- getShakeExtras
+                                cdata <- liftIO $ cacheDataProducer env tcm parsedDeps haddockLinkEnvs
                                 -- Do not return diags from parsing as they would duplicate
                                 -- the diagnostics from typechecking
                                 return ([], Just cdata)

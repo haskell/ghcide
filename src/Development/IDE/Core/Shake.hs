@@ -126,6 +126,7 @@ import UniqSupply
 import PrelInfo
 import Data.Int (Int64)
 import qualified Data.HashSet as HSet
+import qualified Documentation.Haddock as H
 
 -- information we stash inside the shakeExtra field
 data ShakeExtras = ShakeExtras
@@ -164,6 +165,8 @@ data ShakeExtras = ShakeExtras
     ,exportsMap :: Var ExportsMap
     -- | A work queue for actions added via 'runInShakeSession'
     ,actionQueue :: ActionQueue
+    -- | A mapping of haddock interface files' link environments
+    ,haddockLinkEnvs :: Var (HashMap FilePath (Maybe H.LinkEnv))
     }
 
 -- | A mapping of module name to known files
@@ -433,6 +436,7 @@ shakeOpen getLspId eventer withProgress withIndefiniteProgress logger debouncer
         exportsMap <- newVar mempty
 
         actionQueue <- newQueue
+        haddockLinkEnvs <- newVar HMap.empty
 
         pure (ShakeExtras{..}, cancel progressAsync)
     (shakeDbM, shakeClose) <-
