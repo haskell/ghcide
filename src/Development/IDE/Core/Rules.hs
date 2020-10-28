@@ -205,7 +205,7 @@ getHomeHieFile f = do
       wait <- lift $ delayedAction $ mkDelayedAction "OutOfDateHie" L.Info $ do
         hsc <- hscEnv <$> use_ GhcSession f
         pm <- use_ GetParsedModule f
-        (_, mtm)<- typeCheckRuleDefinition hsc pm
+        (_, mtm)<- typeCheckRuleDefinition hsc f pm
         mapM_ (getHieAstRuleDefinition f hsc) mtm -- Write the HiFile to disk
       _ <- MaybeT $ liftIO $ timeout 1 wait
       ncu <- mkUpdater
@@ -576,7 +576,7 @@ typeCheckRule :: Rules ()
 typeCheckRule = define $ \TypeCheck file -> do
     pm <- use_ GetParsedModule file
     hsc  <- hscEnv <$> use_ GhcSessionDeps file
-    typeCheckRuleDefinition hsc pm
+    typeCheckRuleDefinition hsc file pm
 
 knownFilesRule :: Rules ()
 knownFilesRule = defineEarlyCutOffNoFile $ \GetKnownTargets -> do
@@ -596,9 +596,10 @@ getModuleGraphRule = defineNoFile $ \GetModuleGraph -> do
 -- retain the information forever in the shake graph.
 typeCheckRuleDefinition
     :: HscEnv
+    -> NormalizedFilePath
     -> ParsedModule
     -> Action (IdeResult TcModuleResult)
-typeCheckRuleDefinition hsc pm = do
+typeCheckRuleDefinition hsc fp pm = do
   setPriority priorityTypeCheck
   IdeOptions { optDefer = defer } <- getIdeOptions
 
@@ -607,13 +608,15 @@ typeCheckRuleDefinition hsc pm = do
   addUsageDependencies $ liftIO $
     typecheckModule defer hsc linkables_to_keep pm
   where
-    addUsageDependencies :: Action (a, Maybe TcModuleResult) -> Action (a, Maybe TcModuleResult)
+    -- addUsageDependencies :: Action (a, Maybe TcModuleResult) -> Action (a, Maybe TcModuleResult)
     addUsageDependencies a = do
+      ShakeExtras {holesMap} <- getShakeExtras
       r@(_, mtc) <- a
-      forM_ mtc $ \tc -> do
+      forM_ mtc $ \(tc, hfs) -> do
         used_files <- liftIO $ readIORef $ tcg_dependent_files $ tmrTypechecked tc
         void $ uses_ GetModificationTime (map toNormalizedFilePath' used_files)
-      return r
+        liftIO $ modifyVar_ holesMap $ \(HolesMap m) -> pure $ HolesMap $ HM.insert (filePathToUri' fp) hfs m
+      return $ second (fmap fst) r
 
 -- | Get all the linkables stored in the graph, i.e. the ones we *do not* need to unload.
 -- Doesn't actually contain the code, since we don't need it to unload
@@ -849,7 +852,7 @@ regenerateHiFile sess f ms compNeeded = do
         Just pm -> do
             -- Invoke typechecking directly to update it without incurring a dependency
             -- on the parsed module and the typecheck rules
-            (diags', mtmr) <- typeCheckRuleDefinition hsc pm
+            (diags', mtmr) <- typeCheckRuleDefinition hsc f pm
             case mtmr of
               Nothing -> pure (diags', Nothing)
               Just tmr -> do

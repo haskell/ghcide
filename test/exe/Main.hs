@@ -1633,7 +1633,7 @@ fillTypedHoleTests = let
   , check "replace _c with parameterInt"
           "_a" "_b" "_c"
           "_a" "_b"  "parameterInt"
-  , check "replace _ with foo _"
+  , check "replace _ with (foo _)"
           "_" "n" "n"
           "(foo _)" "n" "n"
   ]

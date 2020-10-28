@@ -52,8 +52,8 @@ import qualified Data.Text as T
 import Data.Tuple.Extra ((&&&))
 import HscTypes
 import Parser
-import Text.Regex.TDFA (mrAfter, (=~), (=~~))
-import Outputable (ppr, showSDocUnsafe)
+import Text.Regex.TDFA ((=~), (=~~))
+import Outputable (ppr, showSDocUnsafe, showSDoc, parens, cparen, sep, text, (<+>))
 import DynFlags (xFlags, FlagSpec(..))
 import GHC.LanguageExtensions.Type (Extension)
 import Data.Function
@@ -64,6 +64,8 @@ import Safe (atMay)
 import Bag (isEmptyBag)
 import qualified Data.HashSet as Set
 import Control.Concurrent.Extra (threadDelay, readVar)
+import TcHoleErrors
+import StringBuffer
 
 plugin :: Plugin c
 plugin = codeActionPluginWithRules rules codeAction <> Plugin mempty setHandlersCodeLens
@@ -99,12 +101,15 @@ codeAction lsp state (TextDocumentIdentifier uri) _range CodeActionContext{_diag
     pkgExports <- runAction "CodeAction:PackageExports" state $ (useNoFile_ . PackageExports) `traverse` env
     localExports <- readVar (exportsMap $ shakeExtras state)
     let exportsMap = localExports <> fromMaybe mempty pkgExports
+    holeFitsMap <- readVar (holesMap $ shakeExtras state)
+    let holeFits = Map.findWithDefault [] (toNormalizedUri uri) $ getHoleFits holeFitsMap
     let dflags = hsc_dflags . hscEnv <$> env
     pure . Right $
         [ CACodeAction $ CodeAction title (Just CodeActionQuickFix) (Just $ List [x]) (Just edit) Nothing
         | x <- xs, (title, tedit) <- suggestAction dflags exportsMap ideOptions parsedModule text x
         , let edit = WorkspaceEdit (Just $ Map.singleton uri $ List tedit) Nothing
         ] <> caRemoveRedundantImports parsedModule text diag xs uri
+          <> suggestHoleFits dflags uri (ms_hspp_buf =<< pm_mod_summary <$> parsedModule) holeFits
 
 -- | Generate code lenses.
 codeLens
@@ -152,6 +157,34 @@ commandHandler lsp _ideState ExecuteCommandParams{..}
     | otherwise
     = return (Right Null, Nothing)
 
+suggestHoleFits
+  :: Maybe DynFlags
+  -> Uri
+  -> Maybe StringBuffer
+  -> [(SrcSpan,HoleFit)]
+  -> [CAResult]
+suggestHoleFits Nothing uri contents xs = []
+suggestHoleFits (Just dflags) uri contents xs =
+  [ CACodeAction $ CodeAction title (Just CodeActionQuickFix) Nothing (Just edit) Nothing
+  | (RealSrcSpan range, hole) <- xs
+  , let hname = getSB range
+  , let (title,diff) = go hname hole
+  , let edit = WorkspaceEdit (Just $ Map.singleton uri $ List [TextEdit (realSrcSpanToRange range) diff]) Nothing
+  ]
+  where
+    getSB :: RealSrcSpan -> T.Text
+    getSB sp = case atLine (srcSpanStartLine sp) =<< contents of
+      Nothing -> "_"
+      Just sb -> T.pack $ lexemeToString (offsetBytes (srcSpanStartCol sp - 1) sb) (srcSpanEndCol sp - srcSpanStartCol sp)
+    go :: T.Text -> HoleFit -> (T.Text,T.Text)
+    go name hole  = ("replace " <> name <> " with " <> edit, edit)
+      where edit = T.pack $ showSDoc dflags $ case hole of
+              RawHoleFit sdoc -> parens sdoc
+              HoleFit _ cand ty _ _ mtchs _ ->
+                let name = ppr $ getName cand
+                    holes = sep $ map (const $ text "_") mtchs
+                in cparen (not $ null $ mtchs) $ name <+> holes
+
 suggestAction
   :: Maybe DynFlags
   -> ExportsMap
@@ -178,9 +211,7 @@ suggestAction dflags packageExports ideOptions parsedModule text diag = concat
     ++ suggestDeleteUnusedBinding pm text diag
     ++ suggestExportUnusedTopBinding text pm diag
     | Just pm <- [parsedModule]
-    ] ++
-    suggestFillHole diag                   -- Lowest priority
-
+    ]
 
 suggestRemoveRedundantImport :: ParsedModule -> Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
 suggestRemoveRedundantImport ParsedModule{pm_parsed_source = L _  HsModule{hsmodImports}} contents Diagnostic{_range=_range,..}
@@ -560,80 +591,6 @@ suggestModuleTypo Diagnostic{_range=_range,..}
       proposeModule mod = ("replace with " <> mod, [TextEdit _range mod])
       in map proposeModule $ nubOrd $ findSuggestedModules _message
     | otherwise = []
-
-suggestFillHole :: Diagnostic -> [(T.Text, [TextEdit])]
-suggestFillHole Diagnostic{_range=_range,..}
-    | Just holeName <- extractHoleName _message
-    , (holeFits, refFits) <- processHoleSuggestions (T.lines _message)
-    = map (proposeHoleFit holeName False) holeFits
-    ++ map (proposeHoleFit holeName True) refFits
-    | otherwise = []
-    where
-      extractHoleName = fmap head . flip matchRegexUnifySpaces "Found hole: ([^ ]*)"
-      proposeHoleFit holeName parenthise name =
-          ( "replace " <> holeName <> " with " <> name
-          , [TextEdit _range $ if parenthise then parens name else name])
-      parens x = "(" <> x <> ")"
-
-processHoleSuggestions :: [T.Text] -> ([T.Text], [T.Text])
-processHoleSuggestions mm = (holeSuggestions, refSuggestions)
-{-
-    • Found hole: _ :: LSP.Handlers
-
-      Valid hole fits include def
-      Valid refinement hole fits include
-        fromMaybe (_ :: LSP.Handlers) (_ :: Maybe LSP.Handlers)
-        fromJust (_ :: Maybe LSP.Handlers)
-        haskell-lsp-types-0.22.0.0:Language.Haskell.LSP.Types.Window.$sel:_value:ProgressParams (_ :: ProgressParams
-                                                                                                        LSP.Handlers)
-        T.foldl (_ :: LSP.Handlers -> Char -> LSP.Handlers)
-                (_ :: LSP.Handlers)
-                (_ :: T.Text)
-        T.foldl' (_ :: LSP.Handlers -> Char -> LSP.Handlers)
-                 (_ :: LSP.Handlers)
-                 (_ :: T.Text)
--}
-  where
-    t = id @T.Text
-    holeSuggestions = do
-      -- get the text indented under Valid hole fits
-      validHolesSection <-
-        getIndentedGroupsBy (=~ t " *Valid (hole fits|substitutions) include") mm
-      -- the Valid hole fits line can contain a hole fit
-      holeFitLine <-
-        mapHead
-            (mrAfter . (=~ t " *Valid (hole fits|substitutions) include"))
-            validHolesSection
-      let holeFit = T.strip $ T.takeWhile (/= ':') holeFitLine
-      guard (not $ T.null holeFit)
-      return holeFit
-    refSuggestions = do -- @[]
-      -- get the text indented under Valid refinement hole fits
-      refinementSection <-
-        getIndentedGroupsBy (=~ t " *Valid refinement hole fits include") mm
-      -- get the text for each hole fit
-      holeFitLines <- getIndentedGroups (tail refinementSection)
-      let holeFit = T.strip $ T.unwords holeFitLines
-      guard $ not $ holeFit =~ t "Some refinement hole fits suppressed"
-      return holeFit
-
-    mapHead f (a:aa) = f a : aa
-    mapHead _ [] = []
-
--- > getIndentedGroups [" H1", "  l1", "  l2", " H2", "  l3"] = [[" H1,", "  l1", "  l2"], [" H2", "  l3"]]
-getIndentedGroups :: [T.Text] -> [[T.Text]]
-getIndentedGroups [] = []
-getIndentedGroups ll@(l:_) = getIndentedGroupsBy ((== indentation l) . indentation) ll
--- |
--- > getIndentedGroupsBy (" H" `isPrefixOf`) [" H1", "  l1", "  l2", " H2", "  l3"] = [[" H1", "  l1", "  l2"], [" H2", "  l3"]]
-getIndentedGroupsBy :: (T.Text -> Bool) -> [T.Text] -> [[T.Text]]
-getIndentedGroupsBy pred inp = case dropWhile (not.pred) inp of
-    (l:ll) -> case span (\l' -> indentation l < indentation l') ll of
-        (indented, rest) -> (l:indented) : getIndentedGroupsBy pred rest
-    _ -> []
-
-indentation :: T.Text -> Int
-indentation = T.length . T.takeWhile isSpace
 
 suggestExtendImport :: Maybe DynFlags -> Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
 suggestExtendImport (Just dflags) contents Diagnostic{_range=_range,..}

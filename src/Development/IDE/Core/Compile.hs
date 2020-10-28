@@ -71,6 +71,7 @@ import           StringBuffer                   as SB
 import           TcRnMonad
 import           TcIface                        (typecheckIface)
 import           TidyPgm
+import Constraint
 
 import Control.Exception.Safe
 import Control.Monad.Extra
@@ -94,6 +95,7 @@ import qualified GHC.LanguageExtensions as LangExt
 import PrelNames
 import HeaderInfo
 import Maybes (orElse)
+import TcHoleErrors
 
 -- | Given a string buffer, return the string (after preprocessing) and the 'ParsedModule'.
 parseModule
@@ -125,7 +127,7 @@ typecheckModule :: IdeDefer
                 -> HscEnv
                 -> [Linkable] -- ^ linkables not to unload
                 -> ParsedModule
-                -> IO (IdeResult TcModuleResult)
+                -> IO (IdeResult (TcModuleResult, [(SrcSpan,HoleFit)]))
 typecheckModule (IdeDefer defer) hsc keep_lbls pm = do
     fmap (either (,Nothing) id) $
       catchSrcErrors (hsc_dflags hsc) "typecheck" $ do
@@ -134,32 +136,44 @@ typecheckModule (IdeDefer defer) hsc keep_lbls pm = do
             dflags = ms_hspp_opts modSummary
 
         modSummary' <- initPlugins hsc modSummary
-        (warnings, tcm) <- withWarnings "typecheck" $ \tweak ->
+        (warnings, (tcm, holes)) <- withWarnings "typecheck" $ \tweak ->
             tcRnModule hsc keep_lbls $ enableTopLevelWarnings
                                      $ enableUnnecessaryAndDeprecationWarnings
                                      $ demoteIfDefer pm{pm_mod_summary = tweak modSummary'}
         let errorPipeline = unDefer . hideDiag dflags . tagDiag
             diags = map errorPipeline warnings
             deferedError = any fst diags
-        return (map snd diags, Just $ tcm{tmrDeferedError = deferedError})
+        return (map snd diags, Just $ (tcm{tmrDeferedError = deferedError}, holes))
     where
         demoteIfDefer = if defer then demoteTypeErrorsToWarnings else id
 
-tcRnModule :: HscEnv -> [Linkable] -> ParsedModule -> IO TcModuleResult
+tcRnModule :: HscEnv -> [Linkable] -> ParsedModule -> IO (TcModuleResult,[(SrcSpan,HoleFit)])
 tcRnModule hsc_env keep_lbls pmod = do
+  holesRef <- newIORef []
   let ms = pm_mod_summary pmod
-      hsc_env_tmp = hsc_env { hsc_dflags = ms_hspp_opts ms }
-
+      hsc_env_tmp = hsc_env { hsc_dflags = (ms_hspp_opts ms){staticPlugins = staticPlugins (ms_hspp_opts ms) ++ [holesPlugin]} }
+      holesPlugin = StaticPlugin $ PluginWithArgs (defaultPlugin { holeFitPlugin = pluginWorker }) []
+      pluginWorker _ = Just $ HoleFitPluginR
+        { hfPluginInit = liftIO $ newIORef ()
+        , hfPluginRun = const $ HoleFitPlugin (\_ cs -> pure cs) $ \hole fits -> do
+            let span = case tyHCt hole of
+                  Just (ctLocSpan . ctLoc -> span) -> RealSrcSpan span
+                  Nothing -> noSrcSpan
+            liftIO $ modifyIORef holesRef $ (map (span,) fits ++)
+            pure fits
+        , hfPluginStop = const (pure ())
+        }
   unload hsc_env_tmp keep_lbls
   (tc_gbl_env, mrn_info) <-
       hscTypecheckRename hsc_env_tmp ms $
                 HsParsedModule { hpm_module = parsedSource pmod,
                                  hpm_src_files = pm_extra_src_files pmod,
                                  hpm_annotations = pm_annotations pmod }
+  holes <- readIORef holesRef
   let rn_info = case mrn_info of
         Just x -> x
         Nothing -> error "no renamed info tcRnModule"
-  pure (TcModuleResult pmod rn_info tc_gbl_env False)
+  pure (TcModuleResult pmod rn_info tc_gbl_env False, holes)
 
 mkHiFileResultNoCompile :: HscEnv -> TcModuleResult -> IO HiFileResult
 mkHiFileResultNoCompile session tcm = do

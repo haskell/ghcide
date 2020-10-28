@@ -46,6 +46,7 @@ module Development.IDE.Core.Shake(
     getIdeOptions,
     getIdeOptionsIO,
     GlobalIdeOptions(..),
+    HolesMap(..),
     garbageCollect,
     knownTargets,
     setPriority,
@@ -84,7 +85,7 @@ import qualified Data.Text as T
 import Data.Tuple.Extra
 import Data.Unique
 import Development.IDE.Core.Debouncer
-import Development.IDE.GHC.Compat (ModuleName, NameCacheUpdater(..), upNameCache )
+import Development.IDE.GHC.Compat (ModuleName, NameCacheUpdater(..), upNameCache, SrcSpan)
 import Development.IDE.GHC.Orphans ()
 import Development.IDE.Core.PositionMapping
 import Development.IDE.Types.Action
@@ -126,6 +127,7 @@ import UniqSupply
 import PrelInfo
 import Data.Int (Int64)
 import qualified Data.HashSet as HSet
+import TcHoleErrors
 
 -- information we stash inside the shakeExtra field
 data ShakeExtras = ShakeExtras
@@ -164,7 +166,13 @@ data ShakeExtras = ShakeExtras
     ,exportsMap :: Var ExportsMap
     -- | A work queue for actions added via 'runInShakeSession'
     ,actionQueue :: ActionQueue
+    -- | A list of hole fits for each file. Updated on typecheck
+    ,holesMap :: Var HolesMap
     }
+
+
+newtype HolesMap = HolesMap
+    {getHoleFits :: HashMap NormalizedUri [(SrcSpan,HoleFit)]}
 
 -- | A mapping of module name to known files
 type KnownTargets = HashMap Target [NormalizedFilePath]
@@ -433,6 +441,8 @@ shakeOpen getLspId eventer withProgress withIndefiniteProgress logger debouncer
         exportsMap <- newVar mempty
 
         actionQueue <- newQueue
+
+        holesMap <- newVar $ HolesMap mempty
 
         pure (ShakeExtras{..}, cancel progressAsync)
     (shakeDbM, shakeClose) <-
