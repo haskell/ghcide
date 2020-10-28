@@ -212,19 +212,15 @@ docHeaders = mapMaybe (\(L _ x) -> wrk x)
 -- An example for a cabal installed module:
 -- @~/.cabal/store/ghc-8.10.1/vctr-0.12.1.2-98e2e861/share/doc/html/src/Data.Vector.Primitive.html@
 lookupSrcHtmlForModule :: DynFlags -> Module -> IO (Maybe FilePath)
-lookupSrcHtmlForModule =
-  lookupHtmlForModule (\pkgDocDir modDocName -> pkgDocDir </> "src" </> modDocName <.> "html")
-
-lookupHtmlForModule :: (FilePath -> FilePath -> FilePath) -> DynFlags -> Module -> IO (Maybe FilePath)
-lookupHtmlForModule mkDocPath df m = do
+lookupSrcHtmlForModule df m = do
   -- try all directories
-  let mfs = fmap (concatMap go) (lookupHtmls df ui)
+  let mfs = fmap (concatMap go) (lookupHtmlDir df ui)
   html <- findM doesFileExist (concat . maybeToList $ mfs)
   -- canonicalize located html to remove /../ indirection which can break some clients
   -- (vscode on Windows at least)
   traverse canonicalizePath html
   where
-    go pkgDocDir = map (mkDocPath pkgDocDir) mns
+    go pkgDocDir = map (\modDocName -> pkgDocDir </> "src" </> modDocName <.> "html") mns
     ui = moduleUnitId m
     -- try to locate html file from most to least specific name e.g.
     --  first Language.Haskell.LSP.Types.Uri.html and Language-Haskell-LSP-Types-Uri.html
@@ -234,13 +230,13 @@ lookupHtmlForModule mkDocPath df m = do
       -- The file might use "." or "-" as separator
       map (`intercalate` chunks) [".", "-"]
 
-lookupHtmls :: DynFlags -> UnitId -> Maybe [FilePath]
-lookupHtmls df ui =
+lookupHtmlDir :: DynFlags -> UnitId -> Maybe [FilePath]
+lookupHtmlDir df ui =
   -- use haddockInterfaces instead of haddockHTMLs: GHC treats haddockHTMLs as URL not path 
   -- and therefore doesn't expand $topdir on Windows
   map takeDirectory . haddockInterfaces <$> lookupPackage df ui
 
-
+-- TODO : clean up / use hlint, simplify plumbing
 lookupHtmlDocForName :: DynFlags
   -> Name 
   -> Var (HashMap FilePath (Maybe H.LinkEnv))
@@ -293,9 +289,6 @@ findNameHaddockDirAndModule df name linkEnvs ideNc = do
           return mle
 
     findNameUri (fi, name) = do
-      -- TODO: resolve mangled html file name and anchor using Haddock api? is it possible?
-      -- TODO: fall back to old guesswork solution if haddock doesn't work ? 
-      -- TODO : clean up / ugly
       let dir = takeDirectory fi
       exists <- doesFileExist fi
       if exists
