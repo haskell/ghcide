@@ -46,6 +46,7 @@ import HscTypes (HscEnv(hsc_dflags))
 import Control.Monad.Trans.Maybe
 import Data.IORef
 import NameCache
+import Data.Char (isAlpha, isAlphaNum, isAscii, ord)
 
 mkDocMap
   :: HscEnv
@@ -120,13 +121,13 @@ getDocumentationsTryGhc env mod sources names linkEnvs ideNc = do
             src <- toFileUriText $ lookupSrcHtmlForModule df mod
             return (doc, src)
           Nothing -> pure (Nothing, Nothing)
-      let docUri = (<> "#" <> selector <> showName name) <$> docFu
-          srcUri = (<> "#" <> showName name) <$> srcFu
-          selector
-            | isValName name = "v:"
-            | otherwise = "t:"
+      
+      let docUri = (<> "#" <> anchorId name) <$> docFu
+          srcUri = (<> "#" <> anchorId name) <$> srcFu
+
       return $ SpanDocUris docUri srcUri
 
+    anchorId name = (T.pack . nameAnchorId . occName) name
     toFileUriText = (fmap . fmap) (getUri . filePathToUri)
 
 getDocumentation
@@ -246,11 +247,8 @@ lookupHtmlDocForName :: DynFlags
   -> IORef NameCache
   -> IO (Maybe FilePath)
 lookupHtmlDocForName df n linkEnvs ideNc = runMaybeT $ do
-  (dir, mn) <- findNameHaddockDirAndModule df n linkEnvs ideNc
-  let chunks = splitOn "." $ moduleNameString mn
-  -- TODO: code duplication
-  let mfs = map ((\modDocName -> dir </> modDocName <.> "html") . (`intercalate` chunks)) [".", "-"]
-  html <- (MaybeT . liftIO) $ findM doesFileExist mfs
+  (dir, mod) <- findNameHaddockDirAndModule df n linkEnvs ideNc
+  html <- (MaybeT . liftIO) $ findM doesFileExist [dir </> moduleHtmlFile mod]
   -- canonicalize located html to remove /../ indirection which can break some clients
   -- (vscode on Windows at least)
   liftIO $ canonicalizePath html
@@ -259,7 +257,7 @@ findNameHaddockDirAndModule :: DynFlags
   -> Name
   -> Var (HashMap FilePath (Maybe H.LinkEnv))
   -> IORef NameCache
-  -> MaybeT IO (FilePath, ModuleName)
+  -> MaybeT IO (FilePath, Module)
 findNameHaddockDirAndModule df name linkEnvs ideNc = do
     fm <- (MaybeT . return) $ nameHaddockInterface_maybe name
     MaybeT $ findNameUri fm
@@ -306,6 +304,37 @@ findNameHaddockDirAndModule df name linkEnvs ideNc = do
           case mle of
             Nothing -> return Nothing
             Just le ->
-              return $ (dir,) . moduleName <$> (M.lookup name le)
+              return $ (dir,) <$> (M.lookup name le)
         else
           return Nothing
+
+
+-- unfortunately haddock-api doesn't export Haddock.Utils,
+-- Below is some blunt copy and paste file and anchor rendering logic (it's consistent from 8.6 to 8.10 so should just work)
+-- TODO: export it upstream and reuse here
+
+baseName :: ModuleName -> FilePath
+baseName = map (\c -> if c == '.' then '-' else c) . moduleNameString
+
+
+moduleHtmlFile :: Module -> FilePath
+moduleHtmlFile mdl = baseName (moduleName mdl) ++ ".html" 
+
+nameAnchorId :: OccName -> String
+nameAnchorId name = makeAnchorId (prefix : ':' : occNameString name)
+ where prefix | isValOcc name = 'v'
+              | otherwise     = 't'
+
+-- | Takes an arbitrary string and makes it a valid anchor ID. The mapping is
+-- identity preserving.
+makeAnchorId :: String -> String
+makeAnchorId [] = []
+makeAnchorId (f:r) = escape isAlpha f ++ concatMap (escape isLegal) r
+  where
+    escape p c | p c = [c]
+               | otherwise = '-' : show (ord c) ++ "-"
+    isLegal ':' = True
+    isLegal '_' = True
+    isLegal '.' = True
+    isLegal c = isAscii c && isAlphaNum c
+       -- NB: '-' is legal in IDs, but we use it as the escape char 
