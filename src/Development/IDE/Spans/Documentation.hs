@@ -44,6 +44,8 @@ import           ExtractDocs
 import           NameEnv
 import HscTypes (HscEnv(hsc_dflags))
 import Control.Monad.Trans.Maybe
+import Data.IORef
+import NameCache
 
 mkDocMap
   :: HscEnv
@@ -51,8 +53,9 @@ mkDocMap
   -> RefMap
   -> TcGblEnv
   -> Var (HashMap FilePath (Maybe H.LinkEnv))
+  -> IORef NameCache
   -> IO DocAndKindMap
-mkDocMap env sources rm this_mod linkEnvs =
+mkDocMap env sources rm this_mod linkEnvs ideNc =
   do let (_ , DeclDocMap this_docs, _) = extractDocs this_mod
      d <- foldrM getDocs (mkNameEnv $ M.toList $ fmap (`SpanDocString` SpanDocUris Nothing Nothing) this_docs) names
 
@@ -62,7 +65,7 @@ mkDocMap env sources rm this_mod linkEnvs =
     getDocs n map
       | maybe True (mod ==) $ nameModule_maybe n = pure map -- we already have the docs in this_docs, or they do not exist
       | otherwise = do
-      doc <- getDocumentationTryGhc env mod sources n linkEnvs
+      doc <- getDocumentationTryGhc env mod sources n linkEnvs ideNc
       pure $ extendNameEnv map n doc
     getType n map
       | isTcOcc $ occName n = do
@@ -82,18 +85,20 @@ getDocumentationTryGhc :: HscEnv
   -> [ParsedModule]
   -> Name
   -> Var (HashMap FilePath (Maybe H.LinkEnv))
+  -> IORef NameCache
   -> IO SpanDoc
-getDocumentationTryGhc env mod deps n linkEnvs = head <$> getDocumentationsTryGhc env mod deps [n] linkEnvs
+getDocumentationTryGhc env mod deps n linkEnvs ideNc = head <$> getDocumentationsTryGhc env mod deps [n] linkEnvs ideNc
 
 getDocumentationsTryGhc :: HscEnv
   -> Module
   -> [ParsedModule]
   -> [Name]
   -> Var (HashMap FilePath (Maybe H.LinkEnv))
+  -> IORef NameCache
   -> IO [SpanDoc]
 -- Interfaces are only generated for GHC >= 8.6.
 -- In older versions, interface files do not embed Haddocks anyway
-getDocumentationsTryGhc env mod sources names linkEnvs = do
+getDocumentationsTryGhc env mod sources names linkEnvs ideNc = do
   res <- catchSrcErrors (hsc_dflags env) "docs" $ getDocsBatch env mod names
   case res of
       Left _ -> mapM mkSpanDocText names
@@ -111,7 +116,7 @@ getDocumentationsTryGhc env mod sources names linkEnvs = do
       (docFu, srcFu) <-
         case nameModule_maybe name of
           Just mod -> do
-            doc <- toFileUriText $ lookupHtmlDocForName df name linkEnvs
+            doc <- toFileUriText $ lookupHtmlDocForName df name linkEnvs ideNc
             src <- toFileUriText $ lookupSrcHtmlForModule df mod
             return (doc, src)
           Nothing -> pure (Nothing, Nothing)
@@ -237,10 +242,11 @@ lookupHtmls df ui =
 
 lookupHtmlDocForName :: DynFlags
   -> Name 
-  -> Var (HashMap FilePath (Maybe H.LinkEnv)) 
+  -> Var (HashMap FilePath (Maybe H.LinkEnv))
+  -> IORef NameCache
   -> IO (Maybe FilePath)
-lookupHtmlDocForName df n linkEnvs = runMaybeT $ do
-  (dir, mn) <- findNameHaddockDirAndModule df n linkEnvs
+lookupHtmlDocForName df n linkEnvs ideNc = runMaybeT $ do
+  (dir, mn) <- findNameHaddockDirAndModule df n linkEnvs ideNc
   let chunks = splitOn "." $ moduleNameString mn
   -- TODO: code duplication
   let mfs = map ((\modDocName -> dir </> modDocName <.> "html") . (`intercalate` chunks)) [".", "-"]
@@ -249,11 +255,12 @@ lookupHtmlDocForName df n linkEnvs = runMaybeT $ do
   -- (vscode on Windows at least)
   liftIO $ canonicalizePath html
 
-findNameHaddockDirAndModule :: DynFlags 
+findNameHaddockDirAndModule :: DynFlags
   -> Name
   -> Var (HashMap FilePath (Maybe H.LinkEnv))
+  -> IORef NameCache
   -> MaybeT IO (FilePath, ModuleName)
-findNameHaddockDirAndModule df name linkEnvs = do
+findNameHaddockDirAndModule df name linkEnvs ideNc = do
     fm <- (MaybeT . return) $ nameHaddockInterface_maybe name
     MaybeT $ findNameUri fm
   where
@@ -265,11 +272,10 @@ findNameHaddockDirAndModule df name linkEnvs = do
 
     readInterfaceFile fi =
       H.readInterfaceFile
-        -- it used to be H.nameCacheFromGhc but GhcMonad was just stripped away
-        H.freshNameCache
+        (readIORef ideNc, writeIORef ideNc)
         fi
 #if MIN_GHC_API_VERSION(8,8,0)
-        False
+        False -- don't bypass checks (default behavior before 8.8)
 #endif
     readLinkEnvironment fi = do
       envs <- readVar linkEnvs
