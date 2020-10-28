@@ -42,16 +42,17 @@ import           Language.Haskell.LSP.Types (getUri, filePathToUri)
 import           TcRnTypes
 import           ExtractDocs
 import           NameEnv
+import HscTypes (HscEnv(hsc_dflags))
 import Control.Monad.Trans.Maybe
 
 mkDocMap
-  :: GhcMonad m
-  => [ParsedModule]
+  :: HscEnv
+  -> [ParsedModule]
   -> RefMap
   -> TcGblEnv
   -> Var (HashMap FilePath (Maybe H.LinkEnv))
-  -> m DocAndKindMap
-mkDocMap sources rm this_mod linkEnvs =
+  -> IO DocAndKindMap
+mkDocMap env sources rm this_mod linkEnvs =
   do let (_ , DeclDocMap this_docs, _) = extractDocs this_mod
      d <- foldrM getDocs (mkNameEnv $ M.toList $ fmap (`SpanDocString` SpanDocUris Nothing Nothing) this_docs) names
 
@@ -61,37 +62,39 @@ mkDocMap sources rm this_mod linkEnvs =
     getDocs n map
       | maybe True (mod ==) $ nameModule_maybe n = pure map -- we already have the docs in this_docs, or they do not exist
       | otherwise = do
-      doc <- getDocumentationTryGhc mod sources n linkEnvs
+      doc <- getDocumentationTryGhc env mod sources n linkEnvs
       pure $ extendNameEnv map n doc
     getType n map
       | isTcOcc $ occName n = do
-        kind <- lookupKind mod n
+        kind <- lookupKind env mod n
         pure $ maybe map (extendNameEnv map n) kind
       | otherwise = pure map
     names = rights $ S.toList idents
     idents = M.keysSet rm
     mod = tcg_mod this_mod
 
-lookupKind :: GhcMonad m => Module -> Name -> m (Maybe TyThing)
-lookupKind mod =
-    fmap (either (const Nothing) id) . catchSrcErrors "span" . lookupName mod
+lookupKind :: HscEnv -> Module -> Name -> IO (Maybe TyThing)
+lookupKind env mod =
+    fmap (either (const Nothing) id) . catchSrcErrors (hsc_dflags env) "span" . lookupName env mod
 
-getDocumentationTryGhc :: GhcMonad m => Module 
-  -> [ParsedModule] 
-  -> Name 
+getDocumentationTryGhc :: HscEnv
+  -> Module
+  -> [ParsedModule]
+  -> Name
   -> Var (HashMap FilePath (Maybe H.LinkEnv))
-  -> m SpanDoc
-getDocumentationTryGhc mod deps n linkEnvs = head <$> getDocumentationsTryGhc mod deps [n] linkEnvs
+  -> IO SpanDoc
+getDocumentationTryGhc env mod deps n linkEnvs = head <$> getDocumentationsTryGhc env mod deps [n] linkEnvs
 
-getDocumentationsTryGhc :: GhcMonad m => Module
+getDocumentationsTryGhc :: HscEnv
+  -> Module
   -> [ParsedModule]
   -> [Name]
   -> Var (HashMap FilePath (Maybe H.LinkEnv))
-  -> m [SpanDoc]
+  -> IO [SpanDoc]
 -- Interfaces are only generated for GHC >= 8.6.
 -- In older versions, interface files do not embed Haddocks anyway
-getDocumentationsTryGhc mod sources names linkEnvs = do
-  res <- catchSrcErrors "docs" $ getDocsBatch mod names
+getDocumentationsTryGhc env mod sources names linkEnvs = do
+  res <- catchSrcErrors (hsc_dflags env) "docs" $ getDocsBatch env mod names
   case res of
       Left _ -> mapM mkSpanDocText names
       Right res -> zipWithM unwrap res names
@@ -104,12 +107,12 @@ getDocumentationsTryGhc mod sources names linkEnvs = do
    
     -- Get the uris to the documentation and source html pages if they exist
     getUris name = do
-      df <- getSessionDynFlags
+      let df = hsc_dflags env
       (docFu, srcFu) <-
         case nameModule_maybe name of
           Just mod -> do
             doc <- toFileUriText $ lookupHtmlDocForName df name linkEnvs
-            src <- toFileUriText . liftIO $ lookupSrcHtmlForModule df mod
+            src <- toFileUriText $ lookupSrcHtmlForModule df mod
             return (doc, src)
           Nothing -> pure (Nothing, Nothing)
       let docUri = (<> "#" <> selector <> showName name) <$> docFu
@@ -232,10 +235,10 @@ lookupHtmls df ui =
   map takeDirectory . haddockInterfaces <$> lookupPackage df ui
 
 
-lookupHtmlDocForName :: GhcMonad m => DynFlags
+lookupHtmlDocForName :: DynFlags
   -> Name 
   -> Var (HashMap FilePath (Maybe H.LinkEnv)) 
-  -> m (Maybe FilePath)
+  -> IO (Maybe FilePath)
 lookupHtmlDocForName df n linkEnvs = runMaybeT $ do
   (dir, mn) <- findNameHaddockDirAndModule df n linkEnvs
   let chunks = splitOn "." $ moduleNameString mn
@@ -246,10 +249,10 @@ lookupHtmlDocForName df n linkEnvs = runMaybeT $ do
   -- (vscode on Windows at least)
   liftIO $ canonicalizePath html
 
-findNameHaddockDirAndModule :: GhcMonad m => DynFlags 
+findNameHaddockDirAndModule :: DynFlags 
   -> Name
   -> Var (HashMap FilePath (Maybe H.LinkEnv))
-  -> MaybeT m (FilePath, ModuleName)
+  -> MaybeT IO (FilePath, ModuleName)
 findNameHaddockDirAndModule df name linkEnvs = do
     fm <- (MaybeT . return) $ nameHaddockInterface_maybe name
     MaybeT $ findNameUri fm
@@ -262,13 +265,14 @@ findNameHaddockDirAndModule df name linkEnvs = do
 
     readInterfaceFile fi =
       H.readInterfaceFile
-        H.nameCacheFromGhc
+        -- it used to be H.nameCacheFromGhc but GhcMonad was just stripped away
+        H.freshNameCache
         fi
 #if MIN_GHC_API_VERSION(8,8,0)
         False
 #endif
     readLinkEnvironment fi = do
-      envs <- liftIO $ readVar linkEnvs
+      envs <- readVar linkEnvs
       case HMap.lookup fi envs of
         -- load and cache link environment
         Nothing -> 
@@ -289,7 +293,7 @@ findNameHaddockDirAndModule df name linkEnvs = do
       -- TODO: fall back to old guesswork solution if haddock doesn't work ? 
       -- TODO : clean up / ugly
       let dir = takeDirectory fi
-      exists <- liftIO $ doesFileExist fi
+      exists <- doesFileExist fi
       if exists
         then do
           mle <- readLinkEnvironment fi
