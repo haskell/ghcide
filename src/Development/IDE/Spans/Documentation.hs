@@ -2,6 +2,7 @@
 -- Copyright (c) 2019 The DAML Authors. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
 
+{-# OPTIONS_GHC -Wno-unused-matches -Wno-unused-top-binds #-}
 {-# LANGUAGE CPP #-}
 #include "ghc-api-version.h"
 
@@ -14,14 +15,12 @@ module Development.IDE.Spans.Documentation (
   , mkDocMap
   ) where
 
-import           Control.Concurrent.Extra
 import           Control.Monad
 import           Control.Monad.Extra (findM)
 import           Control.Monad.Trans.Maybe
 import           Data.Char (isAlpha, isAlphaNum, isAscii, ord)
 import           Data.Either
 import           Data.Foldable
-import qualified Data.HashMap.Strict as HMap
 import           Data.IORef
 import           Data.List.Extra
 import qualified Data.Map as M
@@ -34,11 +33,6 @@ import           Development.IDE.GHC.Error
 import           Development.IDE.Spans.Common
 import           Development.IDE.Core.RuleTypes
 import           Development.IDE.Core.Shake (LinkEnvsCache)
-
-#if !defined(GHC_LIB)
-import qualified Documentation.Haddock as H
-#endif
-
 import           ExtractDocs
 import           FastString
 import           GhcMonad
@@ -53,6 +47,12 @@ import           SrcLoc (RealLocated)
 import           System.Directory
 import           System.FilePath
 import           TcRnTypes
+
+#if !defined(GHC_LIB)
+import           Control.Concurrent.Extra
+import qualified Data.HashMap.Strict as HMap
+import qualified Documentation.Haddock as H
+#endif
 
 mkDocMap
   :: HscEnv
