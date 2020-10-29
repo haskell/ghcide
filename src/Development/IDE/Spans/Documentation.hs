@@ -236,7 +236,6 @@ lookupHtmlDir df ui =
   -- and therefore doesn't expand $topdir on Windows
   map takeDirectory . haddockInterfaces <$> lookupPackage df ui
 
--- TODO : clean up / use hlint, simplify plumbing
 lookupHtmlDocForName :: DynFlags
   -> Name 
   -> Var (HashMap FilePath (Maybe H.LinkEnv))
@@ -297,7 +296,7 @@ findNameHaddockDirAndModule df name linkEnvs ideNc = do
           case mle of
             Nothing -> return Nothing
             Just le ->
-              return $ (dir,) <$> (M.lookup name le)
+              return $ (dir,) <$> M.lookup name le
         else
           return Nothing
 
