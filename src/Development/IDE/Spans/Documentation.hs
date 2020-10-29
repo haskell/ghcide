@@ -13,11 +13,16 @@ module Development.IDE.Spans.Documentation (
   , mkDocMap
   ) where
 
-import Control.Concurrent.Extra
+import           Control.Concurrent.Extra
 import           Control.Monad
 import           Control.Monad.Extra (findM)
+import           Control.Monad.Trans.Maybe
+import           Data.Char (isAlpha, isAlphaNum, isAscii, ord)
 import           Data.Either
 import           Data.Foldable
+import           Data.HashMap.Strict (HashMap)
+import qualified Data.HashMap.Strict as HMap
+import           Data.IORef
 import           Data.List.Extra
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -28,25 +33,20 @@ import           Development.IDE.GHC.Compat
 import           Development.IDE.GHC.Error
 import           Development.IDE.Spans.Common
 import           Development.IDE.Core.RuleTypes
+import qualified Documentation.Haddock as H
+import           ExtractDocs
+import           FastString
+import           GhcMonad
+import           HscTypes (HscEnv(hsc_dflags))
+import           Language.Haskell.LSP.Types (getUri, filePathToUri)
+import           Name
+import           NameCache
+import           NameEnv
+import           Packages
+import           SrcLoc (RealLocated)
 import           System.Directory
 import           System.FilePath
-import qualified Documentation.Haddock as H
-import           Data.HashMap.Strict (HashMap)
-import qualified Data.HashMap.Strict as HMap
-import           FastString
-import           SrcLoc (RealLocated)
-import           GhcMonad
-import           Packages
-import           Name
-import           Language.Haskell.LSP.Types (getUri, filePathToUri)
 import           TcRnTypes
-import           ExtractDocs
-import           NameEnv
-import HscTypes (HscEnv(hsc_dflags))
-import Control.Monad.Trans.Maybe
-import Data.IORef
-import NameCache
-import Data.Char (isAlpha, isAlphaNum, isAscii, ord)
 
 mkDocMap
   :: HscEnv
@@ -243,7 +243,7 @@ lookupHtmlDocForName :: DynFlags
   -> IO (Maybe FilePath)
 lookupHtmlDocForName df n linkEnvs ideNc = runMaybeT $ do
   (dir, mod) <- findNameHaddockDirAndModule df n linkEnvs ideNc
-  html <- (MaybeT . liftIO) $ findM doesFileExist [dir </> moduleHtmlFile mod]
+  html <- MaybeT $ findM doesFileExist [dir </> moduleHtmlFile mod]
   -- canonicalize located html to remove /../ indirection which can break some clients
   -- (vscode on Windows at least)
   liftIO $ canonicalizePath html
@@ -281,7 +281,7 @@ findNameHaddockDirAndModule df name linkEnvs ideNc = do
                   case ioe of
                     Left _ -> Nothing
                     Right i -> Just $ H.ifLinkEnv i
-            liftIO $ modifyVar_ linkEnvs (return . HMap.insert fi mle)
+            modifyVar_ linkEnvs (return . HMap.insert fi mle)
             return mle
         -- get cached
         Just mle ->
