@@ -4,6 +4,8 @@
 
 {-# OPTIONS_GHC -Wno-unused-matches -Wno-unused-top-binds #-}
 {-# LANGUAGE CPP #-}
+{- HLINT ignore "Avoid restricted flags" -}
+
 #include "ghc-api-version.h"
 
 module Development.IDE.Spans.Documentation (
