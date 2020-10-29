@@ -127,7 +127,8 @@ import UniqSupply
 import PrelInfo
 import Data.Int (Int64)
 import qualified Data.HashSet as HSet
-import qualified Documentation.Haddock as H
+import Name (Name)
+import Module (Module)
 
 -- information we stash inside the shakeExtra field
 data ShakeExtras = ShakeExtras
@@ -171,7 +172,10 @@ data ShakeExtras = ShakeExtras
     }
 
 -- | Global cache of parsed haddock link envs (link env is a mapping of name to haddock module/file)
-type LinkEnvsCache = Var (HashMap FilePath (Maybe H.LinkEnv))
+type LinkEnvsCache = Var (HashMap FilePath (Maybe LinkEnv))
+
+-- copied and pasted LinkEnv definition from haddock-api to eliminate dependency on it in GHC lib
+type LinkEnv = Map Name Module
 
 -- | A mapping of module name to known files
 type KnownTargets = HashMap Target [NormalizedFilePath]

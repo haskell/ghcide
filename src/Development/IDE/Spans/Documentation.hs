@@ -34,7 +34,11 @@ import           Development.IDE.GHC.Error
 import           Development.IDE.Spans.Common
 import           Development.IDE.Core.RuleTypes
 import           Development.IDE.Core.Shake (LinkEnvsCache)
+
+#if !defined(GHC_LIB)
 import qualified Documentation.Haddock as H
+#endif
+
 import           ExtractDocs
 import           FastString
 import           GhcMonad
@@ -243,20 +247,21 @@ lookupHtmlDocForName :: DynFlags
   -> IORef NameCache
   -> IO (Maybe FilePath)
 lookupHtmlDocForName df n le ideNc = runMaybeT $ do
-  (dir, mod) <- findNameHaddockDirAndModule df n le ideNc
-  html <- MaybeT $ findM doesFileExist [dir </> moduleHtmlFile mod]
+  hfs <- findPossibleHaddockFiles df n le ideNc
+  html <- MaybeT $ findM doesFileExist hfs
   -- canonicalize located html to remove /../ indirection which can break some clients
   -- (vscode on Windows at least)
   liftIO $ canonicalizePath html
 
-findNameHaddockDirAndModule :: DynFlags
+findPossibleHaddockFiles :: DynFlags
   -> Name
   -> LinkEnvsCache
   -> IORef NameCache
-  -> MaybeT IO (FilePath, Module)
-findNameHaddockDirAndModule df name linkEnvs ideNc = do
+  -> MaybeT IO [FilePath]
+findPossibleHaddockFiles df name linkEnvs ideNc = do
     (f, name) <- (MaybeT . return) $ nameHaddockInterface_maybe name
-    MaybeT $ findNameUri f name
+    MaybeT $ findFilesByName f name
+
   where
     nameHaddockInterface_maybe n = do
       m <- nameModule_maybe n
@@ -264,13 +269,17 @@ findNameHaddockDirAndModule df name linkEnvs ideNc = do
       i <- listToMaybe $ haddockInterfaces p
       return (i, n)
 
-    readInterfaceFile fi =
-      H.readInterfaceFile
-        (readIORef ideNc, writeIORef ideNc)
-        fi
-#if MIN_GHC_API_VERSION(8,8,0)
-        False -- don't bypass checks (default behavior before 8.8)
+#if MIN_GHC_API_VERSION(8,8,0) && !defined(GHC_LIB)
+    -- >= 8.8 , extra False means do not skip check
+    readInterfaceFile fi = 
+      H.readInterfaceFile (readIORef ideNc, writeIORef ideNc) fi False
+#elif !MIN_GHC_API_VERSION(8,8,0) && !defined(GHC_LIB)
+    -- 8.6
+    readInterfaceFile fi = 
+      H.readInterfaceFile (readIORef ideNc, writeIORef ideNc) fi
 #endif
+
+#if !defined (GHC_LIB)
     readLinkEnvironment fi = do
       envs <- readVar linkEnvs
       case HMap.lookup fi envs of
@@ -288,19 +297,27 @@ findNameHaddockDirAndModule df name linkEnvs ideNc = do
         Just mle ->
           return mle
 
-    findNameUri f name = do
-      let dir = takeDirectory f
-      exists <- doesFileExist f
+    findFilesByName fi name = do
+      let dir = takeDirectory fi
+      exists <- doesFileExist fi
       if exists
         then do
-          mle <- readLinkEnvironment f
+          mle <- readLinkEnvironment fi
           case mle of
             Nothing -> return Nothing
             Just le ->
-              return $ (dir,) <$> M.lookup name le
+              return $ (:[]) . (dir </>) . moduleHtmlFile <$> M.lookup name le
         else
           return Nothing
-
+#else
+    -- haddock-api doesn't compile for ghc-lib, use old heuristics that are not always accurate
+    findFilesByName fi name = runMaybeT $ do
+      let dir = takeDirectory fi
+      m <- MaybeT . return $ nameModule_maybe name
+      let chunks = reverse . drop1 . inits . splitOn "." . moduleNameString . moduleName $ m
+      -- doc file uses "-" as name separator
+      return $ map ((dir </>) . (<.> "html") . intercalate "-") chunks
+#endif
 
 -- unfortunately haddock-api doesn't export Haddock.Utils,
 -- Below is some blunt copy and paste file and anchor rendering logic (it's consistent from 8.6 to 8.10 so should just work)
