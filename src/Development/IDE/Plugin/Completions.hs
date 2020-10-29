@@ -74,8 +74,8 @@ produceCompletions = do
               res <- liftIO $ tcRnImportDecls env imps
               case res of
                   (_, Just rdrEnv) -> do
-                      ShakeExtras{haddockLinkEnvs, ideNc} <- getShakeExtras
-                      cdata <- liftIO $ cacheDataProducer env (ms_mod ms) rdrEnv imps parsedDeps haddockLinkEnvs ideNc
+                      ShakeExtras{haddockLinkEnvs} <- getShakeExtras
+                      cdata <- liftIO $ cacheDataProducer env (ms_mod ms) rdrEnv imps parsedDeps haddockLinkEnvs
                       return ([], Just cdata)
                   (_diag, _) ->
                       return ([], Nothing)

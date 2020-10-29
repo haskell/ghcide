@@ -62,8 +62,9 @@ module Development.IDE.Core.Shake(
     DelayedAction, mkDelayedAction,
     IdeAction(..), runIdeAction,
     mkUpdater,
+    LinkEnvsCache,
     -- Exposed for testing.
-    Q(..),
+    Q(..),    
     ) where
 
 import           Development.Shake hiding (ShakeValue, doesFileExist, Info)
@@ -166,8 +167,11 @@ data ShakeExtras = ShakeExtras
     -- | A work queue for actions added via 'runInShakeSession'
     ,actionQueue :: ActionQueue
     -- | A mapping of haddock interface files' link environments
-    ,haddockLinkEnvs :: Var (HashMap FilePath (Maybe H.LinkEnv))
+    ,haddockLinkEnvs :: LinkEnvsCache
     }
+
+-- | Global cache of parsed haddock link envs (link env is a mapping of name to haddock module/file)
+type LinkEnvsCache = Var (HashMap FilePath (Maybe H.LinkEnv))
 
 -- | A mapping of module name to known files
 type KnownTargets = HashMap Target [NormalizedFilePath]

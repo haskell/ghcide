@@ -567,8 +567,8 @@ getDocMapRule =
       let tdeps = transitiveModuleDeps deps
       parsedDeps <- uses_ GetParsedModule tdeps
 #endif
-      ShakeExtras{haddockLinkEnvs, ideNc} <- getShakeExtras
-      dkMap <- liftIO $ mkDocMap hsc parsedDeps rf tc haddockLinkEnvs ideNc
+      ShakeExtras{haddockLinkEnvs} <- getShakeExtras
+      dkMap <- liftIO $ mkDocMap hsc parsedDeps rf tc haddockLinkEnvs
       return ([],Just dkMap)
 
 -- Typechecks a module.

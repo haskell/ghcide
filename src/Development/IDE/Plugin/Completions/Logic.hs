@@ -46,11 +46,6 @@ import Development.IDE.Spans.Common
 import Development.IDE.GHC.Util
 import Outputable (Outputable)
 import qualified Data.Set as Set
-import qualified Documentation.Haddock as H
-import           Data.HashMap.Strict (HashMap)
-import qualified Control.Concurrent.Extra as C
-import Data.IORef
-import NameCache
 
 -- From haskell-ide-engine/hie-plugin-api/Haskell/Ide/Engine/Context.hs
 
@@ -240,10 +235,9 @@ cacheDataProducer :: HscEnv
   -> GlobalRdrEnv
   -> [LImportDecl GhcPs]
   -> [ParsedModule]
-  -> C.Var (HashMap FilePath (Maybe H.LinkEnv))
-  -> IORef NameCache
+  -> LinkEnvsCache
   -> IO CachedCompletions
-cacheDataProducer packageState curMod rdrEnv limports deps linkEnvs ideNc = do
+cacheDataProducer packageState curMod rdrEnv limports deps le = do
   let dflags = hsc_dflags packageState
       curModName = moduleName curMod
 
@@ -288,7 +282,7 @@ cacheDataProducer packageState curMod rdrEnv limports deps linkEnvs ideNc = do
 
       toCompItem :: Module -> ModuleName -> Name -> IO CompItem
       toCompItem m mn n = do
-        docs <- getDocumentationTryGhc packageState curMod deps n linkEnvs ideNc
+        docs <- getDocumentationTryGhc packageState curMod deps n le
         ty <- catchSrcErrors (hsc_dflags packageState) "completion" $ do
                 name' <- lookupName packageState m n
                 return $ name' >>= safeTyThingType
