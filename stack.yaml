@@ -16,11 +16,17 @@ extra-deps:
 - regex-tdfa-1.3.1.0
 - shake-0.18.5
 - parser-combinators-1.2.1
-# haddock-api-2.22.0 doesn't compile. TODO: fix upstream, use package
-- github: haskell/haddock
-  commit: 1f704e30d5f40fa5113045b252c0e48aebd842be
+- haddock-library-1.8.0
+# Had to make a hacky fork of haddock-api 2.22.0 that uses "sandboxed" haddock-library-1.7.0 dependency
+# so it doesn't collide with of haddock-library-1.8.0
+# TODO: fix upstream, use package
+# TODO: can we link haddock-library-1.7.0 only to haddock-api without the hack?
+# TOOD: or just use haddock-library-1.7.0 for all ? but it's older and breaks some tests
+- github: DunetsNM/haddock
+  commit: a2b6a8f97458a4e135738294104304151ea1c94f
   subdirs:
     - haddock-api
+    - haddock-library-sandbox
 - tasty-rerun-1.1.17
 - ghc-check-0.5.0.1
 - extra-1.7.2
