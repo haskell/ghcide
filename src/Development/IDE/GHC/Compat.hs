@@ -28,8 +28,6 @@ module Development.IDE.GHC.Compat(
     addBootSuffixLocnOut,
 #endif
     hPutStringBuffer,
-    includePathsGlobal,
-    includePathsQuote,
     addIncludePathsQuote,
     getModuleHash,
     getPackageName,
@@ -55,6 +53,7 @@ module Development.IDE.GHC.Compat(
 #endif
 
     module GHC,
+    module DynFlags,
     initializePlugins,
     applyPluginsParsedResultAction,
     module Compat.HieTypes,
@@ -281,5 +280,5 @@ pattern ExposePackage :: String -> PackageArg -> ModRenaming -> PackageFlag
 #ifdef __FACEBOOK_HASKELL__
 pattern ExposePackage s a mr <- DynFlags.ExposePackage s a _ mr
 #else
-pattern ExposePackage s a mr <- DynFlags.ExposePackage s a mr
+pattern ExposePackage s a mr = DynFlags.ExposePackage s a mr
 #endif
