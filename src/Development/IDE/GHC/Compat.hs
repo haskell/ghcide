@@ -277,6 +277,7 @@ applyPluginsParsedResultAction env dflags ms hpm_annotations parsed = do
       (HsParsedModule parsed [] hpm_annotations)
 
 pattern ExposePackage :: String -> PackageArg -> ModRenaming -> PackageFlag
+-- https://github.com/facebook/fbghc
 #ifdef __FACEBOOK_HASKELL__
 pattern ExposePackage s a mr <- DynFlags.ExposePackage s a _ mr
 #else
