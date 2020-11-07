@@ -51,7 +51,6 @@ jobs:
 
     - name: Test
       shell: bash
-      env:
       # run the tests without parallelism, otherwise tasty will attempt to run
       # all test cases simultaneously which causes way too many hls
       # instances to be spun up for the poor github actions runner to handle
