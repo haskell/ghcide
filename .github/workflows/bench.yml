@@ -55,3 +55,16 @@ jobs:
       # all test cases simultaneously which causes way too many hls
       # instances to be spun up for the poor github actions runner to handle
       run: cabal bench
+
+    - name: Display results
+      shell: bash
+      run: |
+        column -s, -t < bench-results/results.csv | tee bench-results/results.txt
+
+    - name: Archive production artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: bench-results
+        path: |
+           bench-results/results.*
+ 
