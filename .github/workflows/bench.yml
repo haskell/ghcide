@@ -23,7 +23,8 @@ jobs:
     steps:
     - uses: actions/checkout@v2
       with:
-        submodules: true
+        submodules: false
+    - run: git fetch origin master
     - uses: actions/setup-haskell@v1
       with:
         ghc-version: ${{ matrix.ghc }}
