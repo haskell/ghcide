@@ -53,9 +53,10 @@ jobs:
       run: |
         column -s, -t < bench-results/results.csv | tee bench-results/results.txt
 
-    - name: Archive production artifacts
+    - name: Archive benchmarking artifacts
       uses: actions/upload-artifact@v2
       with:
-        name: bench-results
+        name: bench-results-${{ runner.os }}-${{ matrix.ghc }}
         path: |
            bench-results/results.*
+           bench-results/*.svg
