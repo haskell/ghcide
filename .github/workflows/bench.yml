@@ -44,6 +44,8 @@ jobs:
 
     - run: cabal update
 
+    - run: cabal configure --enable-benchmarks
+
     - name: Build
       shell: bash
       # Retry it three times to workaround compiler segfaults in windows
