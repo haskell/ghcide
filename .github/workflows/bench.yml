@@ -2,7 +2,7 @@ name: Benchmark
 
 on: [push, pull_request]
 jobs:
-  test:
+  bench:
     runs-on: ${{ matrix.os }}
 
     strategy:
