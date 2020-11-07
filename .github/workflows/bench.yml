@@ -1,0 +1,58 @@
+name: Testing
+
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        ghc: ['8.10.2', '8.10.1', '8.8.4', '8.8.3', '8.8.2', '8.6.5', '8.6.4']
+        os: [ubuntu-latest, macOS-latest, windows-latest]
+        exclude:
+          - os: windows-latest
+            ghc: '8.10.2' # broken due to https://gitlab.haskell.org/ghc/ghc/-/issues/18550
+          - os: windows-latest
+            ghc: '8.8.4' # also fails due to segfault :(
+          - os: windows-latest
+            ghc: '8.8.3' # fails due to segfault
+          - os: windows-latest
+            ghc: '8.8.2' # fails due to error with Cabal
+
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        submodules: true
+    - uses: actions/setup-haskell@v1
+      with:
+        ghc-version: ${{ matrix.ghc }}
+        cabal-version: '3.2'
+        enable-stack: false
+
+    - name: Cache Cabal
+      uses: actions/cache@v2
+      env:
+        cache-name: cache-cabal
+      with:
+        path: ~/.cabal/
+        key: ${{ runner.os }}-${{ matrix.ghc }}-build-${{ env.cache-name }}-${{ hashFiles('**/*.cabal') }}-${{ hashFiles('**/cabal.project') }}
+        restore-keys: |
+          ${{ runner.os }}-${{ matrix.ghc }}-build-${{ env.cache-name }}-
+          ${{ runner.os }}-${{ matrix.ghc }}-build-
+          ${{ runner.os }}-${{ matrix.ghc }}
+
+    - run: cabal update
+
+    - name: Build
+      shell: bash
+      # Retry it three times to workaround compiler segfaults in windows
+      run: cabal build || cabal build || cabal build
+
+    - name: Test
+      shell: bash
+      env:
+      # run the tests without parallelism, otherwise tasty will attempt to run
+      # all test cases simultaneously which causes way too many hls
+      # instances to be spun up for the poor github actions runner to handle
+      run: cabal bench
