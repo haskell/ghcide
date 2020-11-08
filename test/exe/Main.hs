@@ -286,7 +286,8 @@ diagnosticTests = testGroup "diagnostics"
       _ <- createDoc "ModuleA.hs" "haskell" contentA
       expectDiagnostics [("ModuleB.hs", [])]
   , ignoreInWindowsBecause "Broken in windows" $ testSessionWait "add missing module (non workspace)" $ do
-      tmpDir <- liftIO getTemporaryDirectory
+      -- need to canonicalize in Mac Os
+      tmpDir <- liftIO $ canonicalizePath =<< getTemporaryDirectory
       let contentB = T.unlines
             [ "module ModuleB where"
             , "import ModuleA ()"
