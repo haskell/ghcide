@@ -12,6 +12,8 @@ import Language.Haskell.LSP.Types (CompletionItemKind)
 
 -- From haskell-ide-engine/src/Haskell/Ide/Engine/LSP/Completions.hs
 
+type CachedSnippets = [(String, [(String, String)])]
+
 data Backtick = Surrounded | LeftSide
   deriving (Eq, Ord, Show)
 
@@ -46,14 +48,15 @@ data CachedCompletions = CC
   , qualCompls :: QualCompls    -- ^ Completion items associated to
                                 -- to a specific module name.
   , importableModules :: [T.Text] -- ^ All modules that may be imported.
+  , localRecordSnippets :: CachedSnippets
   } deriving Show
 
 instance NFData CachedCompletions where
     rnf = rwhnf
 
 instance Monoid CachedCompletions where
-    mempty = CC mempty mempty mempty mempty
+    mempty = CC mempty mempty mempty mempty mempty
 
 instance Semigroup CachedCompletions where
-    CC a b c d <> CC a' b' c' d' =
-        CC (a<>a') (b<>b') (c<>c') (d<>d')
+    CC a b c d e <> CC a' b' c' d' e' =
+        CC (a<>a') (b<>b') (c<>c') (d<>d') (e<>e')
