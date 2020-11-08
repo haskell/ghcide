@@ -1,4 +1,6 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE ParallelListComp #-}
+
 #include "ghc-api-version.h"
 -- Mostly taken from "haskell-ide-engine"
 module Development.IDE.Plugin.Completions.Logic (
@@ -47,6 +49,11 @@ import Development.IDE.GHC.Util
 import Outputable (Outputable)
 import qualified Data.Set as Set
 import Maybes (catMaybes)
+import ConLike
+
+import GhcPlugins (
+    flLabel,
+    unpackFS)
 
 -- From haskell-ide-engine/hie-plugin-api/Haskell/Ide/Engine/Context.hs
 
@@ -261,27 +268,33 @@ cacheDataProducer packageState curMod rdrEnv limports deps = do
 
       getComplsForOne :: GlobalRdrElt -> IO ([CompItem],QualCompls)
       getComplsForOne (GRE n _ True _) =
-        (\x -> ([x],mempty)) <$> toCompItem curMod curModName n
+        (\x -> (x,mempty)) <$> toCompItem curMod curModName n
       getComplsForOne (GRE n _ False prov) =
         flip foldMapM (map is_decl prov) $ \spec -> do
           compItem <- toCompItem curMod (is_mod spec) n
           let unqual
                 | is_qual spec = []
-                | otherwise = [compItem]
+                | otherwise = compItem
               qual
-                | is_qual spec = Map.singleton asMod [compItem]
-                | otherwise = Map.fromList [(asMod,[compItem]),(origMod,[compItem])]
+                | is_qual spec = Map.singleton asMod compItem
+                | otherwise = Map.fromList [(asMod,compItem),(origMod,compItem)]
               asMod = showModName (is_as spec)
               origMod = showModName (is_mod spec)
           return (unqual,QualCompls qual)
 
-      toCompItem :: Module -> ModuleName -> Name -> IO CompItem
+      toCompItem :: Module -> ModuleName -> Name -> IO [CompItem]
       toCompItem m mn n = do
         docs <- getDocumentationTryGhc packageState curMod deps n
         ty <- catchSrcErrors (hsc_dflags packageState) "completion" $ do
                 name' <- lookupName packageState m n
                 return $ name' >>= safeTyThingType
-        return $ mkNameCompItem n mn (either (const Nothing) id ty) Nothing docs
+        -- use the same pass to also capture any Record snippets that we can collect
+        record_ty <- catchSrcErrors (hsc_dflags packageState) "record-completion" $ do
+                name' <- lookupName packageState m n
+                return $ maybe [] safeTyThingForRecord name'
+
+        return $ [mkNameCompItem n mn (either (const Nothing) id ty) Nothing docs] ++
+                 mkRecordSnippetCompItem (either (const []) id record_ty) mn docs
 
   (unquals,quals) <- getCompls rdrElts
 
@@ -355,10 +368,10 @@ newtype WithSnippets = WithSnippets Bool
 
 toggleSnippets :: ClientCapabilities -> WithSnippets -> CompletionItem -> CompletionItem
 toggleSnippets ClientCapabilities { _textDocument } (WithSnippets with) x
-  | with && supported = x
+  | with || supported = x
   | otherwise = x { _insertTextFormat = Just PlainText
-                  , _insertText       = Nothing
-                  }
+                , _insertText       = Nothing
+                }
   where supported = Just True == (_textDocument >>= _completion >>= _completionItem >>= _snippetSupport)
 
 -- | Returns the cached completions for the given module and position.
@@ -710,3 +723,36 @@ buildSnippetCompletions snippets = let
     in
     result
     --Completions $ List result
+
+safeTyThingForRecord :: TyThing -> CachedSnippets
+safeTyThingForRecord (AnId _) = []
+safeTyThingForRecord (AConLike dc) =
+    let flds = conLikeFieldLabels $ dc
+        name = occName . conLikeName $ dc
+        types = map ((conLikeFieldType dc) . (flLabel)) flds
+    in
+        [(showGhc name, [(unpackFS . flLabel $ x, showGhc y) | x <- flds | y <- types])]
+        --[(showGhc name, [("x", "y")])]
+safeTyThingForRecord _ = []
+
+mkRecordSnippetCompItem :: CachedSnippets -> ModuleName -> SpanDoc -> [CompItem]
+mkRecordSnippetCompItem ((ctxStr, compl):_) origMod docs = [r]
+  where
+      r  = CI {
+            compKind = CiSnippet
+          , insertText = buildSnippet
+          , importedFrom = importedFrom
+          , typeText = Nothing
+          , label = T.pack ctxStr
+          , isInfix = Nothing
+          , docs = docs
+          , isTypeCompl = False
+          }
+      t = zip compl ([1..]::[Int])
+      snippet = intercalate ", " $
+          map (\(x, i) -> ((fst x) <> "=${" <> show i <> ":" <> (fst x) <> "}")) t
+      buildSnippet = T.pack $ ctxStr <> " {" <> snippet <> "}"
+      importedFrom = Right $ showModName origMod
+      --isTypeCompl = isTcOcc $ occName ctxStr
+      --label = T.pack $ showGhc origName
+mkRecordSnippetCompItem _ _ _ = []
