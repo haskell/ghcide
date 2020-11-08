@@ -2334,7 +2334,9 @@ checkFileCompiles fp diag =
 
 pluginSimpleTests :: TestTree
 pluginSimpleTests =
-  ignoreInWindowsForGHC88And810 $ testSessionWithExtraFiles "plugin" "simple plugin" $ \dir -> do
+  ignoreTest8101 "GHC #18070" $
+  ignoreInWindowsForGHC88And810 $
+  testSessionWithExtraFiles "plugin" "simple plugin" $ \dir -> do
     _ <- openDoc (dir </> "KnownNat.hs") "haskell"
     liftIO $ writeFile (dir</>"hie.yaml")
 #ifdef STACK
@@ -2351,7 +2353,9 @@ pluginSimpleTests =
 
 pluginParsedResultTests :: TestTree
 pluginParsedResultTests =
-  ignoreInWindowsForGHC88And810 $ testSessionWithExtraFiles "plugin" "parsedResultAction plugin" $ \dir -> do
+  ignoreTest8101 "GHC #18070" $
+  ignoreInWindowsForGHC88And810 $
+  testSessionWithExtraFiles "plugin" "parsedResultAction plugin" $ \dir -> do
     _ <- openDoc (dir</> "RecordDot.hs") "haskell"
     expectNoMoreDiagnostics 2
 
@@ -3028,6 +3032,11 @@ expectFailCabal _ = id
 #else
 expectFailCabal = expectFailBecause
 #endif
+
+ignoreTest8101 :: String -> TestTree -> TestTree
+ignoreTest8101
+  | GHC_API_VERSION == ("8.10.1" :: String) = ignoreTestBecause
+  | otherwise = const id
 
 ignoreInWindowsBecause :: String -> TestTree -> TestTree
 ignoreInWindowsBecause = if isWindows then ignoreTestBecause else (\_ x -> x)
