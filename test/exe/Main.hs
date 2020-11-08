@@ -2395,7 +2395,7 @@ findDefinitionAndHoverTests = let
   , test  broken broken outL45     outSig        "top-level signature             #310"
   , test  broken broken innL48     innSig        "inner     signature             #310"
   , test  no     yes    holeL60    hleInfo       "hole without internal name      #847"
-  , test  no     yes    cccL17     docLink       "Haddock html links"
+  , test  no     skip   cccL17     docLink       "Haddock html links"
   , testM yes    yes    imported   importedSig   "Imported symbol"
   , testM yes    yes    reexported reexportedSig "Imported symbol (reexported)"
   ]
@@ -2403,6 +2403,7 @@ findDefinitionAndHoverTests = let
         yes    = Just -- test should run and pass
         broken = Just . (`xfail` "known broken")
         no = const Nothing -- don't run this test at all
+        skip = const Nothing -- unreliable, don't run
 
 checkFileCompiles :: FilePath -> Session () -> TestTree
 checkFileCompiles fp diag =
