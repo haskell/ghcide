@@ -2333,40 +2333,25 @@ checkFileCompiles fp diag =
 
 pluginSimpleTests :: TestTree
 pluginSimpleTests =
-  ignoreInWindowsForGHC88And810 $ testSessionWait "simple plugin" $ do
-    let content =
-          T.unlines
-            [ "{-# OPTIONS_GHC -fplugin GHC.TypeLits.KnownNat.Solver #-}"
-            , "{-# LANGUAGE DataKinds, ScopedTypeVariables, TypeOperators #-}"
-            , "module Testing where"
-            , "import Data.Proxy"
-            , "import GHC.TypeLits"
-            -- This function fails without plugins being initialized.
-            , "f :: forall n. KnownNat n => Proxy n -> Integer"
-            , "f _ = natVal (Proxy :: Proxy n) + natVal (Proxy :: Proxy (n+2))"
-            , "foo :: Int -> Int -> Int"
-            , "foo a _b = a + c"
-            ]
-    _ <- createDoc "Testing.hs" "haskell" content
+  ignoreInWindowsForGHC88And810 $ testSessionWithExtraFiles "plugin" "simple plugin" $ \dir -> do
+    _ <- openDoc (dir </> "KnownNat.hs") "haskell"
+    liftIO $ writeFile (dir</>"hie.yaml")
+#ifdef STACK
+      "cradle: {direct: {arguments: []}}"
+#else
+      "cradle: {cabal: [{path: '.', component: 'lib:plugin'}]}"
+#endif
+
     expectDiagnostics
-      [ ( "Testing.hs",
-          [(DsError, (8, 15), "Variable not in scope: c")]
+      [ ( "KnownNat.hs",
+          [(DsError, (9, 15), "Variable not in scope: c")]
           )
       ]
 
 pluginParsedResultTests :: TestTree
 pluginParsedResultTests =
-  ignoreInWindowsForGHC88And810 $ testSessionWait "parsedResultAction plugin" $ do
-    let content =
-          T.unlines
-            [ "{-# LANGUAGE DuplicateRecordFields, TypeApplications, FlexibleContexts, DataKinds, MultiParamTypeClasses, TypeSynonymInstances, FlexibleInstances #-}"
-            , "{-# OPTIONS_GHC -fplugin=RecordDotPreprocessor #-}"
-            , "module Testing (Company(..), display) where"
-            , "data Company = Company {name :: String}"
-            , "display :: Company -> String"
-            , "display c = c.name"
-            ]
-    _ <- createDoc "Testing.hs" "haskell" content
+  ignoreInWindowsForGHC88And810 $ testSessionWithExtraFiles "plugin" "parsedResultAction plugin" $ \dir -> do
+    _ <- openDoc (dir</> "RecordDot.hs") "haskell"
     expectNoMoreDiagnostics 2
 
 cppTests :: TestTree
