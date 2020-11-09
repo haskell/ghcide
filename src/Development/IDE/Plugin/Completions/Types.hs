@@ -12,8 +12,6 @@ import Language.Haskell.LSP.Types (CompletionItemKind)
 
 -- From haskell-ide-engine/src/Haskell/Ide/Engine/LSP/Completions.hs
 
-type RecordSnippets = [(String, [(String, String)])]
-
 data Backtick = Surrounded | LeftSide
   deriving (Eq, Ord, Show)
 
