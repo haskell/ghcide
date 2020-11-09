@@ -289,12 +289,16 @@ cacheDataProducer packageState curMod rdrEnv limports deps = do
                 name' <- lookupName packageState m n
                 return $ name' >>= safeTyThingType
         -- use the same pass to also capture any Record snippets that we can collect
-        -- record_ty <- catchSrcErrors (hsc_dflags packageState) "record-completion" $ do
-        --         name' <- lookupName packageState m n
-        --         return $ maybe [] safeTyThingForRecord name'
+        record_ty <- catchSrcErrors (hsc_dflags packageState) "record-completion" $ do
+                name' <- lookupName packageState m n
+                return $ name' >>= safeTyThingForRecord
 
-        return $ [mkNameCompItem n mn (either (const Nothing) id ty) Nothing docs] -- ++
-                 --mkRecordSnippetCompItem (either (const []) id record_ty) mn docs
+        let recordCompls = case (either (const Nothing) id record_ty) of
+                Just (ctxStr, flds) -> [mkRecordSnippetCompItem ctxStr flds (ppr mn) docs]
+                Nothing -> []
+
+        return $ [mkNameCompItem n mn (either (const Nothing) id ty) Nothing docs] ++
+                 recordCompls
 
   (unquals,quals) <- getCompls rdrElts
 
@@ -313,7 +317,6 @@ localCompletionsForParsedModule pm@ParsedModule{pm_parsed_source = L _ HsModule{
        , unqualCompls = compls
        , qualCompls = mempty
        , importableModules = mempty
-       , localRecordSnippets = []
         }
   where
     typeSigIds = Set.fromList
@@ -722,23 +725,23 @@ prefixes =
 --             mkRecordSnippetCompItem ctxStr flds mn doc
 
 
-mkRecordSnippetCompItems :: RecordSnippets -> T.Text -> SpanDoc -> [CompItem]
-mkRecordSnippetCompItems snippets mn doc= let
-    result = (\(x, y) -> mkRecordSnippetCompItem x y mn doc) <$> snippets
-    in
-        result
-    --Completions $ List result
+-- mkRecordSnippetCompItems :: RecordSnippets -> T.Text -> SpanDoc -> [CompItem]
+-- mkRecordSnippetCompItems snippets mn doc= let
+--     result = (\(x, y) -> mkRecordSnippetCompItem x y mn doc) <$> snippets
+--     in
+--         result
+--     --Completions $ List result
 
-safeTyThingForRecord :: TyThing -> RecordSnippets
-safeTyThingForRecord (AnId _) = []
+safeTyThingForRecord :: TyThing -> Maybe (String, [(String, String)])
+safeTyThingForRecord (AnId _) = Nothing
 safeTyThingForRecord (AConLike dc) =
     let flds = conLikeFieldLabels $ dc
         name = occName . conLikeName $ dc
         types = map ((conLikeFieldType dc) . (flLabel)) flds
     in
-        [(showGhc name, [(unpackFS . flLabel $ x, showGhc y) | x <- flds | y <- types])]
+        Just $ (showGhc name, [(unpackFS . flLabel $ x, showGhc y) | x <- flds | y <- types])
         --[(showGhc name, [("x", "y")])]
-safeTyThingForRecord _ = []
+safeTyThingForRecord _ = Nothing
 
 mkRecordSnippetCompItem :: String -> [(String, String)] -> T.Text -> SpanDoc -> CompItem
 mkRecordSnippetCompItem ctxStr compl mn docs = r

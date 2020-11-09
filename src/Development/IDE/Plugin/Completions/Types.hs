@@ -54,8 +54,8 @@ instance NFData CachedCompletions where
     rnf = rwhnf
 
 instance Monoid CachedCompletions where
-    mempty = CC mempty mempty mempty mempty mempty
+    mempty = CC mempty mempty mempty mempty
 
 instance Semigroup CachedCompletions where
-    CC a b c d e <> CC a' b' c' d' e' =
-        CC (a<>a') (b<>b') (c<>c') (d<>d') (e<>e')
+    CC a b c d <> CC a' b' c' d' =
+        CC (a<>a') (b<>b') (c<>c') (d<>d')
