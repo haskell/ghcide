@@ -289,12 +289,12 @@ cacheDataProducer packageState curMod rdrEnv limports deps = do
                 name' <- lookupName packageState m n
                 return $ name' >>= safeTyThingType
         -- use the same pass to also capture any Record snippets that we can collect
-        record_ty <- catchSrcErrors (hsc_dflags packageState) "record-completion" $ do
-                name' <- lookupName packageState m n
-                return $ maybe [] safeTyThingForRecord name'
+        -- record_ty <- catchSrcErrors (hsc_dflags packageState) "record-completion" $ do
+        --         name' <- lookupName packageState m n
+        --         return $ maybe [] safeTyThingForRecord name'
 
-        return $ [mkNameCompItem n mn (either (const Nothing) id ty) Nothing docs] ++
-                 mkRecordSnippetCompItem (either (const []) id record_ty) mn docs
+        return $ [mkNameCompItem n mn (either (const Nothing) id ty) Nothing docs] -- ++
+                 --mkRecordSnippetCompItem (either (const []) id record_ty) mn docs
 
   (unquals,quals) <- getCompls rdrElts
 
@@ -303,8 +303,8 @@ cacheDataProducer packageState curMod rdrEnv limports deps = do
     , unqualCompls = unquals
     , qualCompls = quals
     , importableModules = moduleNames
-    , localRecordSnippets = []
     }
+
 
 -- | Produces completions from the top level declarations of a module.
 localCompletionsForParsedModule :: ParsedModule -> CachedCompletions
@@ -313,7 +313,7 @@ localCompletionsForParsedModule pm@ParsedModule{pm_parsed_source = L _ HsModule{
        , unqualCompls = compls
        , qualCompls = mempty
        , importableModules = mempty
-       , localRecordSnippets = recordCompls
+       , localRecordSnippets = []
         }
   where
     typeSigIds = Set.fromList
@@ -339,6 +339,7 @@ localCompletionsForParsedModule pm@ParsedModule{pm_parsed_source = L _ HsModule{
                 [ mkComp id CiFunction (Just $ ppr typ)
                 | L _ (TypeSig _ ids typ) <- tcdSigs
                 , id <- ids]
+            TyClD _ (DataDecl{tcdLName, tcdDataDefn}) -> findRecordCompl pm thisModName tcdLName tcdDataDefn
             TyClD _ x ->
                 [mkComp id cl Nothing
                 | id <- listify (\(_ :: Located(IdP GhcPs)) -> True) x
@@ -359,7 +360,51 @@ localCompletionsForParsedModule pm@ParsedModule{pm_parsed_source = L _ HsModule{
 
     thisModName = ppr hsmodName
 
-    recordCompls = cachedLocalSnippetProducer pm
+    --recordCompls = localRecordSnippetProducer pm thisModName
+
+findRecordCompl :: ParsedModule -> T.Text -> Located (IdP GhcPs) -> HsDataDefn GhcPs -> [CompItem]
+findRecordCompl pmod mn lname dd = name_type''
+    where
+        conDecl = unLoc <$> dd_cons dd
+        h98 = catMaybes $ findH98 <$> conDecl
+        findH98 conDecl = case conDecl of
+          ConDeclH98{..} -> Just (unLoc con_name, con_args)
+          ConDeclGADT{} -> Nothing  -- TODO: Expand this out later
+          _ -> Nothing
+
+        name_flds :: [(RdrName, [ConDeclField GhcPs])]
+        name_flds = catMaybes $ decompose <$> h98
+
+        decompose x = case getFlds $ (snd x) of
+                          Just con_details -> Just (fst x, con_details)
+                          Nothing -> Nothing
+
+        getFlds :: HsConDetails arg (Located [LConDeclField GhcPs]) -> Maybe [SrcSpanLess (LConDeclField GhcPs)]
+        getFlds conArg = case conArg of
+                             RecCon rec -> Just $ unLoc <$> (unLoc rec)
+                             _ -> Nothing
+
+        --name_type :: [(RdrName, (Located RdrName, HsType GhcPs))]
+
+        name_type = decompose' <$> name_flds
+        decompose' x = (fst x, catMaybes $ extract <$> (snd x))
+
+        extract ConDeclField{..} = let
+            fld_type = unLoc cd_fld_type
+            fld_name = rdrNameFieldOcc $ unLoc . head $ cd_fld_names --TODO: Why is cd_fld_names a list?
+            in
+                Just (fld_name, fld_type)
+        extract _ = Nothing
+
+        name_type'' = decompose'' <$> name_type
+        decompose'' :: (RdrName, [(Located RdrName, HsType GhcPs)]) -> CompItem
+        decompose'' x = let
+            ctxStr = showGhc . fst $ x
+            flds = (\(x', y') -> (showGhc . unLoc $ x', showGhc y'))  <$> (snd x)
+            doc = SpanDocText (getDocumentation [pmod] lname) (SpanDocUris Nothing Nothing)
+            in
+                mkRecordSnippetCompItem ctxStr flds mn doc
+
 
 ppr :: Outputable a => a -> T.Text
 ppr = T.pack . prettyPrint
@@ -384,7 +429,7 @@ getCompletions
     -> ClientCapabilities
     -> WithSnippets
     -> IO [CompletionItem]
-getCompletions ideOpts CC { allModNamesAsNS, unqualCompls, qualCompls, importableModules, localRecordSnippets}
+getCompletions ideOpts CC { allModNamesAsNS, unqualCompls, qualCompls, importableModules}
                maybe_parsed (localBindings, bmapping) prefixInfo caps withSnippets = do
   let VFS.PosPrefixInfo { fullLine, prefixModule, prefixText } = prefixInfo
       enteredQual = if T.null prefixModule then "" else prefixModule <> "."
@@ -485,7 +530,6 @@ getCompletions ideOpts CC { allModNamesAsNS, unqualCompls, qualCompls, importabl
           in filtModNameCompls ++ map (toggleSnippets caps withSnippets
                                          . mkCompl ideOpts . stripAutoGenerated) uniqueFiltCompls
                                ++ filtKeywordCompls
-                               ++ buildSnippetCompletions localRecordSnippets
   return result
 
 
@@ -620,111 +664,72 @@ prefixes =
   , "$m"
   ]
 
-cachedLocalSnippetProducer :: ParsedModule -> CachedSnippets
-cachedLocalSnippetProducer pmod = completionData
-    where
-        _hsmodule = unLoc (parsedSource pmod)
-        hsDecls = hsmodDecls _hsmodule
-        completionData = findFields (unLoc <$> hsDecls)
+-- localRecordSnippetProducer :: ParsedModule -> T.Text -> [CompItem]
+-- localRecordSnippetProducer pmod mn = compItems
+--     where
+--         _hsmodule = unLoc (parsedSource pmod)
+--         hsDecls = hsmodDecls _hsmodule
+--         compItems = findFields pmod mn (unLoc <$> hsDecls)
 
 
-findFields :: [HsDecl GhcPs] -> CachedSnippets
-findFields decls = name_type''
-  where
-    dataDefns = catMaybes $ findDataDefns <$> decls
-    findDataDefns decl =
-      case decl of
-        TyClD _ (DataDecl{tcdDataDefn}) -> Just tcdDataDefn
-        _ -> Nothing
-    conDecls = concat [ unLoc <$> dd_cons dataDefn | dataDefn <- dataDefns]
-    h98 = catMaybes $ findH98 <$> conDecls
-    findH98 conDecl = case conDecl of
-      ConDeclH98{..} -> Just (unLoc con_name, con_args)
-      ConDeclGADT{} -> Nothing  -- TODO: Expand this out later
-      _ -> Nothing
 
-    name_flds :: [(RdrName, [ConDeclField GhcPs])]
-    name_flds = catMaybes $ decompose <$> h98
+-- findFields :: ParsedModule -> T.Text -> [HsDecl GhcPs] -> [CompItem]
+-- findFields pmod mn decls = name_type''
+--   where
+--     dataDefns = catMaybes $ findDataDefns <$> decls
+--     findDataDefns decl =
+--       case decl of
+--         TyClD _ (DataDecl{tcdDataDefn}) -> Just tcdDataDefn
+--         _ -> Nothing
+--     conDecls = concat [ unLoc <$> dd_cons dataDefn | dataDefn <- dataDefns]
+--     h98 = catMaybes $ findH98 <$> conDecls
+--     findH98 conDecl = case conDecl of
+--       ConDeclH98{..} -> Just (unLoc con_name, con_args)
+--       ConDeclGADT{} -> Nothing  -- TODO: Expand this out later
+--       _ -> Nothing
 
-    decompose x = case getFlds $ (snd x) of
-                      Just con_details -> Just (fst x, con_details)
-                      Nothing -> Nothing
+--     name_flds :: [(RdrName, [ConDeclField GhcPs])]
+--     name_flds = catMaybes $ decompose <$> h98
 
-    getFlds :: HsConDetails arg (Located [LConDeclField GhcPs]) -> Maybe [SrcSpanLess (LConDeclField GhcPs)]
-    getFlds conArg = case conArg of
-                         RecCon rec -> Just $ unLoc <$> (unLoc rec)
-                         _ -> Nothing
+--     decompose x = case getFlds $ (snd x) of
+--                       Just con_details -> Just (fst x, con_details)
+--                       Nothing -> Nothing
 
-    --name_type :: [(RdrName, (Located RdrName, HsType GhcPs))]
+--     getFlds :: HsConDetails arg (Located [LConDeclField GhcPs]) -> Maybe [SrcSpanLess (LConDeclField GhcPs)]
+--     getFlds conArg = case conArg of
+--                          RecCon rec -> Just $ unLoc <$> (unLoc rec)
+--                          _ -> Nothing
 
-    name_type = decompose' <$> name_flds
-    decompose' x = (fst x, catMaybes $ extract <$> (snd x))
+--     --name_type :: [(RdrName, (Located RdrName, HsType GhcPs))]
 
-    extract ConDeclField{..} = let
-        fld_type = unLoc cd_fld_type
-        fld_name = rdrNameFieldOcc $ unLoc . head $ cd_fld_names --TODO: Why is cd_fld_names a list?
-        in
-            Just (fld_name, fld_type)
-    extract _ = Nothing
+--     name_type = decompose' <$> name_flds
+--     decompose' x = (fst x, catMaybes $ extract <$> (snd x))
 
-    name_type'' = decompose'' <$> name_type
-    decompose'' :: (RdrName, [(Located RdrName, HsType GhcPs)]) -> (String, [(String, String)])
-    decompose'' x = (showGhc . fst $ x,
-                     (\(x', y') -> (showGhc . unLoc $ x', showGhc y'))  <$> (snd x)
-                    )
+--     extract ConDeclField{..} = let
+--         fld_type = unLoc cd_fld_type
+--         fld_name = rdrNameFieldOcc $ unLoc . head $ cd_fld_names --TODO: Why is cd_fld_names a list?
+--         in
+--             Just (fld_name, fld_type)
+--     extract _ = Nothing
 
-buildCompletionItem :: String -> [(String, String)] -> CompletionItem
-buildCompletionItem ctxStr completionData = r
-  where
-    r =
-      CompletionItem
-        label
-        kind
-        tags
-        detail
-        documentation
-        deprecated
-        preselect
-        sortText
-        filterText
-        insertText
-        insertTextFormat
-        textEdit
-        additionalTextEdits
-        commitCharacters
-        command
-        xd
-    label = T.pack ctxStr
-    kind = Just CiSnippet
-    tags = List []
-    detail = Nothing
-    documentation = Nothing
-    deprecated = Nothing
-    preselect = Nothing
-    sortText = Nothing
-    filterText = Nothing
-    insertText = Just $ buildSnippet
-    insertTextFormat = Just Snippet
-    textEdit = Nothing
-    additionalTextEdits = Nothing
-    commitCharacters = Nothing
-    command = Nothing
-    xd = Nothing
-
-    t = zip completionData ([1..]::[Int])
-    snippet = intercalate ", " $
-        map (\(x, i) -> ((fst x) <> "=${" <> show i <> ":" <> (fst x) <> "}")) t
-    buildSnippet = T.pack $ ctxStr <> " {" <> snippet <> "}"
+--     name_type'' = decompose'' <$> name_type
+--     decompose'' :: (RdrName, [(Located RdrName, HsType GhcPs)]) -> CompItem
+--     decompose'' x = let
+--         ctxStr = showGhc . fst $ x
+--         flds = (\(x', y') -> (showGhc . unLoc $ x', showGhc y'))  <$> (snd x)
+--         doc = SpanDocText (getDocumentation [pmod] (fst x)) (SpanDocUris Nothing Nothing)
+--         in
+--             mkRecordSnippetCompItem ctxStr flds mn doc
 
 
-buildSnippetCompletions :: CachedSnippets -> [CompletionItem]
-buildSnippetCompletions snippets = let
-    result = (uncurry buildCompletionItem) <$> snippets
+mkRecordSnippetCompItems :: RecordSnippets -> T.Text -> SpanDoc -> [CompItem]
+mkRecordSnippetCompItems snippets mn doc= let
+    result = (\(x, y) -> mkRecordSnippetCompItem x y mn doc) <$> snippets
     in
-    result
+        result
     --Completions $ List result
 
-safeTyThingForRecord :: TyThing -> CachedSnippets
+safeTyThingForRecord :: TyThing -> RecordSnippets
 safeTyThingForRecord (AnId _) = []
 safeTyThingForRecord (AConLike dc) =
     let flds = conLikeFieldLabels $ dc
@@ -735,8 +740,8 @@ safeTyThingForRecord (AConLike dc) =
         --[(showGhc name, [("x", "y")])]
 safeTyThingForRecord _ = []
 
-mkRecordSnippetCompItem :: CachedSnippets -> ModuleName -> SpanDoc -> [CompItem]
-mkRecordSnippetCompItem ((ctxStr, compl):_) origMod docs = [r]
+mkRecordSnippetCompItem :: String -> [(String, String)] -> T.Text -> SpanDoc -> CompItem
+mkRecordSnippetCompItem ctxStr compl mn docs = r
   where
       r  = CI {
             compKind = CiSnippet
@@ -752,7 +757,6 @@ mkRecordSnippetCompItem ((ctxStr, compl):_) origMod docs = [r]
       snippet = intercalate ", " $
           map (\(x, i) -> ((fst x) <> "=${" <> show i <> ":" <> (fst x) <> "}")) t
       buildSnippet = T.pack $ ctxStr <> " {" <> snippet <> "}"
-      importedFrom = Right $ showModName origMod
+      importedFrom = Right $ mn
       --isTypeCompl = isTcOcc $ occName ctxStr
       --label = T.pack $ showGhc origName
-mkRecordSnippetCompItem _ _ _ = []
