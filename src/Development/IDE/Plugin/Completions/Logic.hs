@@ -402,8 +402,8 @@ findRecordCompl pmod mn lname dd = name_type''
         name_type'' = decompose'' <$> name_type
         decompose'' :: (RdrName, [(Located RdrName, HsType GhcPs)]) -> CompItem
         decompose'' x = let
-            ctxStr = showGhc . fst $ x
-            flds = (\(x', y') -> (showGhc . unLoc $ x', showGhc y'))  <$> (snd x)
+            ctxStr = T.pack . showGhc . fst $ x
+            flds = (\(x', y') -> (T.pack . showGhc . unLoc $ x', T.pack . showGhc $ y'))  <$> (snd x)
             doc = SpanDocText (getDocumentation [pmod] lname) (SpanDocUris Nothing Nothing)
             in
                 mkRecordSnippetCompItem ctxStr flds mn doc
@@ -668,18 +668,20 @@ prefixes =
   ]
 
 
-safeTyThingForRecord :: TyThing -> Maybe (String, [(String, String)])
+safeTyThingForRecord :: TyThing -> Maybe (T.Text, [(T.Text, T.Text)])
 safeTyThingForRecord (AnId _) = Nothing
 safeTyThingForRecord (AConLike dc) =
     let flds = conLikeFieldLabels $ dc
         name = occName . conLikeName $ dc
         types = map ((conLikeFieldType dc) . (flLabel)) flds
+        ctxStr = T.pack . showGhc $ name
+        fld_pairs = [(T.pack . unpackFS . flLabel $ x, T.pack . showGhc $ y) | x <- flds | y <- types]
     in
-        Just $ (showGhc name, [(unpackFS . flLabel $ x, showGhc y) | x <- flds | y <- types])
+        Just (ctxStr, fld_pairs)
         --[(showGhc name, [("x", "y")])]
 safeTyThingForRecord _ = Nothing
 
-mkRecordSnippetCompItem :: String -> [(String, String)] -> T.Text -> SpanDoc -> CompItem
+mkRecordSnippetCompItem :: T.Text -> [(T.Text, T.Text)] -> T.Text -> SpanDoc -> CompItem
 mkRecordSnippetCompItem ctxStr compl mn docs = r
   where
       r  = CI {
@@ -687,15 +689,14 @@ mkRecordSnippetCompItem ctxStr compl mn docs = r
           , insertText = buildSnippet
           , importedFrom = importedFrom
           , typeText = Nothing
-          , label = T.pack ctxStr
+          , label = ctxStr
           , isInfix = Nothing
           , docs = docs
           , isTypeCompl = False
           }
+
       t = zip compl ([1..]::[Int])
-      snippet = intercalate ", " $
-          map (\(x, i) -> ((fst x) <> "=${" <> show i <> ":" <> (fst x) <> "}")) t
-      buildSnippet = T.pack $ ctxStr <> " {" <> snippet <> "}"
+      snippet_parts = map (\(x, i) -> ((fst x) <> "=${" <> T.pack (show i) <> ":" <> (fst x) <> "}")) t
+      snippet = T.intercalate (T.pack ", ") $ snippet_parts
+      buildSnippet = ctxStr <> " {" <> snippet <> "}"
       importedFrom = Right $ mn
-      --isTypeCompl = isTcOcc $ occName ctxStr
-      --label = T.pack $ showGhc origName
