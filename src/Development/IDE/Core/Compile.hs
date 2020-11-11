@@ -332,12 +332,12 @@ upgradeWarningToError (nfp, sh, fd) =
   warn2err = T.intercalate ": error:" . T.splitOn ": warning:"
 
 hideDiag :: DynFlags -> (WarnReason, FileDiagnostic) -> (WarnReason, FileDiagnostic)
-hideDiag originalFlags (Reason warning, (nfp, sh, fd))
+hideDiag originalFlags (Reason warning, (nfp, _sh, fd))
   | not (wopt warning originalFlags)
   = if null (_tags fd)
        then (Reason warning, (nfp, HideDiag, fd))
             -- keep the diagnostic if it has an associated tag
-       else (Reason warning, (nfp, sh, fd{_severity = Just DsInfo}))
+       else (Reason warning, (nfp, HideDiag, fd{_severity = Just DsInfo}))
 hideDiag _originalFlags t = t
 
 enableUnnecessaryAndDeprecationWarnings :: ParsedModule -> ParsedModule
