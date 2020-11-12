@@ -3,6 +3,7 @@ name: Testing
 on: [push, pull_request]
 jobs:
   test:
+    timeout-minutes: 360
     runs-on: ${{ matrix.os }}
 
     strategy:
