@@ -3105,13 +3105,6 @@ pattern R x y x' y' = Range (Position x y) (Position x' y')
 xfail :: TestTree -> String -> TestTree
 xfail = flip expectFailBecause
 
-expectFailCabal :: String -> TestTree -> TestTree
-#ifdef STACK
-expectFailCabal _ = id
-#else
-expectFailCabal = expectFailBecause
-#endif
-
 ignoreTest8101 :: String -> TestTree -> TestTree
 ignoreTest8101
   | GHC_API_VERSION == ("8.10.1" :: String) = ignoreTestBecause
@@ -3557,15 +3550,18 @@ nonLspCommandLine = testGroup "ghcide command line"
   ]
 
 benchmarkTests :: TestTree
--- These tests require stack and will fail with cabal test
 benchmarkTests =
     let ?config = Bench.defConfig
             { Bench.verbosity = Bench.Quiet
             , Bench.repetitions = Just 3
+#if STACK
             , Bench.buildTool = Bench.Stack
+#else
+            , Bench.buildTool = Bench.Cabal
+#endif
             } in
     withResource Bench.setup Bench.cleanUp $ \getResource -> testGroup "benchmark experiments"
-    [ expectFailCabal "Requires stack" $ testCase (Bench.name e) $ do
+    [ testCase (Bench.name e) $ do
         Bench.SetupResult{Bench.benchDir} <- getResource
         res <- Bench.runBench (runInDir benchDir) e
         assertBool "did not successfully complete 5 repetitions" $ Bench.success res
