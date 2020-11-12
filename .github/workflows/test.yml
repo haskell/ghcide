@@ -27,6 +27,9 @@ jobs:
         ghc-version: ${{ matrix.ghc }}
         cabal-version: '3.2'
 
+    - run: ./fmt.sh
+      name: "HLint via ./fmt.sh"
+
     - name: Cache Cabal
       uses: actions/cache@v2
       with:
@@ -36,7 +39,12 @@ jobs:
         key: ${{ runner.os }}-${{ matrix.ghc }}-cabal-test
 
     - run: cabal update
-    - run: cabal configure --enable-tests
+
+    - name: cabal configure
+      run: |
+        echo "tests: True" > cabal.project.local
+        echo "package ghcide" >> cabal.project.local
+        echo "  ghc-options: -Werror" >> cabal.project.local
 
     - name: Build
       shell: bash
