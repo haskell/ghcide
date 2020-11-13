@@ -382,7 +382,7 @@ suggestExportUnusedTopBinding srcOpt ParsedModule{pm_parsed_source = L _ HsModul
 
     parenthesizeIfNeeds :: Bool -> T.Text -> T.Text
     parenthesizeIfNeeds needsTypeKeyword x 
-      | any (`elem` opLetter) . T.unpack $ x = (if needsTypeKeyword then "type " else "") <> "(" <> x <>")"
+      | T.head x `elem` opLetter = (if needsTypeKeyword then "type " else "") <> "(" <> x <>")"
       | otherwise = x
 
     getLocatedRange :: Located a -> Maybe Range
