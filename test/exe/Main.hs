@@ -342,11 +342,11 @@ diagnosticTests = testGroup "diagnostics"
   , testSessionWait "correct reference used with hs-boot" $ do
       let contentB = T.unlines
             [ "module ModuleB where"
-            , "import {-# SOURCE #-} ModuleA"
+            , "import {-# SOURCE #-} ModuleA()"
             ]
       let contentA = T.unlines
             [ "module ModuleA where"
-            , "import ModuleB"
+            , "import ModuleB()"
             , "x = 5"
             ]
       let contentAboot = T.unlines
