@@ -176,15 +176,13 @@ suggestAction packageExports ideOptions parsedModule text diag = concat
 
 suggestDisableWarning :: Diagnostic -> [(T.Text, [TextEdit])]
 suggestDisableWarning Diagnostic{..}
-    | Just (StringValue (showFlag -> Just w)) <- _code =
+    | Just (StringValue (T.stripPrefix "-W" -> Just w)) <- _code =
         pure
             ( "Disable \"" <> w <> "\" warnings"
             , [TextEdit (Range (Position 0 0) (Position 0 0)) $ "{-# OPTIONS_GHC -Wno-" <> w <> " #-}\n"]
+
             )
     | otherwise = []
-  where
-    showFlag = fmap camelToHyphenCase . T.stripPrefix "Opt_Warn"
-    camelToHyphenCase = T.dropWhile (== '-') . T.concatMap (\c -> if isUpper c then "-" <> T.singleton (toLower c) else T.singleton c)
 
 suggestRemoveRedundantImport :: ParsedModule -> Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
 suggestRemoveRedundantImport ParsedModule{pm_parsed_source = L _  HsModule{hsmodImports}} contents Diagnostic{_range=_range,..}

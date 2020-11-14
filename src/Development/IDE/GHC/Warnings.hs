@@ -12,6 +12,7 @@ import qualified           Data.Text as T
 import           Development.IDE.Types.Diagnostics
 import           Development.IDE.GHC.Error
 import           Language.Haskell.LSP.Types (NumberOrString (StringValue))
+import Data.Char
 
 
 -- | Take a GHC monadic action (e.g. @typecheckModule pm@ for some
@@ -39,6 +40,7 @@ attachReason wr d = d{_code = StringValue <$> showReason wr}
   where
     showReason = \case
         NoReason -> Nothing
-        Reason flag -> Just $ showT flag
-        ErrReason flag -> showT <$> flag
-    showT = T.pack . show
+        Reason flag -> showFlag flag
+        ErrReason flag -> showFlag =<< flag
+    showFlag = fmap (("-W" <>) . camelToHyphenCase) . T.stripPrefix "Opt_Warn" . T.pack . show
+    camelToHyphenCase = T.dropWhile (== '-') . T.concatMap (\c -> if isUpper c then "-" <> T.singleton (toLower c) else T.singleton c)
