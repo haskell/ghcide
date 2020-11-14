@@ -18,6 +18,7 @@ import Control.Monad.IO.Class (liftIO)
 import Data.Aeson (FromJSON, Value, toJSON)
 import qualified Data.Binary as Binary
 import Data.Foldable
+import Data.Functor
 import Data.List.Extra
 import Data.Maybe
 import Data.Rope.UTF16 (Rope)
@@ -650,6 +651,7 @@ codeActionTests = testGroup "code actions"
   , removeImportTests
   , extendImportTests
   , suggestImportTests
+  , disableWarningTests
   , fixConstructorImportTests
   , importRenameActionTests
   , fillTypedHoleTests
@@ -1332,6 +1334,37 @@ suggestImportTests = testGroup "suggest import actions"
              liftIO $ after @=? contentAfterAction
           else
               liftIO $ [_title | CACodeAction CodeAction{_title} <- actions, _title == newImp ] @?= []
+
+disableWarningTests :: TestTree
+disableWarningTests = testGroup "disable warnings" $
+    [
+        ( "missing-signatures"
+        , T.unlines
+            [ "{-# OPTIONS_GHC -Wall #-}"
+            , "main = putStrLn \"hello\""
+            ]
+        )
+    ,
+        ( "unused-imports"
+        , T.unlines
+            [ "{-# OPTIONS_GHC -Wall #-}"
+            , "import Data.Functor"
+            ]
+        )
+    ] <&> \(warning, initialContent) -> testSession (T.unpack warning) $ do
+        doc <- createDoc "Module.hs" "haskell" initialContent
+        _ <- waitForDiagnostics
+        codeActs <- mapMaybe caResultToCodeAct <$> getCodeActions doc (Range (Position 0 0) (Position 0 0))
+        case find (\CodeAction{_title} -> _title == "Disable \"" <> warning <> "\" warnings") codeActs of
+            Nothing -> liftIO $ assertFailure "No code action with expected title"
+            Just action -> do
+                executeCodeAction action
+                contentAfterAction <- documentContents doc
+                liftIO $ ("{-# OPTIONS_GHC -Wno-" <> warning <> " #-}\n" <> initialContent) @=? contentAfterAction
+  where
+    caResultToCodeAct = \case
+        CACommand _ -> Nothing
+        CACodeAction c -> Just c
 
 insertNewDefinitionTests :: TestTree
 insertNewDefinitionTests = testGroup "insert new definition actions"
