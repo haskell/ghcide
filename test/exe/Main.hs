@@ -331,14 +331,7 @@ diagnosticTests = testGroup "diagnostics"
       _ <- createDoc "ModuleA.hs" "haskell" contentA
       _ <- createDoc "ModuleB.hs" "haskell" contentB
       _ <- createDoc "ModuleB.hs-boot" "haskell" contentBboot
-      expectDiagnosticsWithTags
-        [ ( "ModuleA.hs"
-          , [(DsInfo, (1, 0), "The import of 'ModuleB'", Just DtUnnecessary)]
-          )
-        , ( "ModuleB.hs"
-          , [(DsInfo, (1, 0), "The import of 'ModuleA'", Just DtUnnecessary)]
-          )
-        ]
+      expectDiagnostics []
   , testSessionWait "correct reference used with hs-boot" $ do
       let contentB = T.unlines
             [ "module ModuleB where"
@@ -387,11 +380,7 @@ diagnosticTests = testGroup "diagnostics"
             ]
       _ <- createDoc "ModuleA.hs" "haskell" contentA
       _ <- createDoc "ModuleB.hs" "haskell" contentB
-      expectDiagnosticsWithTags
-        [ ( "ModuleB.hs"
-          , [(DsInfo, (2, 0), "The import of 'ModuleA' is redundant", Just DtUnnecessary)]
-          )
-        ]
+      expectDiagnostics []
   , testSessionWait "package imports" $ do
       let thisDataListContent = T.unlines
             [ "module Data.List where"
@@ -538,11 +527,8 @@ diagnosticTests = testGroup "diagnostics"
 
     bdoc <- createDoc bPath "haskell" bSource
     _pdoc <- createDoc pPath "haskell" pSource
-    expectDiagnosticsWithTags
-      [("P.hs", [(DsWarning,(4,0), "Top-level binding", Nothing)]) -- So that we know P has been loaded
-      ,("P.hs", [(DsInfo,(2,0), "The import of", Just DtUnnecessary)])
-      ,("P.hs", [(DsInfo,(4,0), "Defined but not used", Just DtUnnecessary)])
-      ]
+    expectDiagnostics
+      [("P.hs", [(DsWarning,(4,0), "Top-level binding")])] -- So that we know P has been loaded
 
     -- Change y from Int to B which introduces a type error in A (imported from P)
     changeDoc bdoc [TextDocumentContentChangeEvent Nothing Nothing $
@@ -2098,7 +2084,7 @@ exportUnusedTests = testGroup "export unused actions"
               [ "{-# OPTIONS_GHC -Wunused-top-binds #-}"
               , "{-# LANGUAGE TypeOperators #-}"
               , "module A ((:<)) where"
-              , "type (:<) = ()"])    
+              , "type (:<) = ()"])
     , testSession "type family operator" $ template
         (T.unlines
               [ "{-# OPTIONS_GHC -Wunused-top-binds #-}"
@@ -3397,11 +3383,8 @@ ifaceErrorTest = testCase "iface-error-test-1" $ withoutStackEnv $ runWithExtraF
     pSource <- liftIO $ readFileUtf8 pPath -- bar = x :: Int
 
     bdoc <- createDoc bPath "haskell" bSource
-    expectDiagnosticsWithTags
-      [("P.hs", [(DsWarning,(4,0), "Top-level binding", Nothing)]) -- So what we know P has been loaded
-      ,("P.hs", [(DsInfo,(2,0), "The import of", Just DtUnnecessary)])
-      ,("P.hs", [(DsInfo,(4,0), "Defined but not used", Just DtUnnecessary)])
-      ]
+    expectDiagnostics
+      [("P.hs", [(DsWarning,(4,0), "Top-level binding")])] -- So what we know P has been loaded
 
     -- Change y from Int to B
     changeDoc bdoc [TextDocumentContentChangeEvent Nothing Nothing $ T.unlines ["module B where", "y :: Bool", "y = undefined"]]
@@ -3432,11 +3415,9 @@ ifaceErrorTest = testCase "iface-error-test-1" $ withoutStackEnv $ runWithExtraF
     -- This is clearly inconsistent, and the expected outcome a bit surprising:
     --   - The diagnostic for A has already been received. Ghcide does not repeat diagnostics
     --   - P is being typechecked with the last successful artifacts for A.
-    expectDiagnosticsWithTags
-      [("P.hs", [(DsWarning,(4,0), "Top-level binding", Nothing)])
-      ,("P.hs", [(DsWarning,(6,0), "Top-level binding", Nothing)])
-      ,("P.hs", [(DsInfo,(4,0), "Defined but not used", Just DtUnnecessary)])
-      ,("P.hs", [(DsInfo,(6,0), "Defined but not used", Just DtUnnecessary)])
+    expectDiagnostics
+      [("P.hs", [(DsWarning,(4,0), "Top-level binding")])
+      ,("P.hs", [(DsWarning,(6,0), "Top-level binding")])
       ]
     expectNoMoreDiagnostics 2
 
@@ -3450,11 +3431,8 @@ ifaceErrorTest2 = testCase "iface-error-test-2" $ withoutStackEnv $ runWithExtra
 
     bdoc <- createDoc bPath "haskell" bSource
     pdoc <- createDoc pPath "haskell" pSource
-    expectDiagnosticsWithTags
-      [("P.hs", [(DsWarning,(4,0), "Top-level binding", Nothing)]) -- So that we know P has been loaded
-      ,("P.hs", [(DsInfo,(2,0), "The import of", Just DtUnnecessary)])
-      ,("P.hs", [(DsInfo,(4,0), "Defined but not used", Just DtUnnecessary)])
-      ]
+    expectDiagnostics
+      [("P.hs", [(DsWarning,(4,0), "Top-level binding")])] -- So that we know P has been loaded
 
     -- Change y from Int to B
     changeDoc bdoc [TextDocumentContentChangeEvent Nothing Nothing $ T.unlines ["module B where", "y :: Bool", "y = undefined"]]
@@ -3466,14 +3444,12 @@ ifaceErrorTest2 = testCase "iface-error-test-2" $ withoutStackEnv $ runWithExtra
     -- foo = y :: Bool
     -- HOWEVER, in A...
     -- x = y  :: Int
-    expectDiagnosticsWithTags
+    expectDiagnostics
     -- As in the other test, P is being typechecked with the last successful artifacts for A
     -- (ot thanks to -fdeferred-type-errors)
-      [("A.hs", [(DsError, (5, 4), "Couldn't match expected type 'Int' with actual type 'Bool'", Nothing)])
-      ,("P.hs", [(DsWarning, (4, 0), "Top-level binding", Nothing)])
-      ,("P.hs", [(DsInfo, (4,0), "Defined but not used", Just DtUnnecessary)])
-      ,("P.hs", [(DsWarning, (6, 0), "Top-level binding", Nothing)])
-      ,("P.hs", [(DsInfo, (6,0), "Defined but not used", Just DtUnnecessary)])
+      [("A.hs", [(DsError, (5, 4), "Couldn't match expected type 'Int' with actual type 'Bool'")])
+      ,("P.hs", [(DsWarning, (4, 0), "Top-level binding")])
+      ,("P.hs", [(DsWarning, (6, 0), "Top-level binding")])
       ]
 
     expectNoMoreDiagnostics 2
@@ -3496,11 +3472,9 @@ ifaceErrorTest3 = testCase "iface-error-test-3" $ withoutStackEnv $ runWithExtra
 
     -- In this example the interface file for A should not exist (modulo the cache folder)
     -- Despite that P still type checks, as we can generate an interface file for A thanks to -fdeferred-type-errors
-    expectDiagnosticsWithTags
-      [("A.hs", [(DsError, (5, 4), "Couldn't match expected type 'Int' with actual type 'Bool'", Nothing)])
-      ,("P.hs", [(DsWarning,(4,0), "Top-level binding", Nothing)])
-      ,("P.hs", [(DsInfo,(2,0), "The import of", Just DtUnnecessary)])
-      ,("P.hs", [(DsInfo,(4,0), "Defined but not used", Just DtUnnecessary)])
+    expectDiagnostics
+      [("A.hs", [(DsError, (5, 4), "Couldn't match expected type 'Int' with actual type 'Bool'")])
+      ,("P.hs", [(DsWarning,(4,0), "Top-level binding")])
       ]
     expectNoMoreDiagnostics 2
 
