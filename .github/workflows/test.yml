@@ -11,6 +11,7 @@ jobs:
       matrix:
         os: [macOS-latest, ubuntu-latest, windows-latest]
         ghc: ['8.10.2', '8.8.4', '8.6.5']
+        ghc-lib: [false]
         exclude:
           - os: windows-latest
             ghc: '8.10.2' # broken due to https://gitlab.haskell.org/ghc/ghc/-/issues/18550
@@ -19,6 +20,9 @@ jobs:
         include:
           - os: windows-latest
             ghc: '8.10.1'
+          - os: ubuntu-latest
+            ghc: '8.8.4'
+            ghc-lib: true
 
     steps:
     - uses: actions/checkout@v2
@@ -36,15 +40,22 @@ jobs:
         path: |
           ~/.cabal/packages
           ~/.cabal/store
-        key: ${{ runner.os }}-${{ matrix.ghc }}-cabal-test
+        key: ${{ runner.os }}-${{ matrix.ghc }}-{{matrix.ghc-lib}}-cabal-test
 
     - run: cabal update
 
-    - name: cabal configure
+    - name: cabal.project.local
       run: |
         echo "tests: True" > cabal.project.local
         echo "package ghcide" >> cabal.project.local
         echo "  ghc-options: -Werror" >> cabal.project.local
+
+    - name: ghc-lib
+      if: ${{ matrix.ghc-lib }}
+      run: |
+        echo "  flags: ghc-lib" >> cabal.project.local
+        echo "package hie-compat" >> cabal.project.local
+        echo "  flags: ghc-lib" >> cabal.project.local
 
     - name: Build
       shell: bash
