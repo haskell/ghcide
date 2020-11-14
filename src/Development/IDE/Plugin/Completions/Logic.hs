@@ -294,7 +294,9 @@ cacheDataProducer packageState curMod rdrEnv limports deps = do
                 return $ name' >>= safeTyThingForRecord
 
         let recordCompls = case (either (const Nothing) id record_ty) of
-                Just (ctxStr, flds) -> [mkRecordSnippetCompItem ctxStr flds (ppr mn) docs]
+                Just (ctxStr, flds) -> case flds of
+                    [] -> []
+                    _ -> [mkRecordSnippetCompItem ctxStr flds (ppr mn) docs]
                 Nothing -> []
 
         return $ [mkNameCompItem n mn (either (const Nothing) id ty) Nothing docs] ++
