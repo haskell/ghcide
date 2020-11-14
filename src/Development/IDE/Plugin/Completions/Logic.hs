@@ -342,11 +342,15 @@ localCompletionsForParsedModule pm@ParsedModule{pm_parsed_source = L _ HsModule{
                 [ mkComp id CiFunction (Just $ ppr typ)
                 | L _ (TypeSig _ ids typ) <- tcdSigs
                 , id <- ids]
-            TyClD _ (DataDecl{tcdLName, tcdDataDefn}) -> findRecordCompl pm thisModName tcdLName tcdDataDefn
             TyClD _ x ->
-                [mkComp id cl Nothing
-                | id <- listify (\(_ :: Located(IdP GhcPs)) -> True) x
-                , let cl = occNameToComKind Nothing (rdrNameOcc $ unLoc id)]
+                let generalCompls = [mkComp id cl Nothing
+                        | id <- listify (\(_ :: Located(IdP GhcPs)) -> True) x
+                        , let cl = occNameToComKind Nothing (rdrNameOcc $ unLoc id)]
+                    -- here we only have to look at the outermost type
+                    recordCompls = (findRecordCompl' pm thisModName x)
+                in
+                   -- the constructors and snippets will be duplicated here giving the user 2 choices.
+                   generalCompls ++ recordCompls
             ForD _ ForeignImport{fd_name,fd_sig_ty} ->
                 [mkComp fd_name CiVariable (Just $ ppr fd_sig_ty)]
             ForD _ ForeignExport{fd_name,fd_sig_ty} ->
@@ -365,8 +369,13 @@ localCompletionsForParsedModule pm@ParsedModule{pm_parsed_source = L _ HsModule{
 
     --recordCompls = localRecordSnippetProducer pm thisModName
 
+findRecordCompl' :: ParsedModule -> T.Text -> TyClDecl GhcPs -> [CompItem]
+findRecordCompl' pmod mn x = case x of
+    (DataDecl {tcdLName, tcdDataDefn}) -> findRecordCompl pmod mn tcdLName tcdDataDefn
+    _ -> []
+
 findRecordCompl :: ParsedModule -> T.Text -> Located (IdP GhcPs) -> HsDataDefn GhcPs -> [CompItem]
-findRecordCompl pmod mn lname dd = name_type''
+findRecordCompl pmod mn lname dd = catMaybes name_type''
     where
         conDecl = unLoc <$> dd_cons dd
         h98 = catMaybes $ findH98 <$> conDecl
@@ -375,22 +384,23 @@ findRecordCompl pmod mn lname dd = name_type''
           ConDeclGADT{} -> Nothing  -- TODO: Expand this out later
           _ -> Nothing
 
-        name_flds :: [(RdrName, [ConDeclField GhcPs])]
-        name_flds = catMaybes $ decompose <$> h98
-
         decompose x = case getFlds $ (snd x) of
                           Just con_details -> Just (fst x, con_details)
                           Nothing -> Nothing
 
+        name_flds :: [(RdrName, [ConDeclField GhcPs])]
+        name_flds = catMaybes $ decompose <$> h98
+
+
         getFlds :: HsConDetails arg (Located [LConDeclField GhcPs]) -> Maybe [SrcSpanLess (LConDeclField GhcPs)]
         getFlds conArg = case conArg of
                              RecCon rec -> Just $ unLoc <$> (unLoc rec)
+                             PrefixCon _ -> Just []
                              _ -> Nothing
 
         --name_type :: [(RdrName, (Located RdrName, HsType GhcPs))]
-
-        name_type = decompose' <$> name_flds
         decompose' x = (fst x, catMaybes $ extract <$> (snd x))
+        name_type = decompose' <$> name_flds
 
         extract ConDeclField{..} = let
             fld_type = unLoc cd_fld_type
@@ -400,13 +410,16 @@ findRecordCompl pmod mn lname dd = name_type''
         extract _ = Nothing
 
         name_type'' = decompose'' <$> name_type
-        decompose'' :: (RdrName, [(Located RdrName, HsType GhcPs)]) -> CompItem
+        decompose'' :: (RdrName, [(Located RdrName, HsType GhcPs)]) -> Maybe CompItem
         decompose'' x = let
             ctxStr = T.pack . showGhc . fst $ x
             flds = (\(x', y') -> (T.pack . showGhc . unLoc $ x', T.pack . showGhc $ y'))  <$> (snd x)
             doc = SpanDocText (getDocumentation [pmod] lname) (SpanDocUris Nothing Nothing)
+            result = case flds of
+                [] -> Nothing
+                _ -> Just $ mkRecordSnippetCompItem ctxStr flds mn doc
             in
-                mkRecordSnippetCompItem ctxStr flds mn doc
+                result
 
 
 ppr :: Outputable a => a -> T.Text
