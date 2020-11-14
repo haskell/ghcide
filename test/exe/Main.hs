@@ -2665,7 +2665,8 @@ topLevelCompletionTests = [
         "recordsConstructor"
         ["data XxRecord = XyRecord { x:: String, y:: Int}", "bar = Xy" ]
         (Position 1 19)
-        [("XyRecord", CiConstructor, False, True)]
+        [("XyRecord", CiConstructor, False, True),
+         ("XyRecord", CiSnippet, False, True)]
     ]
 
 localCompletionTests :: [TestTree]
