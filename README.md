@@ -321,8 +321,9 @@ args = ["--lsp"]
 
 ## Hacking on ghcide
 
-To build and work on `ghcide` itself, you can use Stack or cabal, e.g.,
-running `cabal test` will execute the test suite.
+To build and work on `ghcide` itself, you should use cabal, e.g.,
+running `cabal test` will execute the test suite. You can use `stack test` too, but
+note that some tests will fail, and none of the maintainers are currently using `stack`.
 
 If you are using Windows, you should disable the `auto.crlf` setting and configure your editor to use LF line endings, directly or making it use the existing `.editor-config`.
 
