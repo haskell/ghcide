@@ -54,6 +54,7 @@ import ConLike
 import GhcPlugins (
     flLabel,
     unpackFS)
+import Data.Bifunctor
 
 -- From haskell-ide-engine/hie-plugin-api/Haskell/Ide/Engine/Context.hs
 
@@ -268,7 +269,7 @@ cacheDataProducer packageState curMod rdrEnv limports deps = do
 
       getComplsForOne :: GlobalRdrElt -> IO ([CompItem],QualCompls)
       getComplsForOne (GRE n _ True _) =
-        (\x -> (x,mempty)) <$> toCompItem curMod curModName n
+        (\x -> (x, mempty)) <$> toCompItem curMod curModName n
       getComplsForOne (GRE n _ False prov) =
         flip foldMapM (map is_decl prov) $ \spec -> do
           compItem <- toCompItem curMod (is_mod spec) n
@@ -293,7 +294,7 @@ cacheDataProducer packageState curMod rdrEnv limports deps = do
                 name' <- lookupName packageState m n
                 return $ name' >>= safeTyThingForRecord
 
-        let recordCompls = case (either (const Nothing) id record_ty) of
+        let recordCompls = case either (const Nothing) id record_ty of
                 Just (ctxStr, flds) -> case flds of
                     [] -> []
                     _ -> [mkRecordSnippetCompItem ctxStr flds (ppr mn) docs]
@@ -349,7 +350,7 @@ localCompletionsForParsedModule pm@ParsedModule{pm_parsed_source = L _ HsModule{
                         | id <- listify (\(_ :: Located(IdP GhcPs)) -> True) x
                         , let cl = occNameToComKind Nothing (rdrNameOcc $ unLoc id)]
                     -- here we only have to look at the outermost type
-                    recordCompls = (findRecordCompl' pm thisModName x)
+                    recordCompls = findRecordCompl' pm thisModName x
                 in
                    -- the constructors and snippets will be duplicated here giving the user 2 choices.
                    generalCompls ++ recordCompls
@@ -373,7 +374,7 @@ localCompletionsForParsedModule pm@ParsedModule{pm_parsed_source = L _ HsModule{
 
 findRecordCompl' :: ParsedModule -> T.Text -> TyClDecl GhcPs -> [CompItem]
 findRecordCompl' pmod mn x = case x of
-    (DataDecl {tcdLName, tcdDataDefn}) -> findRecordCompl pmod mn tcdLName tcdDataDefn
+    DataDecl {tcdLName, tcdDataDefn} -> findRecordCompl pmod mn tcdLName tcdDataDefn
     _ -> []
 
 findRecordCompl :: ParsedModule -> T.Text -> Located (IdP GhcPs) -> HsDataDefn GhcPs -> [CompItem]
@@ -386,7 +387,7 @@ findRecordCompl pmod mn lname dd = catMaybes name_type''
           ConDeclGADT{} -> Nothing  -- TODO: Expand this out later
           _ -> Nothing
 
-        decompose x = case getFlds $ (snd x) of
+        decompose x = case getFlds $ snd x of
                           Just con_details -> Just (fst x, con_details)
                           Nothing -> Nothing
 
@@ -396,12 +397,12 @@ findRecordCompl pmod mn lname dd = catMaybes name_type''
 
         getFlds :: HsConDetails arg (Located [LConDeclField GhcPs]) -> Maybe [SrcSpanLess (LConDeclField GhcPs)]
         getFlds conArg = case conArg of
-                             RecCon rec -> Just $ unLoc <$> (unLoc rec)
+                             RecCon rec -> Just $ unLoc <$> unLoc rec
                              PrefixCon _ -> Just []
                              _ -> Nothing
 
         --name_type :: [(RdrName, (Located RdrName, HsType GhcPs))]
-        decompose' x = (fst x, catMaybes $ extract <$> (snd x))
+        decompose' x = (fst x, catMaybes $ extract <$> snd x)
         name_type = decompose' <$> name_flds
 
         extract ConDeclField{..} = let
@@ -415,14 +416,13 @@ findRecordCompl pmod mn lname dd = catMaybes name_type''
         decompose'' :: (RdrName, [(Located RdrName, HsType GhcPs)]) -> Maybe CompItem
         decompose'' x = let
             ctxStr = T.pack . showGhc . fst $ x
-            flds = (\(x', y') -> (T.pack . showGhc . unLoc $ x', T.pack . showGhc $ y'))  <$> (snd x)
+            flds = bimap (T.pack . showGhc . unLoc) (T.pack . showGhc) <$> snd x
             doc = SpanDocText (getDocumentation [pmod] lname) (SpanDocUris Nothing Nothing)
             result = case flds of
                 [] -> Nothing
                 _ -> Just $ mkRecordSnippetCompItem ctxStr flds mn doc
             in
                 result
-
 
 ppr :: Outputable a => a -> T.Text
 ppr = T.pack . prettyPrint
@@ -686,9 +686,9 @@ prefixes =
 safeTyThingForRecord :: TyThing -> Maybe (T.Text, [(T.Text, T.Text)])
 safeTyThingForRecord (AnId _) = Nothing
 safeTyThingForRecord (AConLike dc) =
-    let flds = conLikeFieldLabels $ dc
+    let flds = conLikeFieldLabels dc
         name = occName . conLikeName $ dc
-        types = map ((conLikeFieldType dc) . (flLabel)) flds
+        types = map (conLikeFieldType dc . flLabel) flds
         ctxStr = T.pack . showGhc $ name
         fld_pairs = [(T.pack . unpackFS . flLabel $ x, T.pack . showGhc $ y) | x <- flds | y <- types]
     in
@@ -711,7 +711,7 @@ mkRecordSnippetCompItem ctxStr compl mn docs = r
           }
 
       t = zip compl ([1..]::[Int])
-      snippet_parts = map (\(x, i) -> ((fst x) <> "=${" <> T.pack (show i) <> ":" <> (fst x) <> "}")) t
-      snippet = T.intercalate (T.pack ", ") $ snippet_parts
+      snippet_parts = map (\(x, i) -> fst x <> "=${" <> T.pack (show i) <> ":" <> fst x <> "}") t
+      snippet = T.intercalate (T.pack ", ") snippet_parts
       buildSnippet = ctxStr <> " {" <> snippet <> "}"
-      importedFrom = Right $ mn
+      importedFrom = Right mn
