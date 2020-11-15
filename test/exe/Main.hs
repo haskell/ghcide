@@ -2617,7 +2617,7 @@ completionTest name src pos expected = testSessionWait name $ do
     compls <- getCompletions docId pos
     let compls' = [ (_label, _kind, _insertText) | CompletionItem{..} <- compls]
     liftIO $ do
-        let emptyToMaybe x = if (T.null x) then Nothing else Just x
+        let emptyToMaybe x = if T.null x then Nothing else Just x
         compls' @?= [ (l, Just k, emptyToMaybe t) | (l,k,t,_,_) <- expected]
         forM_ (zip compls expected) $ \(CompletionItem{..}, (_,_,_,expectedSig, expectedDocs)) -> do
             when expectedSig $
