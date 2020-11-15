@@ -163,24 +163,23 @@ suggestAction packageExports ideOptions parsedModule text diag = concat
     , suggestReplaceIdentifier text diag
     , removeRedundantConstraints text diag
     , suggestAddTypeAnnotationToSatisfyContraints text diag
-    , suggestDisableWarning diag
     ] ++ concat
     [  suggestConstraint pm text diag
     ++ suggestNewDefinition ideOptions pm text diag
     ++ suggestNewImport packageExports pm diag
     ++ suggestDeleteUnusedBinding pm text diag
     ++ suggestExportUnusedTopBinding text pm diag
+    ++ suggestDisableWarning pm text diag
     | Just pm <- [parsedModule]
     ] ++
     suggestFillHole diag                   -- Lowest priority
 
-suggestDisableWarning :: Diagnostic -> [(T.Text, [TextEdit])]
-suggestDisableWarning Diagnostic{..}
+suggestDisableWarning :: ParsedModule -> Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
+suggestDisableWarning pm contents Diagnostic{..}
     | Just (StringValue (T.stripPrefix "-W" -> Just w)) <- _code =
         pure
             ( "Disable \"" <> w <> "\" warnings"
-            , [TextEdit (Range (Position 0 0) (Position 0 0)) $ "{-# OPTIONS_GHC -Wno-" <> w <> " #-}\n"]
-
+            , [TextEdit (endOfModuleHeader pm contents) $ "{-# OPTIONS_GHC -Wno-" <> w <> " #-}\n"]
             )
     | otherwise = []
 
@@ -978,8 +977,8 @@ extractQualifiedModuleName :: T.Text -> Maybe T.Text
 extractQualifiedModuleName x
   | Just [m] <- matchRegexUnifySpaces x "module named [^‘]*‘([^’]*)’"
   = Just m
-  | otherwise 
-  = Nothing 
+  | otherwise
+  = Nothing
 
 -------------------------------------------------------------------------------------------------
 
@@ -1185,3 +1184,17 @@ renderIdentInfo :: IdentInfo -> T.Text
 renderIdentInfo IdentInfo {parent, rendered}
   | Just p <- parent = p <> "(" <> rendered <> ")"
   | otherwise        = rendered
+
+-- | Find the first non-blank line before the first of (module name / imports / declarations).
+-- Useful for inserting pragmas.
+endOfModuleHeader :: ParsedModule -> Maybe T.Text -> Range
+endOfModuleHeader pm contents =
+    let mod = unLoc $ pm_parsed_source pm
+        modNameLoc = getLoc <$> hsmodName mod
+        firstImportLoc = getLoc <$> listToMaybe (hsmodImports mod)
+        firstDeclLoc = getLoc <$> listToMaybe (hsmodDecls mod)
+        line = fromMaybe 0 $ firstNonBlankBefore . _line . _start =<< srcSpanToRange =<<
+            modNameLoc <|> firstImportLoc <|> firstDeclLoc
+        firstNonBlankBefore n = (n -) . fromMaybe 0 . findIndex (not . T.null) . reverse . take n . T.lines <$> contents
+        loc = Position line 0
+     in Range loc loc

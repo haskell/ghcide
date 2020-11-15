@@ -1343,15 +1343,33 @@ disableWarningTests = testGroup "disable warnings" $
             [ "{-# OPTIONS_GHC -Wall #-}"
             , "main = putStrLn \"hello\""
             ]
+        , T.unlines
+            [ "{-# OPTIONS_GHC -Wall #-}"
+            , "{-# OPTIONS_GHC -Wno-missing-signatures #-}"
+            , "main = putStrLn \"hello\""
+            ]
         )
     ,
         ( "unused-imports"
         , T.unlines
             [ "{-# OPTIONS_GHC -Wall #-}"
+            , ""
+            , ""
+            , "module M where"
+            , ""
+            , "import Data.Functor"
+            ]
+        , T.unlines
+            [ "{-# OPTIONS_GHC -Wall #-}"
+            , "{-# OPTIONS_GHC -Wno-unused-imports #-}"
+            , ""
+            , ""
+            , "module M where"
+            , ""
             , "import Data.Functor"
             ]
         )
-    ] <&> \(warning, initialContent) -> testSession (T.unpack warning) $ do
+    ] <&> \(warning, initialContent, expectedContent) -> testSession (T.unpack warning) $ do
         doc <- createDoc "Module.hs" "haskell" initialContent
         _ <- waitForDiagnostics
         codeActs <- mapMaybe caResultToCodeAct <$> getCodeActions doc (Range (Position 0 0) (Position 0 0))
@@ -1360,7 +1378,7 @@ disableWarningTests = testGroup "disable warnings" $
             Just action -> do
                 executeCodeAction action
                 contentAfterAction <- documentContents doc
-                liftIO $ ("{-# OPTIONS_GHC -Wno-" <> warning <> " #-}\n" <> initialContent) @=? contentAfterAction
+                liftIO $ expectedContent @=? contentAfterAction
   where
     caResultToCodeAct = \case
         CACommand _ -> Nothing
