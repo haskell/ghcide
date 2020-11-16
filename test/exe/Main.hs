@@ -2844,57 +2844,58 @@ highlightTests = testGroup "highlight"
   [ testSessionWait "value" $ do
     doc <- createDoc "A.hs" "haskell" source
     _ <- waitForDiagnostics
-    highlights <- getHighlights doc (Position 2 2)
+    highlights <- getHighlights doc (Position 3 2)
     liftIO $ highlights @?=
-            [ DocumentHighlight (R 1 0 1 3) (Just HkRead)
-            , DocumentHighlight (R 2 0 2 3) (Just HkWrite)
-            , DocumentHighlight (R 3 6 3 9) (Just HkRead)
-            , DocumentHighlight (R 4 22 4 25) (Just HkRead)
+            [ DocumentHighlight (R 2 0 2 3) (Just HkRead)
+            , DocumentHighlight (R 3 0 3 3) (Just HkWrite)
+            , DocumentHighlight (R 4 6 4 9) (Just HkRead)
+            , DocumentHighlight (R 5 22 5 25) (Just HkRead)
             ]
   , testSessionWait "type" $ do
     doc <- createDoc "A.hs" "haskell" source
     _ <- waitForDiagnostics
-    highlights <- getHighlights doc (Position 1 8)
+    highlights <- getHighlights doc (Position 2 8)
     liftIO $ highlights @?=
-            [ DocumentHighlight (R 1 7 1 10) (Just HkRead)
-            , DocumentHighlight (R 2 11 2 14) (Just HkRead)
+            [ DocumentHighlight (R 2 7 2 10) (Just HkRead)
+            , DocumentHighlight (R 3 11 3 14) (Just HkRead)
             ]
   , testSessionWait "local" $ do
     doc <- createDoc "A.hs" "haskell" source
     _ <- waitForDiagnostics
-    highlights <- getHighlights doc (Position 5 5)
+    highlights <- getHighlights doc (Position 6 5)
     liftIO $ highlights @?=
-            [ DocumentHighlight (R 5 4 5 7) (Just HkWrite)
-            , DocumentHighlight (R 5 10 5 13) (Just HkRead)
-            , DocumentHighlight (R 6 12 6 15) (Just HkRead)
+            [ DocumentHighlight (R 6 4 6 7) (Just HkWrite)
+            , DocumentHighlight (R 6 10 6 13) (Just HkRead)
+            , DocumentHighlight (R 7 12 7 15) (Just HkRead)
             ]
   , testSessionWait "record" $ do
     doc <- createDoc "A.hs" "haskell" recsource
     _ <- waitForDiagnostics
-    highlights <- getHighlights doc (Position 3 15)
+    highlights <- getHighlights doc (Position 4 15)
     liftIO $ highlights @?=
       -- Span is just the .. on 8.10, but Rec{..} before
 #if MIN_GHC_API_VERSION(8,10,0)
-            [ DocumentHighlight (R 3 8 3 10) (Just HkWrite)
+            [ DocumentHighlight (R 4 8 4 10) (Just HkWrite)
 #else
-            [ DocumentHighlight (R 3 4 3 11) (Just HkWrite)
+            [ DocumentHighlight (R 4 4 4 11) (Just HkWrite)
 #endif
-            , DocumentHighlight (R 3 14 3 20) (Just HkRead)
+            , DocumentHighlight (R 4 14 4 20) (Just HkRead)
             ]
-    highlights <- getHighlights doc (Position 2 17)
+    highlights <- getHighlights doc (Position 3 17)
     liftIO $ highlights @?=
-            [ DocumentHighlight (R 2 17 2 23) (Just HkWrite)
+            [ DocumentHighlight (R 3 17 3 23) (Just HkWrite)
       -- Span is just the .. on 8.10, but Rec{..} before
 #if MIN_GHC_API_VERSION(8,10,0)
-            , DocumentHighlight (R 3 8 3 10) (Just HkRead)
+            , DocumentHighlight (R 4 8 4 10) (Just HkRead)
 #else
-            , DocumentHighlight (R 3 4 3 11) (Just HkRead)
+            , DocumentHighlight (R 4 4 4 11) (Just HkRead)
 #endif
             ]
   ]
   where
     source = T.unlines
-      ["module Highlight where"
+      ["{-# OPTIONS_GHC -Wunused-binds #-}"
+      ,"module Highlight () where"
       ,"foo :: Int"
       ,"foo = 3 :: Int"
       ,"bar = foo"
@@ -2904,7 +2905,8 @@ highlightTests = testGroup "highlight"
       ]
     recsource = T.unlines
       ["{-# LANGUAGE RecordWildCards #-}"
-      ,"module Highlight where"
+      ,"{-# OPTIONS_GHC -Wunused-binds #-}"
+      ,"module Highlight () where"
       ,"data Rec = Rec { field1 :: Int, field2 :: Char }"
       ,"foo Rec{..} = field2 + field1"
       ]
