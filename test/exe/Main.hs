@@ -57,7 +57,7 @@ import Test.Tasty.Ingredients.Rerun
 import Test.Tasty.HUnit
 import Test.Tasty.QuickCheck
 import System.Time.Extra
-import Development.IDE.Plugin.CodeAction (typeSignatureCommandId, blockCommandId)
+import Development.IDE.Plugin.CodeAction (typeSignatureCommandId, blockCommandId, matchRegExMultipleImports)
 import Development.IDE.Plugin.Test (TestRequest(BlockSeconds,GetInterfaceFilesDir))
 
 main :: IO ()
@@ -573,6 +573,13 @@ codeActionTests = testGroup "code actions"
   , addTypeAnnotationsToLiteralsTest
   , exportUnusedTests
   ]
+
+codeActionHelperFunctionTests :: TestTree
+codeActionHelperFunctionTests = testGroup "code action helpers"
+    [
+    extendImportTestsRegEx
+    ]
+
 
 codeLensesTests :: TestTree
 codeLensesTests = testGroup "code lenses"
@@ -1123,6 +1130,23 @@ extendImportTests = testGroup "extend import actions"
       executeCodeAction action
       contentAfterAction <- documentContents docB
       liftIO $ expectedContentB @=? contentAfterAction
+
+extendImportTestsRegEx :: TestTree
+extendImportTestsRegEx = testGroup "regex parsing"
+    [
+      testSession "parse invalid multiple imports" $ template "foo bar foo" Nothing
+    , testSession "parse malformed import list" $ template
+                  "\n\8226 Perhaps you want to add \8216fromList\8217 to one of these import lists:\n    \8216Data.Map\8217)"
+                  Nothing
+    , testSession "parse multiple imports" $ template
+                 "\n\8226 Perhaps you want to add \8216fromList\8217 to one of these import lists:\n    \8216Data.Map\8217 (app/testlsp.hs:7:1-18)\n    \8216Data.HashMap.Strict\8217 (app/testlsp.hs:8:1-29)"
+                 $ Just ("fromList",[("Data.Map","app/testlsp.hs:7:1-18"),("Data.HashMap.Strict","app/testlsp.hs:8:1-29")])
+    ]
+    where
+        template message expected = do
+            liftIO $ matchRegExMultipleImports message @=? expected
+
+
 
 suggestImportTests :: TestTree
 suggestImportTests = testGroup "suggest import actions"
