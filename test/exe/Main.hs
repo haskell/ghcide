@@ -97,6 +97,8 @@ main = do
     , rootUriTests
     , asyncTests
     , clientSettingsTest
+
+    , codeActionHelperFunctionTests
     ]
 
 initializeResponseTests :: TestTree
