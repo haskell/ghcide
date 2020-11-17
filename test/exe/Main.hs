@@ -1087,12 +1087,35 @@ extendImportTests = testGroup "extend import actions"
             , "               )"
             , "main = print (stuffA, stuffB)"
             ])
+  , testSession "extend import list with multiple choices" $ template
+      (T.unlines
+            --  this is just a dummy module to help the arguments needed for this test
+            [ "module ModuleA where"
+            , "stuffA :: Double"
+            ])
+      (T.unlines
+            [ "module ModuleB where"
+            , "import Data.Map ()"
+            , "import Data.HashMap.Strict ()"
+            , "foo = fromList []"
+            ])
+      (Range (Position 3 17) (Position 3 18))
+      "Add fromList to the import list of Data.HashMap.Strict"
+      (T.unlines
+            [ "module ModuleB where"
+            , "import Data.Map ()"
+            , "import Data.HashMap.Strict (fromList)"
+            , "foo = fromList []"
+            ])
   ]
   where
     template contentA contentB range expectedAction expectedContentB = do
       _docA <- createDoc "ModuleA.hs" "haskell" contentA
       docB <- createDoc "ModuleB.hs" "haskell" contentB
-      _ <- waitForDiagnostics
+      diag <- waitForDiagnostics
+      liftIO $ putStrLn $ show diag
+      caactions <- getCodeActions docB range
+      liftIO $ putStrLn $ show caactions
       CACodeAction action@CodeAction { _title = actionTitle } : _
                   <- sortOn (\(CACodeAction CodeAction{_title=x}) -> x) <$>
                      getCodeActions docB range

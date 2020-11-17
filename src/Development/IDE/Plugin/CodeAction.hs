@@ -649,14 +649,26 @@ suggestExtendImport (Just dflags) contents Diagnostic{_range=_range,..}
       "Perhaps you want to add ‘([^’]*)’ to the import list in the import of ‘([^’]*)’ *\\((.*)\\).$"
     , Just c <- contents
     , POk _ (L _ name) <- runParser dflags (T.unpack binding) parseIdentifier
-    = let range = case [ x | (x,"") <- readSrcSpan (T.unpack srcspan)] of
-            [s] -> let x = realSrcSpanToRange s
-                   in x{_end = (_end x){_character = succ (_character (_end x))}}
-            _ -> error "bug in srcspan parser"
-          importLine = textInRange range c
-        in [("Add " <> binding <> " to the import list of " <> mod
-        , [TextEdit range (addBindingToImportList (T.pack $ printRdrName name) importLine)])]
+    = [suggestions name c binding mod srcspan]
+    | Just (binding, mod_srcspan) <-
+      matchRegExMultipleImports _message
+      -- Just (T.pack "fromList",
+      --       [(T.pack "Data.Map", T.pack "app/testlsp.hs:2:1-18"),
+      --        (T.pack "Data.HashMap.Strict", T.pack "app/testlsp.hs:3:1-29")])
+    , Just c <- contents
+    , POk _ (L _ name) <- runParser dflags (T.unpack binding) parseIdentifier
+    = fmap (\(x, y) -> suggestions name c binding x y) mod_srcspan
     | otherwise = []
+    where
+        suggestions name c binding mod srcspan = let
+            range = case [ x | (x,"") <- readSrcSpan (T.unpack srcspan)] of
+                [s] -> let x = realSrcSpanToRange s
+                   in x{_end = (_end x){_character = succ (_character (_end x))}}
+                _ -> error "bug in srcspan parser"
+            importLine = textInRange range c
+            in
+                ("Add " <> binding <> " to the import list of " <> mod
+                , [TextEdit range (addBindingToImportList (T.pack $ printRdrName name) importLine)])
 suggestExtendImport Nothing _ _ = []
 
 suggestFixConstructorImport :: Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
@@ -1135,3 +1147,42 @@ filterNewlines = T.concat  . T.lines
 
 unifySpaces :: T.Text -> T.Text
 unifySpaces    = T.unwords . T.words
+
+-- functins to help parse multiple import suggestions
+
+regex :: T.Text -> T.Text -> Maybe T.Text
+regex msg regex = result
+  where
+    result = case (msg =~~ regex) of
+      Just (_::T.Text, _::T.Text, _::T.Text, y::[T.Text]) -> case y of
+        [] -> Nothing
+        h:_ -> Just h
+      Nothing -> Nothing
+
+regExPair :: (T.Text, T.Text) -> Maybe (T.Text, T.Text)
+regExPair (modname, srcpair) = do
+  x <- regex modname "‘([^’]*)’"
+  y <- regex srcpair "\\((.*)\\)"
+  return (x, y)
+
+regExImports :: T.Text -> Maybe [(T.Text, T.Text)]
+regExImports msg = result
+  where
+    parts = T.words msg
+    isPrefix = not . T.isPrefixOf "("
+    (mod, srcspan) = partition isPrefix  parts
+    result = if length mod == length srcspan then
+               regExPair `traverse` (zip mod srcspan)
+             else Nothing
+
+matchRegExMultipleImports :: T.Text -> Maybe (T.Text, [(T.Text, T.Text)])
+matchRegExMultipleImports message = do
+  let pat = T.pack "Perhaps you want to add ‘([^’]*)’ to one of these import lists: *(‘.*\\))$"
+  (binding, imports) <- case unifySpaces message =~~ pat of
+    Just (_::T.Text, __::T.Text, _::T.Text, r::[T.Text]) -> case r of
+      [] -> Nothing
+      x:xs:[] -> Just (x, xs)
+      _ -> Nothing
+    Nothing -> Nothing
+  imps <- regExImports imports
+  return (binding, imps)
