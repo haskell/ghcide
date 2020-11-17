@@ -268,7 +268,7 @@ cacheDataProducer packageState curMod rdrEnv limports deps = do
 
       getComplsForOne :: GlobalRdrElt -> IO ([CompItem],QualCompls)
       getComplsForOne (GRE n _ True _) =
-        (\x -> (x, mempty)) <$> toCompItem curMod curModName n
+          (, mempty) <$> toCompItem curMod curModName n
       getComplsForOne (GRE n _ False prov) =
         flip foldMapM (map is_decl prov) $ \spec -> do
           compItem <- toCompItem curMod (is_mod spec) n
