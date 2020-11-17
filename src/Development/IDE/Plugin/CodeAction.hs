@@ -653,9 +653,6 @@ suggestExtendImport (Just dflags) contents Diagnostic{_range=_range,..}
     = [suggestions name c binding mod srcspan]
     | Just (binding, mod_srcspan) <-
       matchRegExMultipleImports _message
-      -- Just (T.pack "fromList",
-      --       [(T.pack "Data.Map", T.pack "app/testlsp.hs:2:1-18"),
-      --        (T.pack "Data.HashMap.Strict", T.pack "app/testlsp.hs:3:1-29")])
     , Just c <- contents
     , POk _ (L _ name) <- runParser dflags (T.unpack binding) parseIdentifier
     = fmap (\(x, y) -> suggestions name c binding x y) mod_srcspan
