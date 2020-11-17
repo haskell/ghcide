@@ -382,7 +382,7 @@ suggestExportUnusedTopBinding srcOpt ParsedModule{pm_parsed_source = L _ HsModul
     opLetter = ":!#$%&*+./<=>?@\\^|-~"
 
     parenthesizeIfNeeds :: Bool -> T.Text -> T.Text
-    parenthesizeIfNeeds needsTypeKeyword x 
+    parenthesizeIfNeeds needsTypeKeyword x
       | T.head x `elem` opLetter = (if needsTypeKeyword then "type " else "") <> "(" <> x <>")"
       | otherwise = x
 
