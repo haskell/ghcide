@@ -1121,7 +1121,7 @@ extendImportTests = testGroup "extend import actions"
     template contentA contentB range expectedAction expectedContentB = do
       _docA <- createDoc "ModuleA.hs" "haskell" contentA
       docB <- createDoc "ModuleB.hs" "haskell" contentB
-      diag <- waitForDiagnostics
+      _  <- waitForDiagnostics
       CACodeAction action@CodeAction { _title = actionTitle } : _
                   <- sortOn (\(CACodeAction CodeAction{_title=x}) -> x) <$>
                      getCodeActions docB range
