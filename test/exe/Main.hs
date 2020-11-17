@@ -3270,7 +3270,7 @@ ignoreFatalWarning = testCase "ignore-fatal-warning" $ runWithExtraFiles "ignore
     expectNoMoreDiagnostics 5
 
 simpleSubDirectoryTest :: TestTree
-simpleSubDirectoryTest = expectFailBecause "File Targets are not normalised" $
+simpleSubDirectoryTest =
   testCase "simple-subdirectory" $ runWithExtraFiles "cabal-exe" $ \dir -> do
     let mainPath = dir </> "a/src/Main.hs"
     mainSource <- liftIO $ readFileUtf8 mainPath
