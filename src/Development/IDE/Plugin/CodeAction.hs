@@ -1155,7 +1155,7 @@ unifySpaces    = T.unwords . T.words
 regexSingleMatch :: T.Text -> T.Text -> Maybe T.Text
 regexSingleMatch msg regex = result
   where
-    result = case (msg =~~ regex) of
+    result = case msg =~~ regex of
       Just (_::T.Text, _::T.Text, _::T.Text, y::[T.Text]) -> case y of
         [] -> Nothing
         h:_ -> Just h
@@ -1179,7 +1179,7 @@ regExImports msg = result
     (mod, srcspan) = partition isPrefix  parts
     -- check we have matching pairs like (Data.Map, (app/src.hs:1:2-18))
     result = if length mod == length srcspan then
-               regExPair `traverse` (zip mod srcspan)
+               regExPair `traverse` zip mod srcspan
              else Nothing
 
 matchRegExMultipleImports :: T.Text -> Maybe (T.Text, [(T.Text, T.Text)])
@@ -1188,7 +1188,7 @@ matchRegExMultipleImports message = do
   (binding, imports) <- case unifySpaces message =~~ pat of
     Just (_::T.Text, __::T.Text, _::T.Text, r::[T.Text]) -> case r of
       [] -> Nothing
-      x:xs:[] -> Just (x, xs)
+      [x, xs] -> Just (x, xs)
       _ -> Nothing
     Nothing -> Nothing
   imps <- regExImports imports
