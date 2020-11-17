@@ -1151,8 +1151,9 @@ unifySpaces    = T.unwords . T.words
 
 -- functions to help parse multiple import suggestions
 
-regex :: T.Text -> T.Text -> Maybe T.Text
-regex msg regex = result
+-- | Returns the first match if found
+regexSingleMatch :: T.Text -> T.Text -> Maybe T.Text
+regexSingleMatch msg regex = result
   where
     result = case (msg =~~ regex) of
       Just (_::T.Text, _::T.Text, _::T.Text, y::[T.Text]) -> case y of
@@ -1160,18 +1161,23 @@ regex msg regex = result
         h:_ -> Just h
       Nothing -> Nothing
 
+-- | Parses tuples like (‘Data.Map’, (app/ModuleB.hs:2:1-18)) and
+-- | return (Data.Map, app/ModuleB.hs:2:1-18)
 regExPair :: (T.Text, T.Text) -> Maybe (T.Text, T.Text)
 regExPair (modname, srcpair) = do
-  x <- regex modname "‘([^’]*)’"
-  y <- regex srcpair "\\((.*)\\)"
+  x <- regexSingleMatch modname "‘([^’]*)’"
+  y <- regexSingleMatch srcpair "\\((.*)\\)"
   return (x, y)
 
+-- | Process a list of (module_name, filename:src_span) values
+-- | Eg. [(Data.Map, app/ModuleB.hs:2:1-18), (Data.HashMap.Strict, app/ModuleB.hs:3:1-29)]
 regExImports :: T.Text -> Maybe [(T.Text, T.Text)]
 regExImports msg = result
   where
     parts = T.words msg
     isPrefix = not . T.isPrefixOf "("
     (mod, srcspan) = partition isPrefix  parts
+    -- check we have matching pairs like (Data.Map, (app/src.hs:1:2-18))
     result = if length mod == length srcspan then
                regExPair `traverse` (zip mod srcspan)
              else Nothing
