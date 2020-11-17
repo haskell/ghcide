@@ -1149,7 +1149,7 @@ filterNewlines = T.concat  . T.lines
 unifySpaces :: T.Text -> T.Text
 unifySpaces    = T.unwords . T.words
 
--- functins to help parse multiple import suggestions
+-- functions to help parse multiple import suggestions
 
 regex :: T.Text -> T.Text -> Maybe T.Text
 regex msg regex = result
