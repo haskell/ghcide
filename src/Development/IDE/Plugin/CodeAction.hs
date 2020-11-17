@@ -19,6 +19,7 @@ module Development.IDE.Plugin.CodeAction
     -- * For testing
     , blockCommandId
     , typeSignatureCommandId
+    , matchRegExMultipleImports
     ) where
 
 import Control.Monad (join, guard)
