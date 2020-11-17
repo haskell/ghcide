@@ -394,7 +394,7 @@ findRecordCompl pmod mn lname dd = catMaybes name_type''
         name_flds = catMaybes $ decompose <$> h98
 
 
-        getFlds :: HsConDetails arg (Located [LConDeclField GhcPs]) -> Maybe [SrcSpanLess (LConDeclField GhcPs)]
+        getFlds :: HsConDetails arg (Located [LConDeclField GhcPs]) -> Maybe [ConDeclField GhcPs]
         getFlds conArg = case conArg of
                              RecCon rec -> Just $ unLoc <$> unLoc rec
                              PrefixCon _ -> Just []
