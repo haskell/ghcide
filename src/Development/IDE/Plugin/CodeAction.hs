@@ -1150,13 +1150,9 @@ unifySpaces    = T.unwords . T.words
 
 -- | Returns the first match if found
 regexSingleMatch :: T.Text -> T.Text -> Maybe T.Text
-regexSingleMatch msg regex = result
-  where
-    result = case msg =~~ regex of
-      Just (_::T.Text, _::T.Text, _::T.Text, y::[T.Text]) -> case y of
-        [] -> Nothing
-        h:_ -> Just h
-      Nothing -> Nothing
+regexSingleMatch msg regex = case matchRegexUnifySpaces msg regex of
+    Just (h:_) -> Just h
+    _ -> Nothing
 
 -- | Parses tuples like (‘Data.Map’, (app/ModuleB.hs:2:1-18)) and
 -- | return (Data.Map, app/ModuleB.hs:2:1-18)
@@ -1182,11 +1178,8 @@ regExImports msg = result
 matchRegExMultipleImports :: T.Text -> Maybe (T.Text, [(T.Text, T.Text)])
 matchRegExMultipleImports message = do
   let pat = T.pack "Perhaps you want to add ‘([^’]*)’ to one of these import lists: *(‘.*\\))$"
-  (binding, imports) <- case unifySpaces message =~~ pat of
-    Just (_::T.Text, __::T.Text, _::T.Text, r::[T.Text]) -> case r of
-      [] -> Nothing
-      [x, xs] -> Just (x, xs)
-      _ -> Nothing
-    Nothing -> Nothing
+  (binding, imports) <- case matchRegexUnifySpaces message pat of
+                            Just [x, xs] -> Just (x, xs)
+                            _ -> Nothing
   imps <- regExImports imports
   return (binding, imps)
