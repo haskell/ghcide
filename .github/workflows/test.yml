@@ -5,8 +5,6 @@ jobs:
   test:
     timeout-minutes: 360
     runs-on: ${{ matrix.os }}
-    env:
-      ACTIONS_ALLOW_UNSECURE_COMMANDS: true
     strategy:
       fail-fast: false
       matrix:
