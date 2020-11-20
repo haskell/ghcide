@@ -1099,9 +1099,9 @@ extendImportTests = testGroup "extend import actions"
   , testSession "extend import list with multiple choices" $ template
       (T.unlines
             --  this is just a dummy module to help the arguments needed for this test
-            [ "module ModuleA where"
-            , "stuffA :: Double"
-            ])
+            [ "module ModuleA where ",
+              "bar = 10"
+               ])
       (T.unlines
             [ "module ModuleB where"
             , "import Data.Map ()"
