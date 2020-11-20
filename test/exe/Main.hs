@@ -990,7 +990,7 @@ extendImportTests = testGroup "extend import actions"
             , "main = print (stuffA, stuffB)"
             ])
       (Range (Position 3 17) (Position 3 18))
-      "Add stuffA to the import list of ModuleA"
+      ["Add stuffA to the import list of ModuleA"]
       (T.unlines
             [ "module ModuleB where"
             , "import ModuleA as A (stuffA, stuffB)"
@@ -1010,7 +1010,7 @@ extendImportTests = testGroup "extend import actions"
             , "main = print (stuffB .* stuffB)"
             ])
       (Range (Position 3 17) (Position 3 18))
-      "Add .* to the import list of ModuleA"
+      ["Add .* to the import list of ModuleA"]
       (T.unlines
             [ "module ModuleB where"
             , "import ModuleA as A ((.*), stuffB)"
@@ -1028,7 +1028,7 @@ extendImportTests = testGroup "extend import actions"
             , "b = 0"
             ])
       (Range (Position 2 5) (Position 2 5))
-      "Add A to the import list of ModuleA"
+      ["Add A to the import list of ModuleA"]
       (T.unlines
             [ "module ModuleB where"
             , "import ModuleA (A)"
@@ -1047,7 +1047,7 @@ extendImportTests = testGroup "extend import actions"
             , "b = Constructor"
             ])
       (Range (Position 2 5) (Position 2 5))
-      "Add Constructor to the import list of ModuleA"
+      ["Add Constructor to the import list of ModuleA"]
       (T.unlines
             [ "module ModuleB where"
             , "import ModuleA (A(Constructor))"
@@ -1068,7 +1068,7 @@ extendImportTests = testGroup "extend import actions"
             , "main = print (A.stuffA, A.stuffB)"
             ])
       (Range (Position 3 17) (Position 3 18))
-      "Add stuffA to the import list of ModuleA"
+      ["Add stuffA to the import list of ModuleA"]
       (T.unlines
             [ "module ModuleB where"
             , "import qualified ModuleA as A (stuffA, stuffB)"
@@ -1089,7 +1089,7 @@ extendImportTests = testGroup "extend import actions"
             , "main = print (stuffA, stuffB)"
             ])
       (Range (Position 3 17) (Position 3 18))
-      "Add stuffA to the import list of ModuleA"
+      ["Add stuffA to the import list of ModuleA"]
       (T.unlines
             [ "module ModuleB where"
             , "import ModuleA (stuffA, stuffB"
@@ -1109,7 +1109,8 @@ extendImportTests = testGroup "extend import actions"
             , "foo = fromList []"
             ])
       (Range (Position 3 17) (Position 3 18))
-      "Add fromList to the import list of Data.HashMap.Strict"
+      ["Add fromList to the import list of Data.Map",
+       "Add fromList to the import list of Data.HashMap.Strict"]
       (T.unlines
             [ "module ModuleB where"
             , "import Data.Map ()"
@@ -1118,14 +1119,18 @@ extendImportTests = testGroup "extend import actions"
             ])
   ]
   where
-    template contentA contentB range expectedAction expectedContentB = do
+    template contentA contentB range expectedActions expectedContentB = do
       _docA <- createDoc "ModuleA.hs" "haskell" contentA
       docB <- createDoc "ModuleB.hs" "haskell" contentB
       _  <- waitForDiagnostics
-      CACodeAction action@CodeAction { _title = actionTitle } : _
-                  <- sortOn (\(CACodeAction CodeAction{_title=x}) -> x) <$>
-                     getCodeActions docB range
-      liftIO $ expectedAction @=? actionTitle
+      codeActions <- filter (\(CACodeAction CodeAction{_title=x}) -> T.isPrefixOf "Add" x)
+          <$>  getCodeActions docB range
+      let expectedTitles = (\(CACodeAction CodeAction{_title=x}) ->x) <$> codeActions
+      liftIO $ expectedActions @=? expectedTitles
+
+      -- Get the first action and execute the first action
+      let CACodeAction action :  _
+                  = sortOn (\(CACodeAction CodeAction{_title=x}) -> x) codeActions
       executeCodeAction action
       contentAfterAction <- documentContents docB
       liftIO $ expectedContentB @=? contentAfterAction
