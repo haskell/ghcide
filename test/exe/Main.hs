@@ -1133,11 +1133,11 @@ extendImportTests = testGroup "extend import actions"
 extendImportTestsRegEx :: TestTree
 extendImportTestsRegEx = testGroup "regex parsing"
     [
-      testSession "parse invalid multiple imports" $ template "foo bar foo" Nothing
-    , testSession "parse malformed import list" $ template
+      testCase "parse invalid multiple imports" $ template "foo bar foo" Nothing
+    , testCase "parse malformed import list" $ template
                   "\n\8226 Perhaps you want to add \8216fromList\8217 to one of these import lists:\n    \8216Data.Map\8217)"
                   Nothing
-    , testSession "parse multiple imports" $ template
+    , testCase "parse multiple imports" $ template
                  "\n\8226 Perhaps you want to add \8216fromList\8217 to one of these import lists:\n    \8216Data.Map\8217 (app/testlsp.hs:7:1-18)\n    \8216Data.HashMap.Strict\8217 (app/testlsp.hs:8:1-29)"
                  $ Just ("fromList",[("Data.Map","app/testlsp.hs:7:1-18"),("Data.HashMap.Strict","app/testlsp.hs:8:1-29")])
     ]
