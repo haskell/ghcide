@@ -987,7 +987,7 @@ extendImportTests = testGroup "extend import actions"
             , "main = print (stuffB .* stuffB)"
             ])
       (Range (Position 3 17) (Position 3 18))
-      "Add .* to the import list of ModuleA"
+      "Add (.*) to the import list of ModuleA"
       (T.unlines
             [ "module ModuleB where"
             , "import ModuleA as A ((.*), stuffB)"

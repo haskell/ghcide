@@ -1,8 +1,8 @@
 -- Copyright (c) 2019 The DAML Authors. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
 
+{-# LANGUAGE CPP                   #-}
 {-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE CPP #-}
 #include "ghc-api-version.h"
 
 -- | Go to the definition of a variable.
@@ -21,48 +21,51 @@ module Development.IDE.Plugin.CodeAction
     , typeSignatureCommandId
     ) where
 
-import Control.Monad (join, guard)
-import Development.IDE.Plugin
-import Development.IDE.GHC.Compat
-import Development.IDE.Core.Rules
-import Development.IDE.Core.RuleTypes
-import Development.IDE.Core.Service
-import Development.IDE.Core.Shake
-import Development.IDE.GHC.Error
-import Development.IDE.GHC.Util
-import Development.IDE.LSP.Server
-import Development.IDE.Plugin.CodeAction.PositionIndexed
-import Development.IDE.Plugin.CodeAction.RuleTypes
-import Development.IDE.Plugin.CodeAction.Rules
-import Development.IDE.Types.Exports
-import Development.IDE.Types.Location
-import Development.IDE.Types.Options
-import Development.Shake (Rules)
-import qualified Data.HashMap.Strict as Map
-import qualified Language.Haskell.LSP.Core as LSP
-import Language.Haskell.LSP.VFS
-import Language.Haskell.LSP.Messages
-import Language.Haskell.LSP.Types
-import qualified Data.Rope.UTF16 as Rope
-import Data.Aeson.Types (toJSON, fromJSON, Value(..), Result(..))
-import Data.Char
-import Data.Maybe
-import Data.List.Extra
-import qualified Data.Text as T
-import Data.Tuple.Extra ((&&&))
-import HscTypes
-import Parser
-import Text.Regex.TDFA (mrAfter, (=~), (=~~))
-import Outputable (ppr, showSDocUnsafe)
-import GHC.LanguageExtensions.Type (Extension)
-import Data.Function
-import Control.Arrow ((>>>))
-import Data.Functor
-import Control.Applicative ((<|>))
-import Safe (atMay)
-import Bag (isEmptyBag)
-import qualified Data.HashSet as Set
-import Control.Concurrent.Extra (threadDelay, readVar)
+import           Bag                                               (isEmptyBag)
+import           Control.Applicative                               ((<|>))
+import           Control.Arrow                                     ((>>>))
+import           Control.Concurrent.Extra                          (readVar,
+                                                                    threadDelay)
+import           Control.Monad                                     (guard, join)
+import           Data.Aeson.Types                                  (Result (..),
+                                                                    Value (..),
+                                                                    fromJSON,
+                                                                    toJSON)
+import           Data.Char
+import           Data.Function
+import           Data.Functor
+import qualified Data.HashMap.Strict                               as Map
+import qualified Data.HashSet                                      as Set
+import           Data.List.Extra
+import           Data.Maybe
+import qualified Data.Rope.UTF16                                   as Rope
+import qualified Data.Text                                         as T
+import           Data.Tuple.Extra                                  ((&&&))
+import           Development.IDE.Core.RuleTypes
+import           Development.IDE.Core.Rules
+import           Development.IDE.Core.Service
+import           Development.IDE.Core.Shake
+import           Development.IDE.GHC.Compat
+import           Development.IDE.GHC.Error
+import           Development.IDE.LSP.Server
+import           Development.IDE.Plugin
+import           Development.IDE.Plugin.CodeAction.PositionIndexed
+import           Development.IDE.Plugin.CodeAction.RuleTypes
+import           Development.IDE.Plugin.CodeAction.Rules
+import           Development.IDE.Types.Exports
+import           Development.IDE.Types.Location
+import           Development.IDE.Types.Options
+import           Development.Shake                                 (Rules)
+import           GHC.LanguageExtensions.Type                       (Extension)
+import qualified Language.Haskell.LSP.Core                         as LSP
+import           Language.Haskell.LSP.Messages
+import           Language.Haskell.LSP.Types
+import           Language.Haskell.LSP.VFS
+import           Outputable                                        (ppr,
+                                                                    showSDocUnsafe)
+import           Safe                                              (atMay)
+import           Text.Regex.TDFA                                   (mrAfter,
+                                                                    (=~), (=~~))
 
 plugin :: Plugin c
 plugin = codeActionPluginWithRules rules codeAction <> Plugin mempty setHandlersCodeLens
@@ -98,10 +101,9 @@ codeAction lsp state (TextDocumentIdentifier uri) _range CodeActionContext{_diag
     pkgExports <- runAction "CodeAction:PackageExports" state $ (useNoFile_ . PackageExports) `traverse` env
     localExports <- readVar (exportsMap $ shakeExtras state)
     let exportsMap = localExports <> fromMaybe mempty pkgExports
-    let dflags = hsc_dflags . hscEnv <$> env
     pure . Right $
         [ CACodeAction $ CodeAction title (Just CodeActionQuickFix) (Just $ List [x]) (Just edit) Nothing
-        | x <- xs, (title, tedit) <- suggestAction dflags exportsMap ideOptions parsedModule text x
+        | x <- xs, (title, tedit) <- suggestAction exportsMap ideOptions parsedModule text x
         , let edit = WorkspaceEdit (Just $ Map.singleton uri $ List tedit) Nothing
         ] <> caRemoveRedundantImports parsedModule text diag xs uri
 
@@ -152,18 +154,17 @@ commandHandler lsp _ideState ExecuteCommandParams{..}
     = return (Right Null, Nothing)
 
 suggestAction
-  :: Maybe DynFlags
-  -> ExportsMap
+  :: ExportsMap
   -> IdeOptions
   -> Maybe ParsedModule
   -> Maybe T.Text
   -> Diagnostic
   -> [(T.Text, [TextEdit])]
-suggestAction dflags packageExports ideOptions parsedModule text diag = concat
+suggestAction packageExports ideOptions parsedModule text diag = concat
    -- Order these suggestions by priority
     [ suggestAddExtension diag             -- Highest priority
     , suggestSignature True diag
-    , suggestExtendImport dflags text diag
+    , suggestExtendImport packageExports text diag
     , suggestFillTypeWildcard diag
     , suggestFixConstructorImport text diag
     , suggestModuleTypo diag
@@ -381,7 +382,7 @@ suggestExportUnusedTopBinding srcOpt ParsedModule{pm_parsed_source = L _ HsModul
     opLetter = ":!#$%&*+./<=>?@\\^|-~"
 
     parenthesizeIfNeeds :: Bool -> T.Text -> T.Text
-    parenthesizeIfNeeds needsTypeKeyword x 
+    parenthesizeIfNeeds needsTypeKeyword x
       | T.head x `elem` opLetter = (if needsTypeKeyword then "type " else "") <> "(" <> x <>")"
       | otherwise = x
 
@@ -394,9 +395,9 @@ suggestExportUnusedTopBinding srcOpt ParsedModule{pm_parsed_source = L _ HsModul
        in loc >= Just l && loc <= Just r
 
     printExport :: ExportsAs -> T.Text -> T.Text
-    printExport ExportName x = parenthesizeIfNeeds False x
+    printExport ExportName x    = parenthesizeIfNeeds False x
     printExport ExportPattern x = "pattern " <> x
-    printExport ExportAll x = parenthesizeIfNeeds True x <> "(..)"
+    printExport ExportAll x     = parenthesizeIfNeeds True x <> "(..)"
 
     isTopLevel :: Range -> Bool
     isTopLevel l = (_character . _start) l == 0
@@ -625,7 +626,7 @@ processHoleSuggestions mm = (holeSuggestions, refSuggestions)
       return holeFit
 
     mapHead f (a:aa) = f a : aa
-    mapHead _ [] = []
+    mapHead _ []     = []
 
 -- > getIndentedGroups [" H1", "  l1", "  l2", " H2", "  l3"] = [[" H1,", "  l1", "  l2"], [" H2", "  l3"]]
 getIndentedGroups :: [T.Text] -> [[T.Text]]
@@ -642,22 +643,25 @@ getIndentedGroupsBy pred inp = case dropWhile (not.pred) inp of
 indentation :: T.Text -> Int
 indentation = T.length . T.takeWhile isSpace
 
-suggestExtendImport :: Maybe DynFlags -> Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
-suggestExtendImport (Just dflags) contents Diagnostic{_range=_range,..}
+suggestExtendImport :: ExportsMap -> Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
+suggestExtendImport exportsMap contents Diagnostic{_range=_range,..}
     | Just [binding, mod, srcspan] <-
       matchRegexUnifySpaces _message
       "Perhaps you want to add ‘([^’]*)’ to the import list in the import of ‘([^’]*)’ *\\((.*)\\).$"
     , Just c <- contents
-    , POk _ (L _ name) <- runParser dflags (T.unpack binding) parseIdentifier
+    , [(renderImport -> renderedBinding, _)] <- filter (\(_,m) -> mod == m) $ maybe [] Set.toList $ Map.lookup binding (getExportsMap exportsMap)
     = let range = case [ x | (x,"") <- readSrcSpan (T.unpack srcspan)] of
             [s] -> let x = realSrcSpanToRange s
                    in x{_end = (_end x){_character = succ (_character (_end x))}}
             _ -> error "bug in srcspan parser"
           importLine = textInRange range c
-        in [("Add " <> binding <> " to the import list of " <> mod
-        , [TextEdit range (addBindingToImportList (T.pack $ printRdrName name) importLine)])]
+        in [("Add " <> renderedBinding <> " to the import list of " <> mod
+        , [TextEdit range (addBindingToImportList renderedBinding importLine)])]
     | otherwise = []
-suggestExtendImport Nothing _ _ = []
+  where
+  renderImport IdentInfo {parent, rendered}
+    | Just p <- parent = p <> "(" <> rendered <> ")"
+    | otherwise        = rendered
 
 suggestFixConstructorImport :: Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
 suggestFixConstructorImport _ Diagnostic{_range=_range,..}
@@ -929,10 +933,10 @@ suggestNewImport packageExportsMap ParsedModule {pm_parsed_source = L _ HsModule
   , Just insertLine <- case hsmodImports of
         [] -> case srcSpanStart $ getLoc (head hsmodDecls) of
           RealSrcLoc s -> Just $ srcLocLine s - 1
-          _ -> Nothing
+          _            -> Nothing
         _ -> case srcSpanEnd $ getLoc (last hsmodImports) of
           RealSrcLoc s -> Just $ srcLocLine s
-          _ -> Nothing
+          _            -> Nothing
   , insertPos <- Position insertLine 0
   , extendImportSuggestions <- matchRegexUnifySpaces msg
     "Perhaps you want to add ‘[^’]*’ to the import list in the import of ‘([^’]*)’"
@@ -977,9 +981,9 @@ data NotInScope
     deriving Show
 
 notInScope :: NotInScope -> T.Text
-notInScope (NotInScopeDataConstructor t) = t
+notInScope (NotInScopeDataConstructor t)        = t
 notInScope (NotInScopeTypeConstructorOrClass t) = t
-notInScope (NotInScopeThing t) = t
+notInScope (NotInScopeThing t)                  = t
 
 extractNotInScopeName :: T.Text -> Maybe NotInScope
 extractNotInScopeName x
@@ -1117,7 +1121,7 @@ matchRegexUnifySpaces message = matchRegex (unifySpaces message)
 matchRegex :: T.Text -> T.Text -> Maybe [T.Text]
 matchRegex message regex = case message =~~ regex of
     Just (_ :: T.Text, _ :: T.Text, _ :: T.Text, bindings) -> Just bindings
-    Nothing -> Nothing
+    Nothing                                                -> Nothing
 
 setHandlersCodeLens :: PartialHandlers c
 setHandlersCodeLens = PartialHandlers $ \WithMessage{..} x -> return x{
