@@ -15,7 +15,7 @@ module Development.IDE.Types.Options
   , IdeReportProgress(..)
   , IdeDefer(..)
   , IdeTesting(..)
-  , IdeOTProfiling(..)
+  , IdeOTMemoryProfiling(..)
   , clientSupportsProgress
   , IdePkgLocationOptions(..)
   , defaultIdeOptions
@@ -69,7 +69,7 @@ data IdeOptions = IdeOptions
   -- meaning we keep everything in memory but the daml CLI compiler uses this for incremental builds.
   , optShakeProfiling :: Maybe FilePath
     -- ^ Set to 'Just' to create a directory of profiling reports.
-  , optOTProfiling :: IdeOTProfiling
+  , optOTMemoryProfiling :: IdeOTMemoryProfiling
     -- ^ Whether to record profiling information with OpenTelemetry. You must
     --   also enable the -l RTS flag for this to have any effect
   , optTesting :: IdeTesting
@@ -138,10 +138,10 @@ data IdePreprocessedSource = IdePreprocessedSource
     -- ^ New parse tree emitted by the preprocessor.
   }
 
-newtype IdeReportProgress = IdeReportProgress Bool
-newtype IdeDefer          = IdeDefer          Bool
-newtype IdeTesting        = IdeTesting        Bool
-newtype IdeOTProfiling    = IdeOTProfiling    Bool
+newtype IdeReportProgress    = IdeReportProgress Bool
+newtype IdeDefer             = IdeDefer          Bool
+newtype IdeTesting           = IdeTesting        Bool
+newtype IdeOTMemoryProfiling = IdeOTMemoryProfiling    Bool
 
 clientSupportsProgress :: LSP.ClientCapabilities -> IdeReportProgress
 clientSupportsProgress caps = IdeReportProgress $ Just True ==
@@ -156,7 +156,7 @@ defaultIdeOptions session = IdeOptions
     ,optThreads = 0
     ,optShakeFiles = Nothing
     ,optShakeProfiling = Nothing
-    ,optOTProfiling = IdeOTProfiling False
+    ,optOTMemoryProfiling = IdeOTMemoryProfiling False
     ,optReportProgress = IdeReportProgress False
     ,optLanguageSyntax = "haskell"
     ,optNewColonConvention = False

@@ -12,7 +12,7 @@ data Arguments = Arguments
     ,argFiles :: [FilePath]
     ,argsVersion :: Bool
     ,argsShakeProfiling :: Maybe FilePath
-    ,argsOTProfiling :: Bool
+    ,argsOTMemoryProfiling :: Bool
     ,argsTesting :: Bool
     ,argsThreads :: Int
     ,argsVerbose :: Bool
@@ -33,7 +33,7 @@ arguments = Arguments
       <*> many (argument str (metavar "FILES/DIRS..."))
       <*> switch (long "version" <> help "Show ghcide and GHC versions")
       <*> optional (strOption $ long "shake-profiling" <> metavar "DIR" <> help "Dump profiling reports to this directory")
-      <*> switch (long "ot-profiling" <> help "Record OpenTelemetry info to the eventlog. Needs the -l RTS flag to have an effect")
+      <*> switch (long "ot-memory-profiling" <> help "Record OpenTelemetry info to the eventlog. Needs the -l RTS flag to have an effect")
       <*> switch (long "test" <> help "Enable additional lsp messages used by the testsuite")
       <*> option auto (short 'j' <> help "Number of threads (0: automatic)" <> metavar "NUM" <> value 0 <> showDefault)
       <*> switch (long "verbose" <> help "Include internal events in logging output")

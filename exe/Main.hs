@@ -104,13 +104,13 @@ main = do
             sessionLoader <- loadSession $ fromMaybe dir rootPath
             config <- fromMaybe defaultLspConfig <$> getConfig
             let options = (defaultIdeOptions sessionLoader)
-                    { optReportProgress = clientSupportsProgress caps
-                    , optShakeProfiling = argsShakeProfiling
-                    , optOTProfiling    = IdeOTProfiling argsOTProfiling
-                    , optTesting        = IdeTesting argsTesting
-                    , optThreads        = argsThreads
-                    , optCheckParents   = checkParents config
-                    , optCheckProject   = checkProject config
+                    { optReportProgress    = clientSupportsProgress caps
+                    , optShakeProfiling    = argsShakeProfiling
+                    , optOTMemoryProfiling = IdeOTMemoryProfiling argsOTMemoryProfiling
+                    , optTesting           = IdeTesting argsTesting
+                    , optThreads           = argsThreads
+                    , optCheckParents      = checkParents config
+                    , optCheckProject      = checkProject config
                     }
                 logLevel = if argsVerbose then minBound else Info
             debouncer <- newAsyncDebouncer

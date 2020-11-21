@@ -1184,9 +1184,9 @@ updatePositionMapping IdeState{shakeExtras = ShakeExtras{positionMapping}} Versi
 
 startTelemetry :: ShakeExtras -> IO ()
 startTelemetry shakeExtras = do
-    IdeOptions{ optOTProfiling = (IdeOTProfiling otProfilingEnabled) } <- getIdeOptionsIO shakeExtras
+    IdeOptions{ optOTMemoryProfiling = (IdeOTMemoryProfiling otMemoryProfilingEnabled) } <- getIdeOptionsIO shakeExtras
 
-    when otProfilingEnabled $ do
+    when otMemoryProfilingEnabled $ do
         let ShakeExtras { state=stateRef } = shakeExtras
         instrumentFor <- getInstrumentCached <$> (newVar HMap.empty)
 

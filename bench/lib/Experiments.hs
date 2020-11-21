@@ -147,7 +147,7 @@ data Config = Config
   { verbosity :: !Verbosity,
     -- For some reason, the Shake profile files are truncated and won't load
     shakeProfiling :: !(Maybe FilePath),
-    otProfiling :: !(Maybe FilePath),
+    otMemoryProfiling :: !(Maybe FilePath),
     outputCSV :: !FilePath,
     buildTool :: !CabalStack,
     ghcideOptions :: ![String],
@@ -240,7 +240,7 @@ runBenchmarks allBenchmarks = do
                    | b <- allBenchmarks
                    , select b ]
 
-  whenJust (otProfiling ?config) $ \eventlogDir ->
+  whenJust (otMemoryProfiling ?config) $ \eventlogDir ->
       createDirectoryIfMissing True eventlogDir
 
   results <- forM benchmarks $ \b@Bench{name} ->
@@ -311,7 +311,7 @@ runBenchmarks allBenchmarks = do
           "+RTS",
           "-S" <> gcStats name
         ]
-          ++ case otProfiling ?config of
+          ++ case otMemoryProfiling ?config of
             Just dir -> ["-l", "-ol" ++ (dir </> (map (\c -> if c == ' ' then '-' else c) name) <.> "eventlog")]
             Nothing -> []
           ++ [ "-RTS" ]
@@ -320,7 +320,7 @@ runBenchmarks allBenchmarks = do
             [ ["--shake-profiling", path] | Just path <- [shakeProfiling ?config]
             ]
           ++ ["--verbose" | verbose ?config]
-          ++ if isJust (otProfiling ?config) then [ "--ot-profiling" ] else []
+          ++ if isJust (otMemoryProfiling ?config) then [ "--ot-memory-profiling" ] else []
     lspTestCaps =
       fullCaps {_window = Just $ WindowClientCapabilities $ Just True}
     conf =
