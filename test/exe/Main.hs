@@ -11,7 +11,7 @@
 module Main (main) where
 
 import Control.Applicative.Combinators
-import Control.Exception (bracket, catch)
+import Control.Exception (catch)
 import qualified Control.Lens as Lens
 import Control.Monad
 import Control.Monad.IO.Class (liftIO)
@@ -41,7 +41,7 @@ import Language.Haskell.LSP.Types.Capabilities
 import qualified Language.Haskell.LSP.Types.Lens as Lsp (diagnostics, params, message)
 import Language.Haskell.LSP.VFS (applyChange)
 import Network.URI
-import System.Environment.Blank (getEnv, setEnv, unsetEnv)
+import System.Environment.Blank (getEnv, setEnv)
 import System.FilePath
 import System.IO.Extra hiding (withTempDir)
 import qualified System.IO.Extra
@@ -331,22 +331,15 @@ diagnosticTests = testGroup "diagnostics"
       _ <- createDoc "ModuleA.hs" "haskell" contentA
       _ <- createDoc "ModuleB.hs" "haskell" contentB
       _ <- createDoc "ModuleB.hs-boot" "haskell" contentBboot
-      expectDiagnosticsWithTags
-        [ ( "ModuleA.hs"
-          , [(DsInfo, (1, 0), "The import of 'ModuleB'", Just DtUnnecessary)]
-          )
-        , ( "ModuleB.hs"
-          , [(DsInfo, (1, 0), "The import of 'ModuleA'", Just DtUnnecessary)]
-          )
-        ]
+      expectDiagnostics []
   , testSessionWait "correct reference used with hs-boot" $ do
       let contentB = T.unlines
             [ "module ModuleB where"
-            , "import {-# SOURCE #-} ModuleA"
+            , "import {-# SOURCE #-} ModuleA()"
             ]
       let contentA = T.unlines
             [ "module ModuleA where"
-            , "import ModuleB"
+            , "import ModuleB()"
             , "x = 5"
             ]
       let contentAboot = T.unlines
@@ -387,11 +380,7 @@ diagnosticTests = testGroup "diagnostics"
             ]
       _ <- createDoc "ModuleA.hs" "haskell" contentA
       _ <- createDoc "ModuleB.hs" "haskell" contentB
-      expectDiagnosticsWithTags
-        [ ( "ModuleB.hs"
-          , [(DsInfo, (2, 0), "The import of 'ModuleA' is redundant", Just DtUnnecessary)]
-          )
-        ]
+      expectDiagnostics []
   , testSessionWait "package imports" $ do
       let thisDataListContent = T.unlines
             [ "module Data.List where"
@@ -529,7 +518,7 @@ diagnosticTests = testGroup "diagnostics"
             ]
           )
         ]
-  , testCase "typecheck-all-parents-of-interest" $ withoutStackEnv $ runWithExtraFiles "recomp" $ \dir -> do
+  , testCase "typecheck-all-parents-of-interest" $ runWithExtraFiles "recomp" $ \dir -> do
     let bPath = dir </> "B.hs"
         pPath = dir </> "P.hs"
 
@@ -538,11 +527,8 @@ diagnosticTests = testGroup "diagnostics"
 
     bdoc <- createDoc bPath "haskell" bSource
     _pdoc <- createDoc pPath "haskell" pSource
-    expectDiagnosticsWithTags
-      [("P.hs", [(DsWarning,(4,0), "Top-level binding", Nothing)]) -- So that we know P has been loaded
-      ,("P.hs", [(DsInfo,(2,0), "The import of", Just DtUnnecessary)])
-      ,("P.hs", [(DsInfo,(4,0), "Defined but not used", Just DtUnnecessary)])
-      ]
+    expectDiagnostics
+      [("P.hs", [(DsWarning,(4,0), "Top-level binding")])] -- So that we know P has been loaded
 
     -- Change y from Int to B which introduces a type error in A (imported from P)
     changeDoc bdoc [TextDocumentContentChangeEvent Nothing Nothing $
@@ -2098,7 +2084,7 @@ exportUnusedTests = testGroup "export unused actions"
               [ "{-# OPTIONS_GHC -Wunused-top-binds #-}"
               , "{-# LANGUAGE TypeOperators #-}"
               , "module A ((:<)) where"
-              , "type (:<) = ()"])    
+              , "type (:<) = ()"])
     , testSession "type family operator" $ template
         (T.unlines
               [ "{-# OPTIONS_GHC -Wunused-top-binds #-}"
@@ -2395,7 +2381,7 @@ findDefinitionAndHoverTests = let
   , test  broken broken outL45     outSig        "top-level signature             #310"
   , test  broken broken innL48     innSig        "inner     signature             #310"
   , test  no     yes    holeL60    hleInfo       "hole without internal name      #847"
-  , test  no     yes    cccL17     docLink       "Haddock html links"
+  , test  no     skip   cccL17     docLink       "Haddock html links"
   , testM yes    yes    imported   importedSig   "Imported symbol"
   , testM yes    yes    reexported reexportedSig "Imported symbol (reexported)"
   ]
@@ -2403,6 +2389,7 @@ findDefinitionAndHoverTests = let
         yes    = Just -- test should run and pass
         broken = Just . (`xfail` "known broken")
         no = const Nothing -- don't run this test at all
+        skip = const Nothing -- unreliable, don't run
 
 checkFileCompiles :: FilePath -> Session () -> TestTree
 checkFileCompiles fp diag =
@@ -2417,11 +2404,7 @@ pluginSimpleTests =
   testSessionWithExtraFiles "plugin" "simple plugin" $ \dir -> do
     _ <- openDoc (dir </> "KnownNat.hs") "haskell"
     liftIO $ writeFile (dir</>"hie.yaml")
-#ifdef STACK
-      "cradle: {direct: {arguments: []}}"
-#else
       "cradle: {cabal: [{path: '.', component: 'lib:plugin'}]}"
-#endif
 
     expectDiagnostics
       [ ( "KnownNat.hs",
@@ -2594,7 +2577,7 @@ thTests =
         _ <- createDoc "A.hs" "haskell" sourceA
         _ <- createDoc "B.hs" "haskell" sourceB
         expectDiagnostics [ ( "B.hs", [(DsWarning, (4, 0), "Top-level binding with no type signature: main :: IO ()")] ) ]
-    , ignoreInWindowsForGHC88 $ testCase "findsTHnewNameConstructor" $ withoutStackEnv $ runWithExtraFiles "THNewName" $ \dir -> do
+    , ignoreInWindowsForGHC88 $ testCase "findsTHnewNameConstructor" $ runWithExtraFiles "THNewName" $ \dir -> do
 
     -- This test defines a TH value with the meaning "data A = A" in A.hs
     -- Loads and export the template in B.hs
@@ -2609,7 +2592,7 @@ thTests =
 
 -- | test that TH is reevaluated on typecheck
 thReloadingTest :: TestTree
-thReloadingTest = testCase "reloading-th-test" $ withoutStackEnv $ runWithExtraFiles "TH" $ \dir -> do
+thReloadingTest = testCase "reloading-th-test" $ runWithExtraFiles "TH" $ \dir -> do
 
     let aPath = dir </> "THA.hs"
         bPath = dir </> "THB.hs"
@@ -2643,7 +2626,7 @@ thReloadingTest = testCase "reloading-th-test" $ withoutStackEnv $ runWithExtraF
     closeDoc cdoc
 
 thLinkingTest :: TestTree
-thLinkingTest = testCase "th-linking-test" $ withoutStackEnv $ runWithExtraFiles "TH" $ \dir -> do
+thLinkingTest = testCase "th-linking-test" $ runWithExtraFiles "TH" $ \dir -> do
 
     let aPath = dir </> "THA.hs"
         bPath = dir </> "THB.hs"
@@ -2869,57 +2852,58 @@ highlightTests = testGroup "highlight"
   [ testSessionWait "value" $ do
     doc <- createDoc "A.hs" "haskell" source
     _ <- waitForDiagnostics
-    highlights <- getHighlights doc (Position 2 2)
+    highlights <- getHighlights doc (Position 3 2)
     liftIO $ highlights @?=
-            [ DocumentHighlight (R 1 0 1 3) (Just HkRead)
-            , DocumentHighlight (R 2 0 2 3) (Just HkWrite)
-            , DocumentHighlight (R 3 6 3 9) (Just HkRead)
-            , DocumentHighlight (R 4 22 4 25) (Just HkRead)
+            [ DocumentHighlight (R 2 0 2 3) (Just HkRead)
+            , DocumentHighlight (R 3 0 3 3) (Just HkWrite)
+            , DocumentHighlight (R 4 6 4 9) (Just HkRead)
+            , DocumentHighlight (R 5 22 5 25) (Just HkRead)
             ]
   , testSessionWait "type" $ do
     doc <- createDoc "A.hs" "haskell" source
     _ <- waitForDiagnostics
-    highlights <- getHighlights doc (Position 1 8)
+    highlights <- getHighlights doc (Position 2 8)
     liftIO $ highlights @?=
-            [ DocumentHighlight (R 1 7 1 10) (Just HkRead)
-            , DocumentHighlight (R 2 11 2 14) (Just HkRead)
+            [ DocumentHighlight (R 2 7 2 10) (Just HkRead)
+            , DocumentHighlight (R 3 11 3 14) (Just HkRead)
             ]
   , testSessionWait "local" $ do
     doc <- createDoc "A.hs" "haskell" source
     _ <- waitForDiagnostics
-    highlights <- getHighlights doc (Position 5 5)
+    highlights <- getHighlights doc (Position 6 5)
     liftIO $ highlights @?=
-            [ DocumentHighlight (R 5 4 5 7) (Just HkWrite)
-            , DocumentHighlight (R 5 10 5 13) (Just HkRead)
-            , DocumentHighlight (R 6 12 6 15) (Just HkRead)
+            [ DocumentHighlight (R 6 4 6 7) (Just HkWrite)
+            , DocumentHighlight (R 6 10 6 13) (Just HkRead)
+            , DocumentHighlight (R 7 12 7 15) (Just HkRead)
             ]
   , testSessionWait "record" $ do
     doc <- createDoc "A.hs" "haskell" recsource
     _ <- waitForDiagnostics
-    highlights <- getHighlights doc (Position 3 15)
+    highlights <- getHighlights doc (Position 4 15)
     liftIO $ highlights @?=
       -- Span is just the .. on 8.10, but Rec{..} before
 #if MIN_GHC_API_VERSION(8,10,0)
-            [ DocumentHighlight (R 3 8 3 10) (Just HkWrite)
+            [ DocumentHighlight (R 4 8 4 10) (Just HkWrite)
 #else
-            [ DocumentHighlight (R 3 4 3 11) (Just HkWrite)
+            [ DocumentHighlight (R 4 4 4 11) (Just HkWrite)
 #endif
-            , DocumentHighlight (R 3 14 3 20) (Just HkRead)
+            , DocumentHighlight (R 4 14 4 20) (Just HkRead)
             ]
-    highlights <- getHighlights doc (Position 2 17)
+    highlights <- getHighlights doc (Position 3 17)
     liftIO $ highlights @?=
-            [ DocumentHighlight (R 2 17 2 23) (Just HkWrite)
+            [ DocumentHighlight (R 3 17 3 23) (Just HkWrite)
       -- Span is just the .. on 8.10, but Rec{..} before
 #if MIN_GHC_API_VERSION(8,10,0)
-            , DocumentHighlight (R 3 8 3 10) (Just HkRead)
+            , DocumentHighlight (R 4 8 4 10) (Just HkRead)
 #else
-            , DocumentHighlight (R 3 4 3 11) (Just HkRead)
+            , DocumentHighlight (R 4 4 4 11) (Just HkRead)
 #endif
             ]
   ]
   where
     source = T.unlines
-      ["module Highlight where"
+      ["{-# OPTIONS_GHC -Wunused-binds #-}"
+      ,"module Highlight () where"
       ,"foo :: Int"
       ,"foo = 3 :: Int"
       ,"bar = foo"
@@ -2929,7 +2913,8 @@ highlightTests = testGroup "highlight"
       ]
     recsource = T.unlines
       ["{-# LANGUAGE RecordWildCards #-}"
-      ,"module Highlight where"
+      ,"{-# OPTIONS_GHC -Wunused-binds #-}"
+      ,"module Highlight () where"
       ,"data Rec = Rec { field1 :: Int, field2 :: Char }"
       ,"foo Rec{..} = field2 + field1"
       ]
@@ -3115,13 +3100,6 @@ pattern R x y x' y' = Range (Position x y) (Position x' y')
 xfail :: TestTree -> String -> TestTree
 xfail = flip expectFailBecause
 
-expectFailCabal :: String -> TestTree -> TestTree
-#ifdef STACK
-expectFailCabal _ = id
-#else
-expectFailCabal = expectFailBecause
-#endif
-
 ignoreTest8101 :: String -> TestTree -> TestTree
 ignoreTest8101
   | GHC_API_VERSION == ("8.10.1" :: String) = ignoreTestBecause
@@ -3225,6 +3203,7 @@ cradleTests = testGroup "cradle"
     ,testGroup "ignore-fatal" [ignoreFatalWarning]
     ,testGroup "loading" [loadCradleOnlyonce]
     ,testGroup "multi"   [simpleMultiTest, simpleMultiTest2]
+    ,testGroup "sub-directory"   [simpleSubDirectoryTest]
     ]
 
 loadCradleOnlyonce :: TestTree
@@ -3294,33 +3273,26 @@ cradleLoadedMessage = satisfy $ \case
 cradleLoadedMethod :: T.Text
 cradleLoadedMethod = "ghcide/cradle/loaded"
 
--- Stack sets this which trips up cabal in the multi-component tests.
--- However, our plugin tests rely on those env vars so we unset it locally.
-withoutStackEnv :: IO a -> IO a
-withoutStackEnv s =
-  bracket
-    (mapM getEnv vars >>= \prevState -> mapM_ unsetEnv vars >> pure prevState)
-    (\prevState -> mapM_ (\(var, value) -> restore var value) (zip vars prevState))
-    (const s)
-  where vars =
-          [ "GHC_PACKAGE_PATH"
-          , "GHC_ENVIRONMENT"
-          , "HASKELL_DIST_DIR"
-          , "HASKELL_PACKAGE_SANDBOX"
-          , "HASKELL_PACKAGE_SANDBOXES"
-          ]
-        restore var Nothing = unsetEnv var
-        restore var (Just val) = setEnv var val True
-
 ignoreFatalWarning :: TestTree
-ignoreFatalWarning = testCase "ignore-fatal-warning" $ withoutStackEnv $ runWithExtraFiles "ignore-fatal" $ \dir -> do
+ignoreFatalWarning = testCase "ignore-fatal-warning" $ runWithExtraFiles "ignore-fatal" $ \dir -> do
     let srcPath = dir </> "IgnoreFatal.hs"
     src <- liftIO $ readFileUtf8 srcPath
     _ <- createDoc srcPath "haskell" src
     expectNoMoreDiagnostics 5
 
+simpleSubDirectoryTest :: TestTree
+simpleSubDirectoryTest =
+  testCase "simple-subdirectory" $ runWithExtraFiles "cabal-exe" $ \dir -> do
+    let mainPath = dir </> "a/src/Main.hs"
+    mainSource <- liftIO $ readFileUtf8 mainPath
+    _mdoc <- createDoc mainPath "haskell" mainSource
+    expectDiagnosticsWithTags
+      [("a/src/Main.hs", [(DsWarning,(2,0), "Top-level binding", Nothing)]) -- So that we know P has been loaded
+      ]
+    expectNoMoreDiagnostics 0.5
+
 simpleMultiTest :: TestTree
-simpleMultiTest = testCase "simple-multi-test" $ withoutStackEnv $ runWithExtraFiles "multi" $ \dir -> do
+simpleMultiTest = testCase "simple-multi-test" $ runWithExtraFiles "multi" $ \dir -> do
     let aPath = dir </> "a/A.hs"
         bPath = dir </> "b/B.hs"
     aSource <- liftIO $ readFileUtf8 aPath
@@ -3336,7 +3308,7 @@ simpleMultiTest = testCase "simple-multi-test" $ withoutStackEnv $ runWithExtraF
 
 -- Like simpleMultiTest but open the files in the other order
 simpleMultiTest2 :: TestTree
-simpleMultiTest2 = testCase "simple-multi-test2" $ withoutStackEnv $ runWithExtraFiles "multi" $ \dir -> do
+simpleMultiTest2 = testCase "simple-multi-test2" $ runWithExtraFiles "multi" $ \dir -> do
     let aPath = dir </> "a/A.hs"
         bPath = dir </> "b/B.hs"
     bSource <- liftIO $ readFileUtf8 bPath
@@ -3361,7 +3333,7 @@ ifaceTests = testGroup "Interface loading tests"
     ]
 
 bootTests :: TestTree
-bootTests = testCase "boot-def-test" $ withoutStackEnv $ runWithExtraFiles "boot" $ \dir -> do
+bootTests = testCase "boot-def-test" $ runWithExtraFiles "boot" $ \dir -> do
   let cPath = dir </> "C.hs"
   cSource <- liftIO $ readFileUtf8 cPath
 
@@ -3378,7 +3350,7 @@ bootTests = testCase "boot-def-test" $ withoutStackEnv $ runWithExtraFiles "boot
 
 -- | test that TH reevaluates across interfaces
 ifaceTHTest :: TestTree
-ifaceTHTest = testCase "iface-th-test" $ withoutStackEnv $ runWithExtraFiles "TH" $ \dir -> do
+ifaceTHTest = testCase "iface-th-test" $ runWithExtraFiles "TH" $ \dir -> do
     let aPath = dir </> "THA.hs"
         bPath = dir </> "THB.hs"
         cPath = dir </> "THC.hs"
@@ -3400,7 +3372,7 @@ ifaceTHTest = testCase "iface-th-test" $ withoutStackEnv $ runWithExtraFiles "TH
     closeDoc cdoc
 
 ifaceErrorTest :: TestTree
-ifaceErrorTest = testCase "iface-error-test-1" $ withoutStackEnv $ runWithExtraFiles "recomp" $ \dir -> do
+ifaceErrorTest = testCase "iface-error-test-1" $ runWithExtraFiles "recomp" $ \dir -> do
     let bPath = dir </> "B.hs"
         pPath = dir </> "P.hs"
 
@@ -3408,11 +3380,8 @@ ifaceErrorTest = testCase "iface-error-test-1" $ withoutStackEnv $ runWithExtraF
     pSource <- liftIO $ readFileUtf8 pPath -- bar = x :: Int
 
     bdoc <- createDoc bPath "haskell" bSource
-    expectDiagnosticsWithTags
-      [("P.hs", [(DsWarning,(4,0), "Top-level binding", Nothing)]) -- So what we know P has been loaded
-      ,("P.hs", [(DsInfo,(2,0), "The import of", Just DtUnnecessary)])
-      ,("P.hs", [(DsInfo,(4,0), "Defined but not used", Just DtUnnecessary)])
-      ]
+    expectDiagnostics
+      [("P.hs", [(DsWarning,(4,0), "Top-level binding")])] -- So what we know P has been loaded
 
     -- Change y from Int to B
     changeDoc bdoc [TextDocumentContentChangeEvent Nothing Nothing $ T.unlines ["module B where", "y :: Bool", "y = undefined"]]
@@ -3443,16 +3412,14 @@ ifaceErrorTest = testCase "iface-error-test-1" $ withoutStackEnv $ runWithExtraF
     -- This is clearly inconsistent, and the expected outcome a bit surprising:
     --   - The diagnostic for A has already been received. Ghcide does not repeat diagnostics
     --   - P is being typechecked with the last successful artifacts for A.
-    expectDiagnosticsWithTags
-      [("P.hs", [(DsWarning,(4,0), "Top-level binding", Nothing)])
-      ,("P.hs", [(DsWarning,(6,0), "Top-level binding", Nothing)])
-      ,("P.hs", [(DsInfo,(4,0), "Defined but not used", Just DtUnnecessary)])
-      ,("P.hs", [(DsInfo,(6,0), "Defined but not used", Just DtUnnecessary)])
+    expectDiagnostics
+      [("P.hs", [(DsWarning,(4,0), "Top-level binding")])
+      ,("P.hs", [(DsWarning,(6,0), "Top-level binding")])
       ]
     expectNoMoreDiagnostics 2
 
 ifaceErrorTest2 :: TestTree
-ifaceErrorTest2 = testCase "iface-error-test-2" $ withoutStackEnv $ runWithExtraFiles "recomp" $ \dir -> do
+ifaceErrorTest2 = testCase "iface-error-test-2" $ runWithExtraFiles "recomp" $ \dir -> do
     let bPath = dir </> "B.hs"
         pPath = dir </> "P.hs"
 
@@ -3461,11 +3428,8 @@ ifaceErrorTest2 = testCase "iface-error-test-2" $ withoutStackEnv $ runWithExtra
 
     bdoc <- createDoc bPath "haskell" bSource
     pdoc <- createDoc pPath "haskell" pSource
-    expectDiagnosticsWithTags
-      [("P.hs", [(DsWarning,(4,0), "Top-level binding", Nothing)]) -- So that we know P has been loaded
-      ,("P.hs", [(DsInfo,(2,0), "The import of", Just DtUnnecessary)])
-      ,("P.hs", [(DsInfo,(4,0), "Defined but not used", Just DtUnnecessary)])
-      ]
+    expectDiagnostics
+      [("P.hs", [(DsWarning,(4,0), "Top-level binding")])] -- So that we know P has been loaded
 
     -- Change y from Int to B
     changeDoc bdoc [TextDocumentContentChangeEvent Nothing Nothing $ T.unlines ["module B where", "y :: Bool", "y = undefined"]]
@@ -3477,20 +3441,18 @@ ifaceErrorTest2 = testCase "iface-error-test-2" $ withoutStackEnv $ runWithExtra
     -- foo = y :: Bool
     -- HOWEVER, in A...
     -- x = y  :: Int
-    expectDiagnosticsWithTags
+    expectDiagnostics
     -- As in the other test, P is being typechecked with the last successful artifacts for A
     -- (ot thanks to -fdeferred-type-errors)
-      [("A.hs", [(DsError, (5, 4), "Couldn't match expected type 'Int' with actual type 'Bool'", Nothing)])
-      ,("P.hs", [(DsWarning, (4, 0), "Top-level binding", Nothing)])
-      ,("P.hs", [(DsInfo, (4,0), "Defined but not used", Just DtUnnecessary)])
-      ,("P.hs", [(DsWarning, (6, 0), "Top-level binding", Nothing)])
-      ,("P.hs", [(DsInfo, (6,0), "Defined but not used", Just DtUnnecessary)])
+      [("A.hs", [(DsError, (5, 4), "Couldn't match expected type 'Int' with actual type 'Bool'")])
+      ,("P.hs", [(DsWarning, (4, 0), "Top-level binding")])
+      ,("P.hs", [(DsWarning, (6, 0), "Top-level binding")])
       ]
 
     expectNoMoreDiagnostics 2
 
 ifaceErrorTest3 :: TestTree
-ifaceErrorTest3 = testCase "iface-error-test-3" $ withoutStackEnv $ runWithExtraFiles "recomp" $ \dir -> do
+ifaceErrorTest3 = testCase "iface-error-test-3" $ runWithExtraFiles "recomp" $ \dir -> do
     let bPath = dir </> "B.hs"
         pPath = dir </> "P.hs"
 
@@ -3507,11 +3469,9 @@ ifaceErrorTest3 = testCase "iface-error-test-3" $ withoutStackEnv $ runWithExtra
 
     -- In this example the interface file for A should not exist (modulo the cache folder)
     -- Despite that P still type checks, as we can generate an interface file for A thanks to -fdeferred-type-errors
-    expectDiagnosticsWithTags
-      [("A.hs", [(DsError, (5, 4), "Couldn't match expected type 'Int' with actual type 'Bool'", Nothing)])
-      ,("P.hs", [(DsWarning,(4,0), "Top-level binding", Nothing)])
-      ,("P.hs", [(DsInfo,(2,0), "The import of", Just DtUnnecessary)])
-      ,("P.hs", [(DsInfo,(4,0), "Defined but not used", Just DtUnnecessary)])
+    expectDiagnostics
+      [("A.hs", [(DsError, (5, 4), "Couldn't match expected type 'Int' with actual type 'Bool'")])
+      ,("P.hs", [(DsWarning,(4,0), "Top-level binding")])
       ]
     expectNoMoreDiagnostics 2
 
@@ -3561,21 +3521,20 @@ nonLspCommandLine = testGroup "ghcide command line"
 
         setEnv "HOME" "/homeless-shelter" False
 
-        (ec, _, _) <- withoutStackEnv $ readCreateProcessWithExitCode cmd ""
+        (ec, _, _) <- readCreateProcessWithExitCode cmd ""
 
         ec @=? ExitSuccess
   ]
 
 benchmarkTests :: TestTree
--- These tests require stack and will fail with cabal test
 benchmarkTests =
     let ?config = Bench.defConfig
             { Bench.verbosity = Bench.Quiet
             , Bench.repetitions = Just 3
-            , Bench.buildTool = Bench.Stack
+            , Bench.buildTool = Bench.Cabal
             } in
     withResource Bench.setup Bench.cleanUp $ \getResource -> testGroup "benchmark experiments"
-    [ expectFailCabal "Requires stack" $ testCase (Bench.name e) $ do
+    [ testCase (Bench.name e) $ do
         Bench.SetupResult{Bench.benchDir} <- getResource
         res <- Bench.runBench (runInDir benchDir) e
         assertBool "did not successfully complete 5 repetitions" $ Bench.success res
@@ -3585,7 +3544,7 @@ benchmarkTests =
 
 -- | checks if we use InitializeParams.rootUri for loading session
 rootUriTests :: TestTree
-rootUriTests = testCase "use rootUri" . withoutStackEnv . runTest "dirA" "dirB" $ \dir -> do
+rootUriTests = testCase "use rootUri" . runTest "dirA" "dirB" $ \dir -> do
   let bPath = dir </> "dirB/Foo.hs"
   liftIO $ copyTestDataFiles dir "rootUri"
   bSource <- liftIO $ readFileUtf8 bPath
