@@ -1083,22 +1083,22 @@ extendImportTests = testGroup "extend import actions"
             , "main = print (stuffA, stuffB)"
             ])
   , testSession "extend import list with multiple choices" $ template
-      [("ModuleA.hs", (T.unlines
+      [("ModuleA.hs", T.unlines
             --  this is just a dummy module to help the arguments needed for this test
             [  "module ModuleA (bar) where"
              , "bar = 10"
-               ])),
-      ("ModuleB.hs", (T.unlines
+               ]),
+      ("ModuleB.hs", T.unlines
             --  this is just a dummy module to help the arguments needed for this test
             [  "module ModuleB (bar) where"
              , "bar = 10"
-               ]))]
-      ("ModuleC.hs", (T.unlines
+               ])]
+      ("ModuleC.hs", T.unlines
             [ "module ModuleC where"
             , "import ModuleB ()"
             , "import ModuleA ()"
             , "foo = bar"
-            ]))
+            ])
       (Range (Position 3 17) (Position 3 18))
       ["Add bar to the import list of ModuleA",
        "Add bar to the import list of ModuleB"]
