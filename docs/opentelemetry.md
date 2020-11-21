@@ -49,7 +49,7 @@ cabal install openetelemetry-extra
 
 ### Building tracy
 
-1. Install the dependencies: `pkg-config, glfw, freetype, capstone, GTK3`, along
+1. Install the dependencies: `pkg-config` and `glfw, freetype, capstone, GTK3`, along
    with their header files (`<pkgname>-dev` on most distros. On Arch the header
    files are included with the normal packages).
 2. Download tracy from https://github.com/wolfpld/tracy
