@@ -1,5 +1,5 @@
-resolver: nightly-2020-09-02
-allow-newer: true
+resolver: nightly-2020-06-19
+
 packages:
 - .
 - ./hie-compat/
@@ -30,6 +30,3 @@ extra-deps:
 
 nix:
   packages: [zlib]
-
-ghc-options:
-  ghcide: -DSTACK
