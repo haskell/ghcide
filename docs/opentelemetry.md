@@ -56,11 +56,11 @@ cabal install openetelemetry-extra
 3. `cd` into the directory containing the source you downloaded
 4. Build the `import-chrome` and `Tracy` libraries:
    ```sh
-   make -C profiler/build/unix
-   make -C import-chrome/build/unix
+   make -C profiler/build/unix release
+   make -C import-chrome/build/unix release
    ```
 5. Copy the binaries to your `$PATH`:
    ```sh
-   cp profiler/build/unix/Tracy-debug ~/.local/bin/Tracy
-   cp import-chrome/build/unix/import-chrome-debug ~/.local/bin/import-chrome
+   cp profiler/build/unix/Tracy-release ~/.local/bin/Tracy
+   cp import-chrome/build/unix/import-chrome-release ~/.local/bin/import-chrome
    ```
