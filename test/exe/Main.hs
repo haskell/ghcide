@@ -977,14 +977,14 @@ removeImportTests = testGroup "remove import actions"
 extendImportTests :: TestTree
 extendImportTests = testGroup "extend import actions"
   [ testSession "extend single line import with value" $ template
-      (T.unlines
+      [("ModuleA.hs", T.unlines
             [ "module ModuleA where"
             , "stuffA :: Double"
             , "stuffA = 0.00750"
             , "stuffB :: Integer"
             , "stuffB = 123"
-            ])
-      (T.unlines
+            ])]
+      ("ModuleB.hs", T.unlines
             [ "module ModuleB where"
             , "import ModuleA as A (stuffB)"
             , "main = print (stuffA, stuffB)"
@@ -997,14 +997,14 @@ extendImportTests = testGroup "extend import actions"
             , "main = print (stuffA, stuffB)"
             ])
   , testSession "extend single line import with operator" $ template
-      (T.unlines
+      [("ModuleA.hs", T.unlines
             [ "module ModuleA where"
             , "(.*) :: Integer -> Integer -> Integer"
             , "x .* y = x * y"
             , "stuffB :: Integer"
             , "stuffB = 123"
-            ])
-      (T.unlines
+            ])]
+      ("ModuleB.hs", T.unlines
             [ "module ModuleB where"
             , "import ModuleA as A (stuffB)"
             , "main = print (stuffB .* stuffB)"
@@ -1017,11 +1017,11 @@ extendImportTests = testGroup "extend import actions"
             , "main = print (stuffB .* stuffB)"
             ])
   , testSession "extend single line import with type" $ template
-      (T.unlines
+      [("ModuleA.hs", T.unlines
             [ "module ModuleA where"
             , "type A = Double"
-            ])
-      (T.unlines
+            ])]
+      ("ModuleB.hs", T.unlines
             [ "module ModuleB where"
             , "import ModuleA ()"
             , "b :: A"
@@ -1036,11 +1036,11 @@ extendImportTests = testGroup "extend import actions"
             , "b = 0"
             ])
   ,  (`xfail` "known broken") $ testSession "extend single line import with constructor" $ template
-      (T.unlines
+      [("ModuleA.hs", T.unlines
             [ "module ModuleA where"
             , "data A = Constructor"
-            ])
-      (T.unlines
+            ])]
+      ("ModuleB.hs", T.unlines
             [ "module ModuleB where"
             , "import ModuleA (A)"
             , "b :: A"
@@ -1055,14 +1055,14 @@ extendImportTests = testGroup "extend import actions"
             , "b = Constructor"
             ])
   , testSession "extend single line qualified import with value" $ template
-      (T.unlines
+      [("ModuleA.hs", T.unlines
             [ "module ModuleA where"
             , "stuffA :: Double"
             , "stuffA = 0.00750"
             , "stuffB :: Integer"
             , "stuffB = 123"
-            ])
-      (T.unlines
+            ])]
+      ("ModuleB.hs", T.unlines
             [ "module ModuleB where"
             , "import qualified ModuleA as A (stuffB)"
             , "main = print (A.stuffA, A.stuffB)"
@@ -1075,14 +1075,14 @@ extendImportTests = testGroup "extend import actions"
             , "main = print (A.stuffA, A.stuffB)"
             ])
   , testSession "extend multi line import with value" $ template
-      (T.unlines
+      [("ModuleA.hs", T.unlines
             [ "module ModuleA where"
             , "stuffA :: Double"
             , "stuffA = 0.00750"
             , "stuffB :: Integer"
             , "stuffB = 123"
-            ])
-      (T.unlines
+            ])]
+      ("ModuleB.hs", T.unlines
             [ "module ModuleB where"
             , "import ModuleA (stuffB"
             , "               )"
@@ -1097,31 +1097,36 @@ extendImportTests = testGroup "extend import actions"
             , "main = print (stuffA, stuffB)"
             ])
   , testSession "extend import list with multiple choices" $ template
-      (T.unlines
+      [("ModuleA.hs", (T.unlines
             --  this is just a dummy module to help the arguments needed for this test
-            [ "module ModuleA where ",
-              "bar = 10"
-               ])
-      (T.unlines
-            [ "module ModuleB where"
-            , "import Data.Map ()"
-            , "import Data.HashMap.Strict ()"
-            , "foo = fromList []"
-            ])
+            [  "module ModuleA (bar) where"
+             , "bar = 10"
+               ])),
+      ("ModuleB.hs", (T.unlines
+            --  this is just a dummy module to help the arguments needed for this test
+            [  "module ModuleB (bar) where"
+             , "bar = 10"
+               ]))]
+      ("ModuleC.hs", (T.unlines
+            [ "module ModuleC where"
+            , "import ModuleB ()"
+            , "import ModuleA ()"
+            , "foo = bar"
+            ]))
       (Range (Position 3 17) (Position 3 18))
-      ["Add fromList to the import list of Data.Map",
-       "Add fromList to the import list of Data.HashMap.Strict"]
+      ["Add bar to the import list of ModuleA",
+       "Add bar to the import list of ModuleB"]
       (T.unlines
-            [ "module ModuleB where"
-            , "import Data.Map ()"
-            , "import Data.HashMap.Strict (fromList)"
-            , "foo = fromList []"
+            [ "module ModuleC where"
+            , "import ModuleB ()"
+            , "import ModuleA (bar)"
+            , "foo = bar"
             ])
   ]
   where
-    template contentA contentB range expectedActions expectedContentB = do
-      _docA <- createDoc "ModuleA.hs" "haskell" contentA
-      docB <- createDoc "ModuleB.hs" "haskell" contentB
+    template setUpModules moduleUnderTest range expectedActions expectedContentB = do
+      mapM_ (\x -> createDoc (fst x) "haskell" (snd x)) setUpModules
+      docB <- createDoc (fst moduleUnderTest) "haskell" (snd moduleUnderTest)
       _  <- waitForDiagnostics
       codeActions <- filter (\(CACodeAction CodeAction{_title=x}) -> T.isPrefixOf "Add" x)
           <$>  getCodeActions docB range
