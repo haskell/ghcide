@@ -48,10 +48,13 @@ documented = Left 7518
 listOfInt = [ 8391 :: Int, 6268 ]
 
 outer :: Bool
-outer = undefined where
+outer = undefined inner where
 
   inner :: Char
   inner = undefined
 
 imported :: Bar
 imported = foo
+
+hole :: Int
+hole = _

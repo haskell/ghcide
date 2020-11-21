@@ -109,6 +109,7 @@ runLanguageServer options userHandlers onInitialConfig onConfigChange getIdeStat
             initializeRequestHandler <>
             setHandlersIgnore <> -- least important
             setHandlersDefinition <> setHandlersHover <> setHandlersTypeDefinition <>
+            setHandlersDocHighlight <>
             setHandlersOutline <>
             userHandlers <>
             setHandlersNotifications <> -- absolutely critical, join them with user notifications
@@ -207,14 +208,16 @@ initHandler
     -> IdeState
     -> InitializeParams
     -> IO ()
-initHandler _ ide params = registerIdeConfiguration (shakeExtras ide) (parseConfiguration params)
+initHandler _ ide params = do
+    let initConfig = parseConfiguration params
+    logInfo (ideLogger ide) $ T.pack $ "Registering ide configuration: " <> show initConfig
+    registerIdeConfiguration (shakeExtras ide) initConfig
 
 -- | Things that get sent to us, but we don't deal with.
 --   Set them to avoid a warning in VS Code output.
 setHandlersIgnore :: PartialHandlers config
 setHandlersIgnore = PartialHandlers $ \_ x -> return x
-    {LSP.initializedHandler = none
-    ,LSP.responseHandler = none
+    {LSP.responseHandler = none
     }
     where none = Just $ const $ return ()
 

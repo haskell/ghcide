@@ -10,23 +10,19 @@ module Development.IDE.Plugin.Completions.Logic (
 ) where
 
 import Control.Applicative
-import Data.Char (isSpace, isUpper)
+import Data.Char (isUpper)
 import Data.Generics
 import Data.List.Extra as List hiding (stripPrefix)
 import qualified Data.Map  as Map
 import Data.Maybe (fromMaybe, mapMaybe)
-import qualified Data.Maybe as UnsafeMaybe (fromJust)
 import qualified Data.Text as T
 import qualified Text.Fuzzy as Fuzzy
 
 import HscTypes
 import Name
 import RdrName
-import TcRnTypes
 import Type
-import Var
 import Packages
-import DynFlags
 #if MIN_GHC_API_VERSION(8,10,0)
 import Predicate (isDictTy)
 import GHC.Platform
@@ -41,6 +37,7 @@ import Development.IDE.Core.Compile
 import Development.IDE.Core.PositionMapping
 import Development.IDE.Plugin.Completions.Types
 import Development.IDE.Spans.Documentation
+import Development.IDE.Spans.LocalBindings
 import Development.IDE.GHC.Compat as GHC
 import Development.IDE.GHC.Error
 import Development.IDE.Types.Options
@@ -147,14 +144,17 @@ mkCompl IdeOptions{..} CI{compKind,insertText, importedFrom,typeText,label,docs}
     Nothing Nothing Nothing Nothing (Just insertText) (Just Snippet)
     Nothing Nothing Nothing Nothing Nothing
   where kind = Just compKind
-        docs' = ("*Defined in '" <> importedFrom <> "'*\n") : spanDocToMarkdown docs
+        docs' = imported : spanDocToMarkdown docs
+        imported = case importedFrom of
+          Left pos -> "*Defined at '" <> ppr pos <> "'*\n'"
+          Right mod -> "*Defined in '" <> mod <> "'*\n"
         colon = if optNewColonConvention then ": " else ":: "
 
 mkNameCompItem :: Name -> ModuleName -> Maybe Type -> Maybe Backtick -> SpanDoc -> CompItem
 mkNameCompItem origName origMod thingType isInfix docs = CI{..}
   where
     compKind = occNameToComKind typeText $ occName origName
-    importedFrom = showModName origMod
+    importedFrom = Right $ showModName origMod
     isTypeCompl = isTcOcc $ occName origName
     label = T.pack $ showGhc origName
     insertText = case isInfix of
@@ -229,13 +229,10 @@ mkPragmaCompl label insertText =
     Nothing Nothing Nothing Nothing Nothing (Just insertText) (Just Snippet)
     Nothing Nothing Nothing Nothing Nothing
 
-cacheDataProducer :: HscEnv -> TypecheckedModule -> [ParsedModule] -> IO CachedCompletions
-cacheDataProducer packageState tm deps = do
-  let parsedMod = tm_parsed_module tm
-      dflags = hsc_dflags packageState
-      curMod = ms_mod $ pm_mod_summary parsedMod
+cacheDataProducer :: HscEnv -> Module -> GlobalRdrEnv -> [LImportDecl GhcPs] -> [ParsedModule] -> IO CachedCompletions
+cacheDataProducer packageState curMod rdrEnv limports deps = do
+  let dflags = hsc_dflags packageState
       curModName = moduleName curMod
-      (_,limports,_,_) = UnsafeMaybe.fromJust $ tm_renamed_source tm -- safe because we always save the typechecked source
 
       iDeclToModName :: ImportDecl name -> ModuleName
       iDeclToModName = unLoc . ideclName
@@ -251,8 +248,6 @@ cacheDataProducer packageState tm deps = do
       -- The given namespaces for the imported modules (ie. full name, or alias if used)
       allModNamesAsNS = map (showModName . asNamespace) importDeclerations
 
-      typeEnv = tcg_type_env $ fst $ tm_internals_ tm
-      rdrEnv = tcg_rdr_env $ fst $ tm_internals_ tm
       rdrElts = globalRdrEnvElts rdrEnv
 
       foldMapM :: (Foldable f, Monad m, Monoid b) => (a -> m b) -> f a -> m b
@@ -264,11 +259,7 @@ cacheDataProducer packageState tm deps = do
 
       getComplsForOne :: GlobalRdrElt -> IO ([CompItem],QualCompls)
       getComplsForOne (GRE n _ True _) =
-        case lookupTypeEnv typeEnv n of
-          Just tt -> case safeTyThingId tt of
-            Just var -> (\x -> ([x],mempty)) <$> varToCompl var
-            Nothing -> (\x -> ([x],mempty)) <$> toCompItem curMod curModName n
-          Nothing -> (\x -> ([x],mempty)) <$> toCompItem curMod curModName n
+        (\x -> ([x],mempty)) <$> toCompItem curMod curModName n
       getComplsForOne (GRE n _ False prov) =
         flip foldMapM (map is_decl prov) $ \spec -> do
           compItem <- toCompItem curMod (is_mod spec) n
@@ -282,18 +273,11 @@ cacheDataProducer packageState tm deps = do
               origMod = showModName (is_mod spec)
           return (unqual,QualCompls qual)
 
-      varToCompl :: Var -> IO CompItem
-      varToCompl var = do
-        let typ = Just $ varType var
-            name = Var.varName var
-        docs <- evalGhcEnv packageState $ getDocumentationTryGhc curMod (tm_parsed_module tm : deps) name
-        return $ mkNameCompItem name curModName typ Nothing docs
-
       toCompItem :: Module -> ModuleName -> Name -> IO CompItem
       toCompItem m mn n = do
-        docs <- evalGhcEnv packageState $ getDocumentationTryGhc curMod (tm_parsed_module tm : deps) n
-        ty <- evalGhcEnv packageState $ catchSrcErrors "completion" $ do
-                name' <- lookupName m n
+        docs <- getDocumentationTryGhc packageState curMod deps n
+        ty <- catchSrcErrors (hsc_dflags packageState) "completion" $ do
+                name' <- lookupName packageState m n
                 return $ name' >>= safeTyThingType
         return $ mkNameCompItem n mn (either (const Nothing) id ty) Nothing docs
 
@@ -317,49 +301,49 @@ localCompletionsForParsedModule pm@ParsedModule{pm_parsed_source = L _ HsModule{
   where
     typeSigIds = Set.fromList
         [ id
-            | L _ (SigD (TypeSig ids _)) <- hsmodDecls
+            | L _ (SigD _ (TypeSig _ ids _)) <- hsmodDecls
             , L _ id <- ids
             ]
     hasTypeSig = (`Set.member` typeSigIds) . unLoc
 
     compls = concat
         [ case decl of
-            SigD (TypeSig ids typ) ->
+            SigD _ (TypeSig _ ids typ) ->
                 [mkComp id CiFunction (Just $ ppr typ) | id <- ids]
-            ValD FunBind{fun_id} ->
+            ValD _ FunBind{fun_id} ->
                 [ mkComp fun_id CiFunction Nothing
                 | not (hasTypeSig fun_id)
                 ]
-            ValD PatBind{pat_lhs} ->
+            ValD _ PatBind{pat_lhs} ->
                 [mkComp id CiVariable Nothing
-                | VarPat id <- listify (\(_ :: Pat GhcPs) -> True) pat_lhs]
-            TyClD ClassDecl{tcdLName, tcdSigs} ->
+                | VarPat _ id <- listify (\(_ :: Pat GhcPs) -> True) pat_lhs]
+            TyClD _ ClassDecl{tcdLName, tcdSigs} ->
                 mkComp tcdLName CiClass Nothing :
                 [ mkComp id CiFunction (Just $ ppr typ)
-                | L _ (TypeSig ids typ) <- tcdSigs
+                | L _ (TypeSig _ ids typ) <- tcdSigs
                 , id <- ids]
-            TyClD x ->
+            TyClD _ x ->
                 [mkComp id cl Nothing
                 | id <- listify (\(_ :: Located(IdP GhcPs)) -> True) x
                 , let cl = occNameToComKind Nothing (rdrNameOcc $ unLoc id)]
-            ForD ForeignImport{fd_name,fd_sig_ty} ->
+            ForD _ ForeignImport{fd_name,fd_sig_ty} ->
                 [mkComp fd_name CiVariable (Just $ ppr fd_sig_ty)]
-            ForD ForeignExport{fd_name,fd_sig_ty} ->
+            ForD _ ForeignExport{fd_name,fd_sig_ty} ->
                 [mkComp fd_name CiVariable (Just $ ppr fd_sig_ty)]
             _ -> []
             | L _ decl <- hsmodDecls
         ]
 
     mkComp n ctyp ty =
-        CI ctyp pn thisModName ty pn Nothing doc (ctyp `elem` [CiStruct, CiClass])
+        CI ctyp pn (Right thisModName) ty pn Nothing doc (ctyp `elem` [CiStruct, CiClass])
       where
         pn = ppr n
         doc = SpanDocText (getDocumentation [pm] n) (SpanDocUris Nothing Nothing)
 
     thisModName = ppr hsmodName
 
-    ppr :: Outputable a => a -> T.Text
-    ppr = T.pack . prettyPrint
+ppr :: Outputable a => a -> T.Text
+ppr = T.pack . prettyPrint
 
 newtype WithSnippets = WithSnippets Bool
 
@@ -375,15 +359,15 @@ toggleSnippets ClientCapabilities { _textDocument } (WithSnippets with) x
 getCompletions
     :: IdeOptions
     -> CachedCompletions
-    -> ParsedModule
-    -> PositionMapping     -- ^ map current position to position in parsed module
+    -> Maybe (ParsedModule, PositionMapping)
+    -> (Bindings, PositionMapping)
     -> VFS.PosPrefixInfo
     -> ClientCapabilities
     -> WithSnippets
     -> IO [CompletionItem]
-getCompletions ideOpts cc pm pmapping prefixInfo caps withSnippets = do
-  let CC { allModNamesAsNS, unqualCompls, qualCompls, importableModules } = cc
-      VFS.PosPrefixInfo { VFS.fullLine, VFS.prefixModule, VFS.prefixText } = prefixInfo
+getCompletions ideOpts CC { allModNamesAsNS, unqualCompls, qualCompls, importableModules}
+               maybe_parsed (localBindings, bmapping) prefixInfo caps withSnippets = do
+  let VFS.PosPrefixInfo { fullLine, prefixModule, prefixText } = prefixInfo
       enteredQual = if T.null prefixModule then "" else prefixModule <> "."
       fullPrefix  = enteredQual <> prefixText
 
@@ -392,19 +376,7 @@ getCompletions ideOpts cc pm pmapping prefixInfo caps withSnippets = do
           to                             'foo :: Int -> String ->    '
                                                               ^
       -}
-      pos =
-        let Position l c = VFS.cursorPos prefixInfo
-            typeStuff = [isSpace, (`elem` (">-." :: String))]
-            stripTypeStuff = T.dropWhileEnd (\x -> any (\f -> f x) typeStuff)
-            -- if oldPos points to
-            -- foo -> bar -> baz
-            --    ^
-            -- Then only take the line up to there, discard '-> bar -> baz'
-            partialLine = T.take c fullLine
-            -- drop characters used when writing incomplete type sigs
-            -- like '-> '
-            d = T.length fullLine - T.length (stripTypeStuff partialLine)
-        in Position l (c - d)
+      pos = VFS.cursorPos prefixInfo
 
       filtModNameCompls =
         map mkModCompl
@@ -413,9 +385,15 @@ getCompletions ideOpts cc pm pmapping prefixInfo caps withSnippets = do
 
       filtCompls = map Fuzzy.original $ Fuzzy.filter prefixText ctxCompls "" "" label False
         where
-          mcc = do
-              position' <- fromCurrentPosition pmapping pos
-              getCContext position' pm
+
+          mcc = case maybe_parsed of
+            Nothing -> Nothing
+            Just (pm, pmapping) ->
+              let PositionMapping pDelta = pmapping
+                  position' = fromDelta pDelta pos
+                  lpos = lowerRange position'
+                  hpos = upperRange position'
+              in getCContext lpos pm <|> getCContext hpos pm
 
           -- completions specific to the current context
           ctxCompls' = case mcc of
@@ -427,10 +405,26 @@ getCompletions ideOpts cc pm pmapping prefixInfo caps withSnippets = do
           ctxCompls = map (\comp -> comp { isInfix = infixCompls }) ctxCompls'
 
           infixCompls :: Maybe Backtick
-          infixCompls = isUsedAsInfix fullLine prefixModule prefixText (VFS.cursorPos prefixInfo)
+          infixCompls = isUsedAsInfix fullLine prefixModule prefixText pos
+
+          PositionMapping bDelta = bmapping
+          oldPos = fromDelta bDelta $ VFS.cursorPos prefixInfo
+          startLoc = lowerRange oldPos
+          endLoc = upperRange oldPos
+          localCompls = map (uncurry localBindsToCompItem) $ getFuzzyScope localBindings startLoc endLoc
+          localBindsToCompItem :: Name -> Maybe Type -> CompItem
+          localBindsToCompItem name typ = CI ctyp pn thisModName ty pn Nothing emptySpanDoc (not $ isValOcc occ)
+            where
+              occ = nameOccName name
+              ctyp = occNameToComKind Nothing occ
+              pn = ppr name
+              ty = ppr <$> typ
+              thisModName = case nameModule_maybe name of
+                Nothing -> Left $ nameSrcSpan name
+                Just m -> Right $ ppr m
 
           compls = if T.null prefixModule
-            then unqualCompls
+            then localCompls ++ unqualCompls
             else Map.findWithDefault [] prefixModule $ getQualCompls qualCompls
 
       filtListWith f list =
@@ -468,18 +462,20 @@ getCompletions ideOpts cc pm pmapping prefixInfo caps withSnippets = do
         | "{-# " `T.isPrefixOf` fullLine
         = filtPragmaCompls (pragmaSuffix fullLine)
         | otherwise
-        = filtModNameCompls ++ map (toggleSnippets caps withSnippets
-                                      . mkCompl ideOpts . stripAutoGenerated) filtCompls
-                            ++ filtKeywordCompls
+        = let uniqueFiltCompls = nubOrdOn insertText filtCompls
+          in filtModNameCompls ++ map (toggleSnippets caps withSnippets
+                                         . mkCompl ideOpts . stripAutoGenerated) uniqueFiltCompls
+                               ++ filtKeywordCompls
 
   return result
+
 
 -- The supported languages and extensions
 languagesAndExts :: [T.Text]
 #if MIN_GHC_API_VERSION(8,10,0)
-languagesAndExts = map T.pack $ DynFlags.supportedLanguagesAndExtensions ( PlatformMini ArchUnknown OSUnknown )
+languagesAndExts = map T.pack $ GHC.supportedLanguagesAndExtensions ( PlatformMini ArchUnknown OSUnknown )
 #else
-languagesAndExts = map T.pack DynFlags.supportedLanguagesAndExtensions
+languagesAndExts = map T.pack GHC.supportedLanguagesAndExtensions
 #endif
 
 -- ---------------------------------------------------------------------

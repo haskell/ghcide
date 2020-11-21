@@ -9,21 +9,24 @@ module Development.IDE.Spans.Documentation (
     getDocumentation
   , getDocumentationTryGhc
   , getDocumentationsTryGhc
+  , DocMap
+  , mkDocMap
   ) where
 
 import           Control.Monad
 import           Control.Monad.Extra (findM)
+import           Data.Either
 import           Data.Foldable
 import           Data.List.Extra
 import qualified Data.Map as M
+import qualified Data.Set as S
 import           Data.Maybe
 import qualified Data.Text as T
-#if MIN_GHC_API_VERSION(8,6,0)
 import           Development.IDE.Core.Compile
-#endif
 import           Development.IDE.GHC.Compat
 import           Development.IDE.GHC.Error
 import           Development.IDE.Spans.Common
+import           Development.IDE.Core.RuleTypes
 import           System.Directory
 import           System.FilePath
 
@@ -33,34 +36,62 @@ import           GhcMonad
 import           Packages
 import           Name
 import           Language.Haskell.LSP.Types (getUri, filePathToUri)
+import           TcRnTypes
+import           ExtractDocs
+import           NameEnv
+import HscTypes (HscEnv(hsc_dflags))
 
-getDocumentationTryGhc :: GhcMonad m => Module -> [ParsedModule] -> Name -> m SpanDoc
-getDocumentationTryGhc mod deps n = head <$> getDocumentationsTryGhc mod deps [n]
+mkDocMap
+  :: HscEnv
+  -> [ParsedModule]
+  -> RefMap
+  -> TcGblEnv
+  -> IO DocAndKindMap
+mkDocMap env sources rm this_mod =
+  do let (_ , DeclDocMap this_docs, _) = extractDocs this_mod
+     d <- foldrM getDocs (mkNameEnv $ M.toList $ fmap (`SpanDocString` SpanDocUris Nothing Nothing) this_docs) names
+     k <- foldrM getType (tcg_type_env this_mod) names
+     pure $ DKMap d k
+  where
+    getDocs n map
+      | maybe True (mod ==) $ nameModule_maybe n = pure map -- we already have the docs in this_docs, or they do not exist
+      | otherwise = do
+      doc <- getDocumentationTryGhc env mod sources n
+      pure $ extendNameEnv map n doc
+    getType n map
+      | isTcOcc $ occName n = do
+        kind <- lookupKind env mod n
+        pure $ maybe map (extendNameEnv map n) kind
+      | otherwise = pure map
+    names = rights $ S.toList idents
+    idents = M.keysSet rm
+    mod = tcg_mod this_mod
 
-getDocumentationsTryGhc :: GhcMonad m => Module -> [ParsedModule] -> [Name] -> m [SpanDoc]
+lookupKind :: HscEnv -> Module -> Name -> IO (Maybe TyThing)
+lookupKind env mod =
+    fmap (either (const Nothing) id) . catchSrcErrors (hsc_dflags env) "span" . lookupName env mod
 
+getDocumentationTryGhc :: HscEnv -> Module -> [ParsedModule] -> Name -> IO SpanDoc
+getDocumentationTryGhc env mod deps n = head <$> getDocumentationsTryGhc env mod deps [n]
+
+getDocumentationsTryGhc :: HscEnv -> Module -> [ParsedModule] -> [Name] -> IO [SpanDoc]
 -- Interfaces are only generated for GHC >= 8.6.
 -- In older versions, interface files do not embed Haddocks anyway
-#if MIN_GHC_API_VERSION(8,6,0)
-getDocumentationsTryGhc mod sources names = do
-  res <- catchSrcErrors "docs" $ getDocsBatch mod names
+getDocumentationsTryGhc env mod sources names = do
+  res <- catchSrcErrors (hsc_dflags env) "docs" $ getDocsBatch env mod names
   case res of
       Left _ -> mapM mkSpanDocText names
       Right res -> zipWithM unwrap res names
   where
-    unwrap (Right (Just docs, _)) n = SpanDocString <$> pure docs <*> getUris n
+    unwrap (Right (Just docs, _)) n = SpanDocString docs <$> getUris n
     unwrap _ n = mkSpanDocText n
 
-#else
-getDocumentationsTryGhc _ sources names = mapM mkSpanDocText names
-  where
-#endif
     mkSpanDocText name =
       pure (SpanDocText (getDocumentation sources name)) <*> getUris name
    
     -- Get the uris to the documentation and source html pages if they exist
     getUris name = do
-      df <- getSessionDynFlags
+      let df = hsc_dflags env
       (docFu, srcFu) <-
         case nameModule_maybe name of
           Just mod -> liftIO $ do
@@ -98,7 +129,7 @@ getDocumentation sources targetName = fromMaybe [] $ do
 
   -- Top level names bound by the module
   let bs = [ n | let L _ HsModule{hsmodDecls} = pm_parsed_source tc
-           , L _ (ValD hsbind) <- hsmodDecls
+           , L _ (ValD _ hsbind) <- hsmodDecls
            , Just n <- [name_of_bind hsbind]
            ]
   -- Sort the names' source spans.

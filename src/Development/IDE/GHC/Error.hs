@@ -14,6 +14,7 @@ module Development.IDE.GHC.Error
   , srcSpanToLocation
   , srcSpanToRange
   , realSrcSpanToRange
+  , realSrcLocToPosition
   , srcSpanToFilename
   , zeroSpan
   , realSpan
@@ -32,13 +33,11 @@ import Development.IDE.GHC.Orphans()
 import qualified FastString as FS
 import           GHC
 import           Bag
-import DynFlags
 import HscTypes
 import Panic
 import           ErrUtils
 import           SrcLoc
 import qualified Outputable                 as Out
-import Exception (ExceptionMonad)
 
 
 
@@ -72,8 +71,12 @@ srcSpanToRange (RealSrcSpan real) = Just $ realSrcSpanToRange real
 
 realSrcSpanToRange :: RealSrcSpan -> Range
 realSrcSpanToRange real =
-  Range (Position (srcSpanStartLine real - 1) (srcSpanStartCol real - 1))
-            (Position (srcSpanEndLine real - 1) (srcSpanEndCol real - 1))
+  Range (realSrcLocToPosition $ realSrcSpanStart real)
+        (realSrcLocToPosition $ realSrcSpanEnd   real)
+
+realSrcLocToPosition :: RealSrcLoc -> Position
+realSrcLocToPosition real =
+  Position (srcLocLine real - 1) (srcLocCol real - 1)
 
 -- | Extract a file name from a GHC SrcSpan (use message for unhelpful ones)
 -- FIXME This may not be an _absolute_ file name, needs fixing.
@@ -132,14 +135,14 @@ realSpan = \case
   UnhelpfulSpan _ -> Nothing
 
 
--- | Run something in a Ghc monad and catch the errors (SourceErrors and
--- compiler-internal exceptions like Panic or InstallationError).
-catchSrcErrors :: (HasDynFlags m, ExceptionMonad m) => T.Text -> m a -> m (Either [FileDiagnostic] a)
-catchSrcErrors fromWhere ghcM = do
-      dflags <- getDynFlags
-      handleGhcException (ghcExceptionToDiagnostics dflags) $
-        handleSourceError (sourceErrorToDiagnostics dflags) $
-        Right <$> ghcM
+-- | Catch the errors thrown by GHC (SourceErrors and
+-- compiler-internal exceptions like Panic or InstallationError), and turn them into
+-- diagnostics
+catchSrcErrors :: DynFlags -> T.Text -> IO a -> IO (Either [FileDiagnostic] a)
+catchSrcErrors dflags fromWhere ghcM = do
+    handleGhcException (ghcExceptionToDiagnostics dflags) $
+      handleSourceError (sourceErrorToDiagnostics dflags) $
+      Right <$> ghcM
     where
         ghcExceptionToDiagnostics dflags = return . Left . diagFromGhcException fromWhere dflags
         sourceErrorToDiagnostics dflags = return . Left . diagFromErrMsgs fromWhere dflags . srcErrorMessages
