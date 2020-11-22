@@ -34,6 +34,7 @@ haskellPackagesForProject.shellFor {
     haskellPackages.hlint
     haskellPackages.ormolu
     haskellPackages.stylish-haskell
+    haskellPackages.opentelemetry-extra
   ];
   src = null;
   shellHook = ''
