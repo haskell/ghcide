@@ -30,8 +30,8 @@ let defaultCompiler = "ghc" + lib.replaceStrings ["."] [""] haskellPackages.ghc.
                 else haskellPackages.ghcWithPackages p
             # for all other compilers there is no Nix cache so dont bother building deps
             else if hoogle
-                then  haskell.packages.${compiler}.ghcWithHoogle (_: [])
-                else haskell.packages.${compiler}.ghcWithPackages (_: []);
+                then  haskell.packages.${compiler}.ghcWithHoogle (p: [p.ghc-paths])
+                else haskell.packages.${compiler}.ghcWithPackages (p: [p.ghc-paths]);
 
    compilerWithPackages = haskellPackagesForProject(p:
         with p;
@@ -49,6 +49,7 @@ let defaultCompiler = "ghc" + lib.replaceStrings ["."] [""] haskellPackages.ghc.
           fingertree
           Glob
           ghc-check
+          ghc-paths
           gitrev
           happy
           haskell-lsp
