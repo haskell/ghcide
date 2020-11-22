@@ -16,7 +16,7 @@ let
             };
         in
         {
-        haskell = pkgs.haskell // {
+        ourHaskell = pkgs.haskell // {
             packages = pkgs.haskell.packages // {
                 # relax upper bounds on ghc 8.10.x versions (and skip running tests)
                 ghc8101 = pkgs.haskell.packages.ghc8101.override sharedOverrides;

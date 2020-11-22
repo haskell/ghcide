@@ -13,14 +13,18 @@
 with nixpkgs;
 
 let defaultCompiler = "ghc" + lib.replaceStrings ["."] [""] haskellPackages.ghc.version;
-    haskellPackagesForProject = if compiler == "default" then haskellPackages else haskell.packages.${compiler};
-    ghcide = haskell.lib.doCheck (haskellPackagesForProject.callCabal2nixWithOptions "ghcide" ./. "--benchmark" {});
+    haskellPackagesForProject =
+        if compiler == "default"
+            then ourHaskell.packages.${defaultCompiler}
+            else ourHaskell.packages.${compiler};
+    ghcide = p: haskell.lib.doCheck
+                    (p.callCabal2nixWithOptions "ghcide" ./. "--benchmark" {});
     isSupported = compiler == "default" || compiler == defaultCompiler;
 in
 haskellPackagesForProject.shellFor {
   inherit withHoogle;
   doBenchmark = true;
-  packages = p: [if isSupported then ghcide else ghc-paths];
+  packages = p: [ (if isSupported then ghcide p else p.ghc-paths) ];
   buildInputs = [
     gmp
     zlib
