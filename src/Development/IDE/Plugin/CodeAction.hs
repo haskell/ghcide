@@ -19,6 +19,7 @@ module Development.IDE.Plugin.CodeAction
     -- * For testing
     , blockCommandId
     , typeSignatureCommandId
+    , matchRegExMultipleImports
     ) where
 
 import Control.Monad (join, guard)
@@ -376,7 +377,7 @@ suggestExportUnusedTopBinding srcOpt ParsedModule{pm_parsed_source = L _ HsModul
     opLetter = ":!#$%&*+./<=>?@\\^|-~"
 
     parenthesizeIfNeeds :: Bool -> T.Text -> T.Text
-    parenthesizeIfNeeds needsTypeKeyword x 
+    parenthesizeIfNeeds needsTypeKeyword x
       | T.head x `elem` opLetter = (if needsTypeKeyword then "type " else "") <> "(" <> x <>")"
       | otherwise = x
 
@@ -643,19 +644,31 @@ suggestExtendImport exportsMap contents Diagnostic{_range=_range,..}
       matchRegexUnifySpaces _message
       "Perhaps you want to add ‘([^’]*)’ to the import list in the import of ‘([^’]*)’ *\\((.*)\\).$"
     , Just c <- contents
-    , [(renderImport -> renderedBinding, _)] <- filter (\(_,m) -> mod == m) $ maybe [] Set.toList $ Map.lookup binding (getExportsMap exportsMap)
-    = let range = case [ x | (x,"") <- readSrcSpan (T.unpack srcspan)] of
-            [s] -> let x = realSrcSpanToRange s
-                   in x{_end = (_end x){_character = succ (_character (_end x))}}
-            _ -> error "bug in srcspan parser"
-          importLine = textInRange range c
-        in [("Add " <> renderedBinding <> " to the import list of " <> mod
-        , [TextEdit range (addBindingToImportList renderedBinding importLine)])]
+    = suggestions c binding mod srcspan
+    | Just (binding, mod_srcspan) <-
+      matchRegExMultipleImports _message
+    , Just c <- contents
+    = mod_srcspan >>= (\(x, y) -> suggestions c binding x y) 
     | otherwise = []
-  where
-  renderImport IdentInfo {parent, rendered}
-    | Just p <- parent = p <> "(" <> rendered <> ")"
-    | otherwise        = rendered
+    where
+        suggestions c binding mod srcspan
+          |  range <- case [ x | (x,"") <- readSrcSpan (T.unpack srcspan)] of
+                [s] -> let x = realSrcSpanToRange s
+                   in x{_end = (_end x){_character = succ (_character (_end x))}}
+                _ -> error "bug in srcspan parser",
+            importLine <- textInRange range c,
+            Just r <- lookupExportMap binding mod
+            =
+                [("Add " <> r <> " to the import list of " <> mod
+                , [TextEdit range (addBindingToImportList r importLine)])]
+          | otherwise = []
+        renderImport IdentInfo {parent, rendered}
+          | Just p <- parent = p <> "(" <> rendered <> ")"
+          | otherwise        = rendered
+        lookupExportMap binding mod 
+          | [(renderImport -> renderedBinding, _)] <- filter (\(_,m) -> mod == m) $ maybe [] Set.toList $ Map.lookup binding (getExportsMap exportsMap)
+           = Just renderedBinding
+          | otherwise = Nothing
 
 suggestFixConstructorImport :: Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
 suggestFixConstructorImport _ Diagnostic{_range=_range,..}
@@ -1133,3 +1146,41 @@ filterNewlines = T.concat  . T.lines
 
 unifySpaces :: T.Text -> T.Text
 unifySpaces    = T.unwords . T.words
+
+-- functions to help parse multiple import suggestions
+
+-- | Returns the first match if found
+regexSingleMatch :: T.Text -> T.Text -> Maybe T.Text
+regexSingleMatch msg regex = case matchRegexUnifySpaces msg regex of
+    Just (h:_) -> Just h
+    _ -> Nothing
+
+-- | Parses tuples like (‘Data.Map’, (app/ModuleB.hs:2:1-18)) and
+-- | return (Data.Map, app/ModuleB.hs:2:1-18)
+regExPair :: (T.Text, T.Text) -> Maybe (T.Text, T.Text)
+regExPair (modname, srcpair) = do
+  x <- regexSingleMatch modname "‘([^’]*)’"
+  y <- regexSingleMatch srcpair "\\((.*)\\)"
+  return (x, y)
+
+-- | Process a list of (module_name, filename:src_span) values
+-- | Eg. [(Data.Map, app/ModuleB.hs:2:1-18), (Data.HashMap.Strict, app/ModuleB.hs:3:1-29)]
+regExImports :: T.Text -> Maybe [(T.Text, T.Text)]
+regExImports msg = result
+  where
+    parts = T.words msg
+    isPrefix = not . T.isPrefixOf "("
+    (mod, srcspan) = partition isPrefix  parts
+    -- check we have matching pairs like (Data.Map, (app/src.hs:1:2-18))
+    result = if length mod == length srcspan then
+               regExPair `traverse` zip mod srcspan
+             else Nothing
+
+matchRegExMultipleImports :: T.Text -> Maybe (T.Text, [(T.Text, T.Text)])
+matchRegExMultipleImports message = do
+  let pat = T.pack "Perhaps you want to add ‘([^’]*)’ to one of these import lists: *(‘.*\\))$"
+  (binding, imports) <- case matchRegexUnifySpaces message pat of
+                            Just [x, xs] -> Just (x, xs)
+                            _ -> Nothing
+  imps <- regExImports imports
+  return (binding, imps)
