@@ -1,94 +1,26 @@
 # This shell.nix file is designed for use with cabal build
-# It aims to leverage the nix cache in as much as possible
-# while reducing Nix maintenance costs.
-# It does **not** aim to replace Cabal/Stack with Nix
+# It does **not** aim to replace Cabal
 
 # Maintaining this file:
 #
-# - Dealing with broken nix-shell
-#
-#     1. Bump the nixpkgs version using `niv update nixpkgs`
-#     2. Comment out any remaining failing packages
-#
-# - Dealing with broken cabal build inside nix-shell:
-#
-#    If my understanding of cabal new-build is correct this should never happen,
-#    assuming that cabal new-build does succeed outside nix-shell
+#     - Bump the nixpkgs version using `niv update nixpkgs`
 
 { compiler ? "default",
-  hoogle ? false,
+  withHoogle ? false,
   nixpkgs ? import ./nix {}
  }:
 
 with nixpkgs;
 
 let defaultCompiler = "ghc" + lib.replaceStrings ["."] [""] haskellPackages.ghc.version;
-    haskellPackagesForProject = p:
-        if compiler == "default" || compiler == defaultCompiler
-            then if hoogle
-                then haskellPackages.ghcWithHoogle p
-                else haskellPackages.ghcWithPackages p
-            # for all other compilers there is no Nix cache so dont bother building deps
-            else if hoogle
-                then  haskell.packages.${compiler}.ghcWithHoogle (p: [p.ghc-paths])
-                else haskell.packages.${compiler}.ghcWithPackages (p: [p.ghc-paths]);
-
-   compilerWithPackages = haskellPackagesForProject(p:
-        with p;
-        [ aeson
-          async
-          base16-bytestring
-          Chart
-          Chart-diagrams
-          cryptohash-sha1
-          data-default
-          diagrams
-          diagrams-svg
-          extra
-          fuzzy
-          fingertree
-          Glob
-          ghc-check
-          ghc-paths
-          gitrev
-          happy
-          haskell-lsp
-          haskell-lsp-types
-          hie-bios
-          hslogger
-          lens
-          lsp-test
-          network
-          optparse-applicative
-          QuickCheck
-          quickcheck-instances
-          prettyprinter
-          prettyprinter-ansi-terminal
-          regex-tdfa
-          rope-utf16-splay
-          safe
-          safe-exceptions
-          shake
-          sorted-list
-          stm
-          syb
-          tasty
-          tasty-expected-failure
-          tasty-hunit
-          tasty-rerun
-          tasty-quickcheck
-          temporary
-          text
-          time
-          transformers
-          typed-process
-          unordered-containers
-          utf8-string
-          yaml
-         ]);
+    haskellPackagesForProject = if compiler == "default" then haskellPackages else haskell.packages.${compiler};
+    ghcide = haskell.lib.doCheck (haskellPackagesForProject.callCabal2nixWithOptions "ghcide" ./. "--benchmark" {});
+    isSupported = compiler == "default" || compiler == defaultCompiler;
 in
-stdenv.mkDerivation {
-  name = "ghcide";
+haskellPackagesForProject.shellFor {
+  inherit withHoogle;
+  doBenchmark = true;
+  packages = p: [if isSupported then ghcide else ghc-paths];
   buildInputs = [
     gmp
     zlib
@@ -98,9 +30,6 @@ stdenv.mkDerivation {
     haskellPackages.hlint
     haskellPackages.ormolu
     haskellPackages.stylish-haskell
-
-    compilerWithPackages
-
   ];
   src = null;
   shellHook = ''
