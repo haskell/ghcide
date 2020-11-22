@@ -2812,7 +2812,22 @@ nonLocalCompletionTests =
       ["module A where", "import Data.List", "import Data.List", "f = perm"]
       (Position 3 8)
       [ ("permutations", CiFunction, False, False)
-      ]
+      ],
+    completionTest
+      "show imports not in list but available in module"
+      ["{-# LANGUAGE NoImplicitPrelude #-}",
+       "module A where", "import Control.Monad (msum)", "f = joi"]
+      (Position 3 6)
+      [("join", CiFunction, False, False)],
+    completionTest
+       "dont show hidden items"
+       [ "{-# LANGUAGE NoImplicitPrelude #-}",
+         "module A where",
+         "import Control.Monad hiding (join)",
+         "f = joi"
+       ]
+       (Position 3 6)
+       []
   ]
 
 otherCompletionTests :: [TestTree]
