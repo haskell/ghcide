@@ -29,6 +29,8 @@ haskellPackagesForProject.shellFor {
     gmp
     zlib
     ncurses
+    capstone
+    tracy
 
     haskellPackages.cabal-install
     haskellPackages.hlint
@@ -38,7 +40,8 @@ haskellPackagesForProject.shellFor {
   ];
   src = null;
   shellHook = ''
-    export LD_LIBRARY_PATH=${gmp}/lib:${zlib}/lib:${ncurses}/lib
+    export LD_LIBRARY_PATH=${gmp}/lib:${zlib}/lib:${ncurses}/lib:${capstone}/lib
+    export DYLD_LIBRARY_PATH=${gmp}/lib:${zlib}/lib:${ncurses}/lib:${capstone}/lib
     export PATH=$PATH:$HOME/.local/bin
   '';
 }
