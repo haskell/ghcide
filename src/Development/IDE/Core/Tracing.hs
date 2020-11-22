@@ -1,19 +1,13 @@
 module Development.IDE.Core.Tracing
-    ( otTraced
-    , otTracedHandler
+    ( otTracedHandler
     , otTracedAction
     )
 where
 
-import           Control.Exception
 import           Development.Shake
 import           Language.Haskell.LSP.Types
 import           OpenTelemetry.Eventlog
 import qualified Data.ByteString.Char8         as BS
-
--- | Trace an action using OpenTelemetry. Adds various useful info into tags in the OpenTelemetry span.
-otTraced :: BS.ByteString -> IO a -> IO a
-otTraced name act = bracket (beginSpan name) endSpan (const act)
 
 -- | Trace a handler using OpenTelemetry. Adds various useful info into tags in the OpenTelemetry span.
 otTracedHandler
