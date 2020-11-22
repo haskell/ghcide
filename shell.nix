@@ -15,11 +15,11 @@
 #    If my understanding of cabal new-build is correct this should never happen,
 #    assuming that cabal new-build does succeed outside nix-shell
 
-{ sources ? import nix/sources.nix,
-  nixpkgs ? import sources.nixpkgs {},
-  compiler ? "default",
-  hoogle ? false
+{ compiler ? "default",
+  hoogle ? false,
+  nixpkgs ? import ./nix {}
  }:
+
 with nixpkgs;
 
 let defaultCompiler = "ghc" + lib.replaceStrings ["."] [""] haskellPackages.ghc.version;
