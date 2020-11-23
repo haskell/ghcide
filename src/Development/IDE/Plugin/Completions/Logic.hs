@@ -398,21 +398,20 @@ findRecordCompl pmod mn lname dd = catMaybes name_type''
                              PrefixCon _ -> Just []
                              _ -> Nothing
 
-        decompose' =  second (mapMaybe extract)
-        name_type = decompose' <$> name_flds
+        name_type = second (mapMaybe extract) <$> name_flds
 
         extract ConDeclField{..}
              -- TODO: Why is cd_fld_names a list?
-            | Just fld_name <- rdrNameFieldOcc . unLoc <$> listToMaybe cd_fld_names = Just (fld_name, unLoc cd_fld_type)
+            | Just fld_name <- rdrNameFieldOcc . unLoc <$> listToMaybe cd_fld_names = Just fld_name
             | otherwise = Nothing
         -- XConDeclField
         extract _ = Nothing
 
         name_type'' = decompose'' <$> name_type
-        decompose'' :: (RdrName, [(Located RdrName, HsType GhcPs)]) -> Maybe CompItem
+        decompose'' :: (RdrName, [Located RdrName]) -> Maybe CompItem
         decompose'' (name, con) = let
             ctxStr = T.pack . showGhc $ name
-            flds = bimap (T.pack . showGhc . unLoc) (T.pack . showGhc) <$> con
+            flds = T.pack . showGhc . unLoc <$> con
             doc = SpanDocText (getDocumentation [pmod] lname) (SpanDocUris Nothing Nothing)
             result = case flds of
                 [] -> Nothing
@@ -678,20 +677,16 @@ prefixes =
   ]
 
 
-safeTyThingForRecord :: TyThing -> Maybe (T.Text, [(T.Text, T.Text)])
+safeTyThingForRecord :: TyThing -> Maybe (T.Text, [T.Text])
 safeTyThingForRecord (AnId _) = Nothing
 safeTyThingForRecord (AConLike dc) =
-    let flds = conLikeFieldLabels dc
-        name = occName . conLikeName $ dc
-        types = map (conLikeFieldType dc . flLabel) flds
-        ctxStr = T.pack . showGhc $ name
-        fld_pairs = [(T.pack . unpackFS . flLabel $ x, T.pack . showGhc $ y) | x <- flds | y <- types]
+    let ctxStr =   T.pack . showGhc . occName . conLikeName $ dc
+        field_names = T.pack . unpackFS . flLabel <$> conLikeFieldLabels dc
     in
-        Just (ctxStr, fld_pairs)
-        --[(showGhc name, [("x", "y")])]
+        Just (ctxStr, field_names)
 safeTyThingForRecord _ = Nothing
 
-mkRecordSnippetCompItem :: T.Text -> [(T.Text, T.Text)] -> T.Text -> SpanDoc -> CompItem
+mkRecordSnippetCompItem :: T.Text -> [T.Text] -> T.Text -> SpanDoc -> CompItem
 mkRecordSnippetCompItem ctxStr compl mn docs = r
   where
       r  = CI {
@@ -706,7 +701,7 @@ mkRecordSnippetCompItem ctxStr compl mn docs = r
           }
 
       placeholder_pairs = zip compl ([1..]::[Int])
-      snippet_parts = map (\(x, i) -> fst x <> "=${" <> T.pack (show i) <> ":_" <> fst x <> "}") placeholder_pairs
+      snippet_parts = map (\(x, i) -> x <> "=${" <> T.pack (show i) <> ":_" <> x <> "}") placeholder_pairs
       snippet = T.intercalate (T.pack ", ") snippet_parts
       buildSnippet = ctxStr <> " {" <> snippet <> "}"
       importedFrom = Right mn
