@@ -376,21 +376,16 @@ findRecordCompl' pmod mn x = case x of
     _ -> []
 
 findRecordCompl :: ParsedModule -> T.Text -> Located (IdP GhcPs) -> HsDataDefn GhcPs -> [CompItem]
-findRecordCompl pmod mn lname dd = catMaybes name_type''
+findRecordCompl pmod mn lname dd = result
     where
-        conDecl = unLoc <$> dd_cons dd
-        h98 = catMaybes $ findH98 <$> conDecl
-        findH98 conDecl = case conDecl of
-          ConDeclH98{..} -> Just (unLoc con_name, con_args)
-          ConDeclGADT{} -> Nothing  -- TODO: Expand this out later
-          _ -> Nothing
-
-        decompose (name, con) = case getFlds con of
-                          Just con_details -> Just (name, con_details)
-                          Nothing -> Nothing
-
-        name_flds :: [(RdrName, [ConDeclField GhcPs])]
-        name_flds = mapMaybe decompose h98
+        result = [mkRecordSnippetCompItem (T.pack . showGhc . unLoc $ con_name) field_labels mn doc
+                 | ConDeclH98{..} <- unLoc <$> dd_cons dd
+                 , Just  con_details <- [getFlds con_args]
+                 , field_names <- [mapMaybe extract con_details]
+                 , field_labels <- [T.pack . showGhc . unLoc <$> field_names]
+                 , (not . List.null) $ field_labels
+                 ]
+        doc = SpanDocText (getDocumentation [pmod] lname) (SpanDocUris Nothing Nothing)
 
         getFlds :: HsConDetails arg (Located [LConDeclField GhcPs]) -> Maybe [ConDeclField GhcPs]
         getFlds conArg = case conArg of
@@ -398,26 +393,12 @@ findRecordCompl pmod mn lname dd = catMaybes name_type''
                              PrefixCon _ -> Just []
                              _ -> Nothing
 
-        name_type = second (mapMaybe extract) <$> name_flds
-
         extract ConDeclField{..}
              -- TODO: Why is cd_fld_names a list?
             | Just fld_name <- rdrNameFieldOcc . unLoc <$> listToMaybe cd_fld_names = Just fld_name
             | otherwise = Nothing
         -- XConDeclField
         extract _ = Nothing
-
-        name_type'' = decompose'' <$> name_type
-        decompose'' :: (RdrName, [Located RdrName]) -> Maybe CompItem
-        decompose'' (name, con) = let
-            ctxStr = T.pack . showGhc $ name
-            flds = T.pack . showGhc . unLoc <$> con
-            doc = SpanDocText (getDocumentation [pmod] lname) (SpanDocUris Nothing Nothing)
-            result = case flds of
-                [] -> Nothing
-                _ -> Just $ mkRecordSnippetCompItem ctxStr flds mn doc
-            in
-                result
 
 ppr :: Outputable a => a -> T.Text
 ppr = T.pack . prettyPrint
