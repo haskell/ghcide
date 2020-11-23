@@ -80,15 +80,15 @@ runLanguageServer options userHandlers onInitialConfig onConfigChange getIdeStat
     -- The set of requests that have been cancelled and are also in pendingRequests
     cancelledRequests <- newTVarIO Set.empty
 
-    let withResponse wrap f = Just $ \r@RequestMessage{_id, _method} -> otTracedHandler "Request" (show _method) $ do
+    let withResponse wrap f = Just $ \r@RequestMessage{_id, _method} -> do
             atomically $ modifyTVar pendingRequests (Set.insert _id)
             writeChan clientMsgChan $ Response r wrap f
-    let withNotification old f = Just $ \r@NotificationMessage{_method} -> otTracedHandler "Notification" (show _method) $
+    let withNotification old f = Just $ \r@NotificationMessage{_method} ->
             writeChan clientMsgChan $ Notification r (\lsp ide x -> f lsp ide x >> whenJust old ($ r))
-    let withResponseAndRequest wrap wrapNewReq f = Just $ \r@RequestMessage{_id, _method} -> otTracedHandler "Request" (show _method) $ do
+    let withResponseAndRequest wrap wrapNewReq f = Just $ \r@RequestMessage{_id, _method} -> do
             atomically $ modifyTVar pendingRequests (Set.insert _id)
             writeChan clientMsgChan $ ResponseAndRequest r wrap wrapNewReq f
-    let withInitialize f = Just $ \r -> otTracedHandler "Initialize" "" $
+    let withInitialize f = Just $ \r ->
             writeChan clientMsgChan $ InitialParams r (\lsp ide x -> f lsp ide x)
     let cancelRequest reqId = atomically $ do
             queued <- readTVar pendingRequests
@@ -109,6 +109,7 @@ runLanguageServer options userHandlers onInitialConfig onConfigChange getIdeStat
             initializeRequestHandler <>
             setHandlersIgnore <> -- least important
             setHandlersDefinition <> setHandlersHover <> setHandlersTypeDefinition <>
+            setHandlersDocHighlight <>
             setHandlersOutline <>
             userHandlers <>
             setHandlersNotifications <> -- absolutely critical, join them with user notifications
@@ -146,18 +147,20 @@ runLanguageServer options userHandlers onInitialConfig onConfigChange getIdeStat
                 -- We dispatch notifications synchronously and requests asynchronously
                 -- This is to ensure that all file edits and config changes are applied before a request is handled
                 case msg of
-                    Notification x@NotificationMessage{_params} act -> do
+                    Notification x@NotificationMessage{_params, _method} act -> otTracedHandler "Notification" (show _method) $ do
                         catch (act lspFuncs ide _params) $ \(e :: SomeException) ->
                             logError (ideLogger ide) $ T.pack $
                                 "Unexpected exception on notification, please report!\n" ++
                                 "Message: " ++ show x ++ "\n" ++
                                 "Exception: " ++ show e
-                    Response x@RequestMessage{_id, _params} wrap act -> void $ async $
+                    Response x@RequestMessage{_id, _method, _params} wrap act -> void $ async $
+                        otTracedHandler "Request" (show _method) $
                         checkCancelled ide clearReqId waitForCancel lspFuncs wrap act x _id _params $
                             \case
                               Left e  -> sendFunc $ wrap $ ResponseMessage "2.0" (responseId _id) (Left e)
                               Right r -> sendFunc $ wrap $ ResponseMessage "2.0" (responseId _id) (Right r)
-                    ResponseAndRequest x@RequestMessage{_id, _params} wrap wrapNewReq act -> void $ async $
+                    ResponseAndRequest x@RequestMessage{_id, _method, _params} wrap wrapNewReq act -> void $ async $
+                        otTracedHandler "Request" (show _method) $
                         checkCancelled ide clearReqId waitForCancel lspFuncs wrap act x _id _params $
                             \(res, newReq) -> do
                                 case res of
@@ -166,7 +169,8 @@ runLanguageServer options userHandlers onInitialConfig onConfigChange getIdeStat
                                 whenJust newReq $ \(rm, newReqParams) -> do
                                     reqId <- getNextReqId
                                     sendFunc $ wrapNewReq $ RequestMessage "2.0" reqId rm newReqParams
-                    InitialParams x@RequestMessage{_id, _params} act -> do
+                    InitialParams x@RequestMessage{_id, _method, _params} act ->
+                        otTracedHandler "Initialize" (show _method) $
                         catch (act lspFuncs ide _params) $ \(e :: SomeException) ->
                             logError (ideLogger ide) $ T.pack $
                                 "Unexpected exception on InitializeRequest handler, please report!\n" ++
@@ -207,14 +211,16 @@ initHandler
     -> IdeState
     -> InitializeParams
     -> IO ()
-initHandler _ ide params = registerIdeConfiguration (shakeExtras ide) (parseConfiguration params)
+initHandler _ ide params = do
+    let initConfig = parseConfiguration params
+    logInfo (ideLogger ide) $ T.pack $ "Registering ide configuration: " <> show initConfig
+    registerIdeConfiguration (shakeExtras ide) initConfig
 
 -- | Things that get sent to us, but we don't deal with.
 --   Set them to avoid a warning in VS Code output.
 setHandlersIgnore :: PartialHandlers config
 setHandlersIgnore = PartialHandlers $ \_ x -> return x
-    {LSP.initializedHandler = none
-    ,LSP.responseHandler = none
+    {LSP.responseHandler = none
     }
     where none = Just $ const $ return ()
 

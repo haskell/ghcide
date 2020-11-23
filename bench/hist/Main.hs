@@ -2,25 +2,28 @@
 
     A Shake script to analyze the performance of ghcide over the git history of the project
 
-    Driven by a config file `bench/hist.yaml` containing the list of Git references to analyze.
+    Driven by a config file `bench/config.yaml` containing the list of Git references to analyze.
 
     Builds each one of them and executes a set of experiments using the ghcide-bench suite.
 
     The results of the benchmarks and the analysis are recorded in the file
     system with the following structure:
 
-    bench-hist
-    ├── <git-reference>                       - one folder per version
-    │   ├── <experiment>.benchmark-gcStats    - RTS -s output
-    │   ├── <experiment>.csv                  - stats for the experiment
-    │   ├── <experiment>.svg                  - Graph of bytes over elapsed time
-    │   ├── <experiment>.diff.svg             - idem, including the previous version
-    │   ├── <experiment>.log                  - ghcide-bench output
-    │   ├── ghc.path                          - path to ghc used to build the binary
-    │   ├── ghcide                            - binary for this version
-    │   └── results.csv                       - results of all the experiments for the version
+    bench-results
+    ├── <git-reference>
+    │   ├── ghc.path                          - path to ghc used to build the binary
+    │   ├── ghcide                            - binary for this version
+    ├─ <example>
+    │   ├── results.csv                           - aggregated results for all the versions
+    │   └── <git-reference>
+    │       ├── <experiment>.benchmark-gcStats    - RTS -s output
+    │       ├── <experiment>.csv                  - stats for the experiment
+    │       ├── <experiment>.svg                  - Graph of bytes over elapsed time
+    │       ├── <experiment>.diff.svg             - idem, including the previous version
+    │       ├── <experiment>.log                  - ghcide-bench output
+    │       └── results.csv                       - results of all the experiments for the example
     ├── results.csv        - aggregated results of all the experiments and versions
-    ├── <experiment>.svg   - graph of bytes over elapsed time, for all the included versions
+    └── <experiment>.svg   - graph of bytes over elapsed time, for all the included versions
 
    For diff graphs, the "previous version" is the preceding entry in the list of versions
    in the config file. A possible improvement is to obtain this info via `git rev-list`.
@@ -31,10 +34,11 @@
 
    To build a specific analysis, enumerate the desired file artifacts
 
-   > stack bench --ba "bench-hist/HEAD/results.csv bench-hist/HEAD/edit.diff.svg"
-   > cabal bench --benchmark-options "bench-hist/HEAD/results.csv bench-hist/HEAD/edit.diff.svg"
+   > stack bench --ba "bench-results/HEAD/results.csv bench-results/HEAD/edit.diff.svg"
+   > cabal bench --benchmark-options "bench-results/HEAD/results.csv bench-results/HEAD/edit.diff.svg"
 
  -}
+{-# LANGUAGE ApplicativeDo     #-}
 {-# LANGUAGE DeriveAnyClass    #-}
 {-# LANGUAGE DerivingStrategies#-}
 {-# LANGUAGE TypeFamilies      #-}
@@ -49,6 +53,7 @@ import qualified Data.Text as T
 import Data.Yaml ((.!=), (.:?), FromJSON (..), ToJSON (..), Value (..), decodeFileThrow)
 import Development.Shake
 import Development.Shake.Classes (Binary, Hashable, NFData)
+import Experiments.Types (getExampleName, exampleToOptions, Example(..))
 import GHC.Exts (IsList (..))
 import GHC.Generics (Generic)
 import qualified Graphics.Rendering.Chart.Backend.Diagrams as E
@@ -59,32 +64,30 @@ import System.Directory
 import System.FilePath
 import qualified Text.ParserCombinators.ReadP as P
 import Text.Read (Read (..), get, readMaybe, readP_to_Prec)
+import GHC.Stack (HasCallStack)
+import Data.List (transpose)
 
 config :: FilePath
-config = "bench/hist.yaml"
+config = "bench/config.yaml"
 
 -- | Read the config without dependency
 readConfigIO :: FilePath -> IO Config
 readConfigIO = decodeFileThrow
 
+newtype GetExample = GetExample String deriving newtype (Binary, Eq, Hashable, NFData, Show)
+newtype GetExamples = GetExamples () deriving newtype (Binary, Eq, Hashable, NFData, Show)
 newtype GetSamples = GetSamples () deriving newtype (Binary, Eq, Hashable, NFData, Show)
-
 newtype GetExperiments = GetExperiments () deriving newtype (Binary, Eq, Hashable, NFData, Show)
-
 newtype GetVersions = GetVersions () deriving newtype (Binary, Eq, Hashable, NFData, Show)
-
 newtype GetParent = GetParent Text deriving newtype (Binary, Eq, Hashable, NFData, Show)
-
 newtype GetCommitId = GetCommitId String deriving newtype (Binary, Eq, Hashable, NFData, Show)
 
+type instance RuleResult GetExample = Maybe Example
+type instance RuleResult GetExamples = [Example]
 type instance RuleResult GetSamples = Natural
-
 type instance RuleResult GetExperiments = [Unescaped String]
-
 type instance RuleResult GetVersions = [GitCommit]
-
 type instance RuleResult GetParent = Text
-
 type instance RuleResult GetCommitId = String
 
 main :: IO ()
@@ -96,12 +99,16 @@ main = shakeArgs shakeOptions {shakeChange = ChangeModtimeAndDigest} $ do
   _ <- addOracle $ \GetSamples {} -> samples <$> readConfig config
   _ <- addOracle $ \GetExperiments {} -> experiments <$> readConfig config
   _ <- addOracle $ \GetVersions {} -> versions <$> readConfig config
+  _ <- addOracle $ \GetExamples{} -> examples <$> readConfig config
   _ <- addOracle $ \(GetParent name) -> findPrev name . versions <$> readConfig config
+  _ <- addOracle $ \(GetExample name) -> find (\e -> getExampleName e == name) . examples <$> readConfig config
 
   let readVersions = askOracle $ GetVersions ()
       readExperiments = askOracle $ GetExperiments ()
+      readExamples = askOracle $ GetExamples ()
       readSamples = askOracle $ GetSamples ()
       getParent = askOracle . GetParent
+      getExample = askOracle . GetExample
 
   configStatic <- liftIO $ readConfigIO config
   ghcideBenchPath <- ghcideBench <$> liftIO (readConfigIO config)
@@ -111,16 +118,16 @@ main = shakeArgs shakeOptions {shakeChange = ChangeModtimeAndDigest} $ do
   phony "all" $ do
     Config {..} <- readConfig config
 
-    forM_ versions $ \ver ->
-      need [build </> T.unpack (humanName ver) </> "results.csv"]
-
     need $
+      [build </> getExampleName e </> "results.csv" | e <- examples ] ++
       [build </> "results.csv"]
-        ++ [ build </> escaped (escapeExperiment e) <.> "svg"
+        ++ [ build </> getExampleName ex </> escaped (escapeExperiment e) <.> "svg"
              | e <- experiments
+             , ex <- examples
            ]
-        ++ [ build </> T.unpack (humanName ver) </> escaped (escapeExperiment e) <.> mode <.> "svg"
+        ++ [ build </> getExampleName ex </> T.unpack (humanName ver) </> escaped (escapeExperiment e) <.> mode <.> "svg"
              | e <- experiments,
+               ex <- examples,
                ver <- versions,
                mode <- ["", "diff"]
            ]
@@ -135,14 +142,14 @@ main = shakeArgs shakeOptions {shakeChange = ChangeModtimeAndDigest} $ do
       Stdout commitid <- command [] "git" ["rev-list", "-n", "1", gitThing]
       writeFileChanged out $ init commitid
 
-  priority 10 $ [build -/- "HEAD/ghcide"
+  priority 10 $ [ build -/- "HEAD/ghcide"
                 , build -/- "HEAD/ghc.path"
                 ]
     &%> \[out, ghcpath] -> do
       liftIO $ createDirectoryIfMissing True $ dropFileName out
       need =<< getDirectoryFiles "." ["src//*.hs", "exe//*.hs", "ghcide.cabal"]
       cmd_ $ buildGhcide buildSystem (takeDirectory out)
-      ghcLoc <- findGhc buildSystem
+      ghcLoc <- findGhc "." buildSystem
       writeFile' ghcpath ghcLoc
 
   [ build -/- "*/ghcide",
@@ -154,12 +161,11 @@ main = shakeArgs shakeOptions {shakeChange = ChangeModtimeAndDigest} $ do
       commitid <- readFile' $ b </> ver </> "commitid"
       cmd_ $ "git worktree add bench-temp " ++ commitid
       flip actionFinally (cmd_ (s "git worktree remove bench-temp --force")) $ do
-        ghcLoc <- findGhc buildSystem
+        ghcLoc <- findGhc "bench-temp" buildSystem
         cmd_ [Cwd "bench-temp"] $ buildGhcide buildSystem (".." </> takeDirectory out)
         writeFile' ghcpath ghcLoc
 
-  priority 8000 $
-    build -/- "*/results.csv" %> \out -> do
+  build -/- "*/*/results.csv" %> \out -> do
       experiments <- readExperiments
 
       let allResultFiles = [takeDirectory out </> escaped (escapeExperiment e) <.> "csv" | e <- experiments]
@@ -172,16 +178,17 @@ main = shakeArgs shakeOptions {shakeChange = ChangeModtimeAndDigest} $ do
   ghcideBenchResource <- newResource "ghcide-bench" 1
 
   priority 0 $
-    [ build -/- "*/*.csv",
-      build -/- "*/*.benchmark-gcStats",
-      build -/- "*/*.log"
+    [ build -/- "*/*/*.csv",
+      build -/- "*/*/*.benchmark-gcStats",
+      build -/- "*/*/*.log"
     ]
       &%> \[outcsv, _outGc, outLog] -> do
-        let [_, _, exp] = splitDirectories outcsv
+        let [_, exampleName, ver, exp] = splitDirectories outcsv
+        example <- fromMaybe (error $ "Unknown example " <> exampleName) <$> getExample exampleName
         samples <- readSamples
         liftIO $ createDirectoryIfMissing True $ dropFileName outcsv
-        let ghcide = dropFileName outcsv </> "ghcide"
-            ghcpath = dropFileName outcsv </> "ghc.path"
+        let ghcide = build </> ver </> "ghcide"
+            ghcpath = build </> ver </> "ghc.path"
         need [ghcide, ghcpath]
         ghcPath <- readFile' ghcpath
         withResource ghcideBenchResource 1 $ do
@@ -197,58 +204,71 @@ main = shakeArgs shakeOptions {shakeChange = ChangeModtimeAndDigest} $ do
                 "-v",
                 "--samples=" <> show samples,
                 "--csv=" <> outcsv,
-                "--example-package-version=3.0.0.0",
                 "--ghcide-options= +RTS -I0.5 -RTS",
                 "--ghcide=" <> ghcide,
                 "--select",
                 unescaped (unescapeExperiment (Escaped $ dropExtension exp))
               ] ++
+              exampleToOptions example ++
               [ "--stack" | Stack == buildSystem]
           cmd_ Shell $ "mv *.benchmark-gcStats " <> dropFileName outcsv
 
   build -/- "results.csv" %> \out -> do
-    versions <- readVersions
-    let allResultFiles =
-          [build </> T.unpack (humanName v) </> "results.csv" | v <- versions]
+    examples <- map getExampleName <$> readExamples
+    let allResultFiles = [build </> e </> "results.csv" | e <- examples]
 
-    need [build </> T.unpack (humanName v) </> "ghcide" | v <- versions]
+    allResults <- traverse readFileLines allResultFiles
+
+    let header = head $ head allResults
+        results = map tail allResults
+        header' = "example, " <> header
+        results' = zipWith (\e -> map (\l -> e <> ", " <> l)) examples results
+
+    writeFileChanged out $ unlines $ header' : concat results'
+
+  build -/- "*/results.csv" %> \out -> do
+    versions <- map (T.unpack . humanName) <$> readVersions
+    let example = takeFileName $ takeDirectory out
+        allResultFiles =
+          [build </> example </> v </> "results.csv" | v <- versions]
 
     allResults <- traverse readFileLines allResultFiles
 
     let header = head $ head allResults
         results = map tail allResults
         header' = "version, " <> header
-        results' = zipWith (\v -> map (\l -> T.unpack (humanName v) <> ", " <> l)) versions results
+        results' = zipWith (\v -> map (\l -> v <> ", " <> l)) versions results
 
-    writeFileChanged out $ unlines $ header' : concat results'
+    writeFileChanged out $ unlines $ header' : interleave results'
 
   priority 2 $
-    build -/- "*/*.diff.svg" %> \out -> do
-      let [b, ver, exp_] = splitDirectories out
+    build -/- "*/*/*.diff.svg" %> \out -> do
+      let [b, example, ver, exp_] = splitDirectories out
           exp = Escaped $ dropExtension $ dropExtension exp_
       prev <- getParent $ T.pack ver
 
-      runLog <- loadRunLog b exp ver
-      runLogPrev <- loadRunLog b exp $ T.unpack prev
+      runLog <- loadRunLog b example exp ver
+      runLogPrev <- loadRunLog b example exp $ T.unpack prev
 
       let diagram = Diagram Live [runLog, runLogPrev] title
           title = show (unescapeExperiment exp) <> " - live bytes over time compared"
       plotDiagram True diagram out
 
   priority 1 $
-    build -/- "*/*.svg" %> \out -> do
-      let [b, ver, exp] = splitDirectories out
-      runLog <- loadRunLog b (Escaped $ dropExtension exp) ver
+    build -/- "*/*/*.svg" %> \out -> do
+      let [b, example, ver, exp] = splitDirectories out
+      runLog <- loadRunLog b example (Escaped $ dropExtension exp) ver
       let diagram = Diagram Live [runLog] title
           title = ver <> " live bytes over time"
       plotDiagram True diagram out
 
-  build -/- "*.svg" %> \out -> do
+  build -/- "*/*.svg" %> \out -> do
     let exp = Escaped $ dropExtension $ takeFileName out
+        example = takeFileName $ takeDirectory out
     versions <- readVersions
 
     runLogs <- forM (filter include versions) $ \v -> do
-      loadRunLog build exp $ T.unpack $ humanName v
+      loadRunLog build example exp $ T.unpack $ humanName v
 
     let diagram = Diagram Live runLogs title
         title = show (unescapeExperiment exp) <> " - live bytes over time"
@@ -270,17 +290,18 @@ buildGhcide Stack out =
         <> " build ghcide:ghcide --copy-bins --ghc-options -rtsopts"
 
 
-findGhc :: BuildSystem -> Action FilePath
-findGhc Cabal =
+findGhc :: FilePath -> BuildSystem -> Action FilePath
+findGhc _cwd Cabal =
     liftIO $ fromMaybe (error "ghc is not in the PATH") <$> findExecutable "ghc"
-findGhc Stack = do
-    Stdout ghcLoc <- cmd (s "stack exec which ghc")
+findGhc cwd Stack = do
+    Stdout ghcLoc <- cmd [Cwd cwd] (s "stack exec which ghc")
     return ghcLoc
 
 --------------------------------------------------------------------------------
 
 data Config = Config
   { experiments :: [Unescaped String],
+    examples :: [Example],
     samples :: Natural,
     versions :: [GitCommit],
     -- | Path to the ghcide-bench binary for the experiments
@@ -290,7 +311,7 @@ data Config = Config
     buildTool :: BuildSystem
   }
   deriving (Generic, Show)
-  deriving anyclass (FromJSON, ToJSON)
+  deriving anyclass (FromJSON)
 
 data GitCommit = GitCommit
   { -- | A git hash, tag or branch name (e.g. v0.1.0)
@@ -399,14 +420,15 @@ data Diagram = Diagram
 -- | A file path containing the output of -S for a given run
 data RunLog = RunLog
   { runVersion :: !String,
+    _runExample :: !String,
     _runExperiment :: !String,
     runFrames :: ![Frame],
     runSuccess :: !Bool
   }
 
-loadRunLog :: FilePath -> Escaped FilePath -> FilePath -> Action RunLog
-loadRunLog buildF exp ver = do
-  let log_fp = buildF </> ver </> escaped exp <.> "benchmark-gcStats"
+loadRunLog :: HasCallStack => FilePath -> String -> Escaped FilePath -> FilePath -> Action RunLog
+loadRunLog buildF example exp ver = do
+  let log_fp = buildF </> example </> ver </> escaped exp <.> "benchmark-gcStats"
       csv_fp = replaceExtension log_fp "csv"
   log <- readFileLines log_fp
   csv <- readFileLines csv_fp
@@ -420,7 +442,7 @@ loadRunLog buildF exp ver = do
       success = case map (T.split (== ',') . T.pack) csv of
           [_header, _name:s:_] | Just s <- readMaybe (T.unpack s) -> s
           _ -> error $ "Cannot parse: " <> csv_fp
-  return $ RunLog ver (dropExtension $ escaped exp) frames success
+  return $ RunLog ver example (dropExtension $ escaped exp) frames success
 
 plotDiagram :: Bool -> Diagram -> FilePath -> Action ()
 plotDiagram includeFailed t@Diagram {traceMetric, runLogs} out = do
@@ -460,6 +482,9 @@ unescapeExperiment = Unescaped . map f . escaped
   where
     f '_' = ' '
     f other = other
+
+interleave :: [[a]] -> [a]
+interleave = concat . transpose
 
 myColors :: [E.AlphaColour Double]
 myColors = map E.opaque

@@ -70,7 +70,6 @@ import           Development.Shake hiding (ShakeValue, doesFileExist, Info)
 import           Development.Shake.Database
 import           Development.Shake.Classes
 import           Development.Shake.Rule
-import           Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HMap
 import qualified Data.Map.Strict as Map
 import qualified Data.ByteString.Char8 as BS
@@ -78,17 +77,18 @@ import           Data.Dynamic
 import           Data.Maybe
 import           Data.Map.Strict (Map)
 import           Data.List.Extra (partition, takeEnd)
-import           Data.HashSet (HashSet)
 import qualified Data.Set as Set
 import qualified Data.Text as T
 import Data.Tuple.Extra
 import Data.Unique
 import Development.IDE.Core.Debouncer
-import Development.IDE.GHC.Compat (ModuleName, NameCacheUpdater(..), upNameCache )
+import Development.IDE.GHC.Compat (NameCacheUpdater(..), upNameCache )
 import Development.IDE.GHC.Orphans ()
 import Development.IDE.Core.PositionMapping
 import Development.IDE.Types.Action
 import Development.IDE.Types.Logger hiding (Priority)
+import Development.IDE.Types.KnownTargets
+import Development.IDE.Types.Shake
 import qualified Development.IDE.Types.Logger as Logger
 import Language.Haskell.LSP.Diagnostics
 import qualified Data.SortedList as SL
@@ -126,14 +126,6 @@ import NameCache
 import UniqSupply
 import PrelInfo
 import Data.Int (Int64)
-import qualified Data.HashSet as HSet
-import OpenTelemetry.Eventlog (ValueObserver, observe, mkValueObserver, withSpan, setTag, withSpan_)
-import System.Mem (performGC)
-import HeapSize (recursiveSizeNoGC)
-import Data.Functor ((<&>))
-import Data.Function ((&))
-import Foreign (Storable(sizeOf))
-import Debug.Trace (traceIO)
 
 -- information we stash inside the shakeExtra field
 data ShakeExtras = ShakeExtras
@@ -173,16 +165,6 @@ data ShakeExtras = ShakeExtras
     -- | A work queue for actions added via 'runInShakeSession'
     ,actionQueue :: ActionQueue
     }
-
--- | A mapping of module name to known files
-type KnownTargets = HashMap Target [NormalizedFilePath]
-
-data Target = TargetModule ModuleName | TargetFile NormalizedFilePath
-  deriving ( Eq, Generic, Show )
-  deriving anyclass (Hashable, NFData)
-
-toKnownFiles :: KnownTargets -> HashSet NormalizedFilePath
-toKnownFiles = HSet.fromList . concat . HMap.elems
 
 type WithProgressFunc = forall a.
     T.Text -> LSP.ProgressCancellable -> ((LSP.Progress -> IO ()) -> IO a) -> IO a
@@ -234,22 +216,6 @@ getIdeGlobalState :: forall a . IsIdeGlobal a => IdeState -> IO a
 getIdeGlobalState = getIdeGlobalExtras . shakeExtras
 
 
--- | The state of the all values.
-type Values = HMap.HashMap (NormalizedFilePath, Key) (Value Dynamic)
-
--- | Key type
-data Key = forall k . (Typeable k, Hashable k, Eq k, Show k) => Key k
-
-instance Show Key where
-  show (Key k) = show k
-
-instance Eq Key where
-    Key k1 == Key k2 | Just k2' <- cast k2 = k1 == k2'
-                     | otherwise = False
-
-instance Hashable Key where
-    hashWithSalt salt (Key key) = hashWithSalt salt (typeOf key, key)
-
 newtype GlobalIdeOptions = GlobalIdeOptions IdeOptions
 instance IsIdeGlobal GlobalIdeOptions
 
@@ -262,21 +228,6 @@ getIdeOptionsIO :: ShakeExtras -> IO IdeOptions
 getIdeOptionsIO ide = do
     GlobalIdeOptions x <- getIdeGlobalExtras ide
     return x
-
-data Value v
-    = Succeeded TextDocumentVersion v
-    | Stale TextDocumentVersion v
-    | Failed
-    deriving (Functor, Generic, Show)
-
-instance NFData v => NFData (Value v)
-
--- | Convert a Value to a Maybe. This will only return `Just` for
--- up2date results not for stale values.
-currentValue :: Value v -> Maybe v
-currentValue (Succeeded _ v) = Just v
-currentValue (Stale _ _) = Nothing
-currentValue Failed = Nothing
 
 -- | Return the most recent, potentially stale, value and a PositionMapping
 -- for the version of that value.
@@ -452,7 +403,9 @@ shakeOpen getLspId eventer withProgress withIndefiniteProgress logger debouncer
     shakeSession <- newMVar initSession
     let ideState = IdeState{..}
 
-    startTelemetry shakeExtras
+    IdeOptions{ optOTProfiling = IdeOTProfiling otProfilingEnabled } <- getIdeOptionsIO shakeExtras
+    when otProfilingEnabled $
+        startTelemetry $ state shakeExtras
 
     return ideState
     where
@@ -578,15 +531,24 @@ shakeRestart IdeState{..} acts =
               let profile = case res of
                       Just fp -> ", profile saved at " <> fp
                       _ -> ""
-              logDebug (logger shakeExtras) $ T.pack $
-                  "Restarting build session (aborting the previous one took " ++
-                  showDuration stopTime ++ profile ++ ")"
+              let msg = T.pack $ "Restarting build session (aborting the previous one took "
+                              ++ showDuration stopTime ++ profile ++ ")"
+              logDebug (logger shakeExtras) msg
+              notifyTestingLogMessage shakeExtras msg
         )
         -- It is crucial to be masked here, otherwise we can get killed
         -- between spawning the new thread and updating shakeSession.
         -- See https://github.com/digital-asset/ghcide/issues/79
         (\() -> do
           (,()) <$> newSession shakeExtras shakeDb acts)
+
+notifyTestingLogMessage :: ShakeExtras -> T.Text -> IO ()
+notifyTestingLogMessage extras msg = do
+    (IdeTesting isTestMode) <- optTesting <$> getIdeOptionsIO extras
+    let notif = LSP.NotLogMessage $ LSP.NotificationMessage "2.0" LSP.WindowLogMessage
+                                  $ LSP.LogMessageParams LSP.MtLog msg
+    when isTestMode $ eventer extras notif
+
 
 -- | Enqueue an action in the existing 'ShakeSession'.
 --   Returns a computation to block until the action is run, propagating exceptions.
@@ -613,7 +575,7 @@ shakeEnqueue ShakeExtras{actionQueue, logger} act = do
 -- | Set up a new 'ShakeSession' with a set of initial actions
 --   Will crash if there is an existing 'ShakeSession' running.
 newSession :: ShakeExtras -> ShakeDatabase -> [DelayedActionInternal] -> IO ShakeSession
-newSession ShakeExtras{..} shakeDb acts = do
+newSession extras@ShakeExtras{..} shakeDb acts = do
     reenqueued <- atomically $ peekInProgress actionQueue
     let
         -- A daemon-like action used to inject additional work
@@ -627,8 +589,11 @@ newSession ShakeExtras{..} shakeDb acts = do
             getAction d
             liftIO $ atomically $ doneQueue d actionQueue
             runTime <- liftIO start
-            liftIO $ logPriority logger (actionPriority d) $ T.pack $
-                "finish: " ++ actionName d ++ " (took " ++ showDuration runTime ++ ")"
+            let msg = T.pack $ "finish: " ++ actionName d
+                            ++ " (took " ++ showDuration runTime ++ ")"
+            liftIO $ do
+                logPriority logger (actionPriority d) msg
+                notifyTestingLogMessage extras msg
 
         workRun restore = do
           let acts' = pumpActionThread : map run (reenqueued ++ acts)
@@ -636,9 +601,10 @@ newSession ShakeExtras{..} shakeDb acts = do
           let res' = case res of
                       Left e -> "exception: " <> displayException e
                       Right _ -> "completed"
-
-          let wrapUp = logDebug logger $ T.pack $ "Finishing build session(" ++ res' ++ ")"
-          return wrapUp
+          let msg = T.pack $ "Finishing build session(" ++ res' ++ ")"
+          return $ do
+              logDebug logger msg
+              notifyTestingLogMessage extras msg
 
     -- Do the work in a background thread
     workThread <- asyncWithUnmask workRun
@@ -1181,51 +1147,3 @@ updatePositionMapping IdeState{shakeExtras = ShakeExtras{positionMapping}} Versi
         pure $! HMap.insert uri updatedMapping allMappings
   where
     shared_change = mkDelta changes
-
-startTelemetry :: ShakeExtras -> IO ()
-startTelemetry shakeExtras = do
-    IdeOptions{ optOTMemoryProfiling = (IdeOTMemoryProfiling otMemoryProfilingEnabled) } <- getIdeOptionsIO shakeExtras
-
-    when otMemoryProfilingEnabled $ do
-        let ShakeExtras { state=stateRef } = shakeExtras
-        instrumentFor <- getInstrumentCached <$> (newVar HMap.empty)
-
-        mapBytesInstrument <- mkValueObserver ("value map size_bytes")
-        mapCountInstrument <- mkValueObserver ("values map count")
-
-        _ <- regularly 50000 $ -- 100 times/s
-            withSpan_ "Measure length" $
-            readVar stateRef
-            >>= observe mapCountInstrument . length
-
-        _ <- regularly 0 $
-            withSpan_ "Measure Memory" $ do
-            performGC
-            values <- readVar stateRef
-            let groupedValues =
-                    HMap.toList values
-                    <&> (\((f, k), v) -> (k, [(f, v)]))
-                    & HMap.fromListWith (++)
-            valuesSize <- sequence $ HMap.mapWithKey (\k v -> withSpan ("Measure " <> (BS.pack $ show k)) $ \sp -> do
-                    { instrument <- instrumentFor k
-                    ; byteSize <- (sizeOf (undefined :: Word) *) <$> recursiveSizeNoGC v
-                    ; setTag sp "size" (BS.pack $ (show byteSize ++ " bytes"))
-                    ; observe instrument byteSize
-                    ; return byteSize
-                    })
-                    groupedValues
-            observe mapBytesInstrument (sum valuesSize)
-            traceIO "=== ALL DONE ==="
-        return ()
-
-    where
-        regularly :: Int -> IO () -> IO (Async ())
-        regularly delay act = async $ forever (act >> threadDelay delay)
-
-        getInstrumentCached :: Var (HMap.HashMap Key ValueObserver) -> Key -> IO ValueObserver
-        getInstrumentCached instrumentMap k = HMap.lookup k <$> readVar instrumentMap >>= \case
-            Nothing -> do
-                instrument <- mkValueObserver (BS.pack (show k ++ " size_bytes"))
-                modifyVar_ instrumentMap (return . (HMap.insert k instrument))
-                return instrument
-            Just v -> return v
