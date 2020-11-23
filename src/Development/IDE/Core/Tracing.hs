@@ -15,10 +15,8 @@ import qualified Data.HashMap.Strict as HMap
 import Control.Concurrent.Async
 import Control.Monad
 import Debug.Trace (traceIO)
-import System.Mem (performGC)
 import Foreign.Storable (Storable(sizeOf))
-import HeapSize (recursiveSizeNoGC)
-import Development.IDE.Core.RuleTypes
+import HeapSize (runHeapsize, recursiveSizeNoGC)
 
 -- | Trace a handler using OpenTelemetry. Adds various useful info into tags in the OpenTelemetry span.
 otTracedHandler
@@ -71,9 +69,12 @@ startTelemetry stateRef = do
                 | ((_, k), v) <- HMap.toList values
                 ]
 
-        valuesSize <- forM groupedValues $ \(k,v) -> withSpan ("Measure " <> (BS.pack $ show k)) $ \sp -> do
-            instrument <- instrumentFor k
-            sizes <- traverse (repeatUntilJust . recursiveSizeNoGC) v
+        valuesSize <-
+          repeatUntilJust $
+          runHeapsize $
+          forM groupedValues $ \(k,v) -> withSpan ("Measure " <> (BS.pack $ show k)) $ \sp -> do
+            instrument <- liftIO $ instrumentFor k
+            sizes <- traverse recursiveSizeNoGC v
             let byteSize = (sizeOf (undefined :: Word) *) $ sum sizes
             setTag sp "size" (BS.pack (show byteSize ++ " bytes"))
             observe instrument byteSize
