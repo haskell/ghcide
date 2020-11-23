@@ -405,7 +405,8 @@ findRecordCompl pmod mn lname dd = catMaybes name_type''
              -- TODO: Why is cd_fld_names a list?
             | Just fld_name <- rdrNameFieldOcc . unLoc <$> listToMaybe cd_fld_names = Just (fld_name, unLoc cd_fld_type)
             | otherwise = Nothing
-
+        -- XConDeclField
+        extract _ = Nothing
 
         name_type'' = decompose'' <$> name_type
         decompose'' :: (RdrName, [(Located RdrName, HsType GhcPs)]) -> Maybe CompItem
