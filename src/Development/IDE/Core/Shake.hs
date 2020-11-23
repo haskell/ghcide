@@ -70,7 +70,6 @@ import           Development.Shake hiding (ShakeValue, doesFileExist, Info)
 import           Development.Shake.Database
 import           Development.Shake.Classes
 import           Development.Shake.Rule
-import           Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HMap
 import qualified Data.Map.Strict as Map
 import qualified Data.ByteString.Char8 as BS
@@ -78,17 +77,18 @@ import           Data.Dynamic
 import           Data.Maybe
 import           Data.Map.Strict (Map)
 import           Data.List.Extra (partition, takeEnd)
-import           Data.HashSet (HashSet)
 import qualified Data.Set as Set
 import qualified Data.Text as T
 import Data.Tuple.Extra
 import Data.Unique
 import Development.IDE.Core.Debouncer
-import Development.IDE.GHC.Compat (ModuleName, NameCacheUpdater(..), upNameCache )
+import Development.IDE.GHC.Compat (NameCacheUpdater(..), upNameCache )
 import Development.IDE.GHC.Orphans ()
 import Development.IDE.Core.PositionMapping
 import Development.IDE.Types.Action
 import Development.IDE.Types.Logger hiding (Priority)
+import Development.IDE.Types.KnownTargets
+import Development.IDE.Types.Shake
 import qualified Development.IDE.Types.Logger as Logger
 import Language.Haskell.LSP.Diagnostics
 import qualified Data.SortedList as SL
@@ -174,16 +174,6 @@ data ShakeExtras = ShakeExtras
     ,actionQueue :: ActionQueue
     }
 
--- | A mapping of module name to known files
-type KnownTargets = HashMap Target [NormalizedFilePath]
-
-data Target = TargetModule ModuleName | TargetFile NormalizedFilePath
-  deriving ( Eq, Generic, Show )
-  deriving anyclass (Hashable, NFData)
-
-toKnownFiles :: KnownTargets -> HashSet NormalizedFilePath
-toKnownFiles = HSet.fromList . concat . HMap.elems
-
 type WithProgressFunc = forall a.
     T.Text -> LSP.ProgressCancellable -> ((LSP.Progress -> IO ()) -> IO a) -> IO a
 type WithIndefiniteProgressFunc = forall a.
@@ -234,22 +224,6 @@ getIdeGlobalState :: forall a . IsIdeGlobal a => IdeState -> IO a
 getIdeGlobalState = getIdeGlobalExtras . shakeExtras
 
 
--- | The state of the all values.
-type Values = HMap.HashMap (NormalizedFilePath, Key) (Value Dynamic)
-
--- | Key type
-data Key = forall k . (Typeable k, Hashable k, Eq k, Show k) => Key k
-
-instance Show Key where
-  show (Key k) = show k
-
-instance Eq Key where
-    Key k1 == Key k2 | Just k2' <- cast k2 = k1 == k2'
-                     | otherwise = False
-
-instance Hashable Key where
-    hashWithSalt salt (Key key) = hashWithSalt salt (typeOf key, key)
-
 newtype GlobalIdeOptions = GlobalIdeOptions IdeOptions
 instance IsIdeGlobal GlobalIdeOptions
 
@@ -262,21 +236,6 @@ getIdeOptionsIO :: ShakeExtras -> IO IdeOptions
 getIdeOptionsIO ide = do
     GlobalIdeOptions x <- getIdeGlobalExtras ide
     return x
-
-data Value v
-    = Succeeded TextDocumentVersion v
-    | Stale TextDocumentVersion v
-    | Failed
-    deriving (Functor, Generic, Show)
-
-instance NFData v => NFData (Value v)
-
--- | Convert a Value to a Maybe. This will only return `Just` for
--- up2date results not for stale values.
-currentValue :: Value v -> Maybe v
-currentValue (Succeeded _ v) = Just v
-currentValue (Stale _ _) = Nothing
-currentValue Failed = Nothing
 
 -- | Return the most recent, potentially stale, value and a PositionMapping
 -- for the version of that value.
