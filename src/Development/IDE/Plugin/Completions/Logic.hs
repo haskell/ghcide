@@ -16,7 +16,7 @@ import Data.Char (isUpper)
 import Data.Generics
 import Data.List.Extra as List hiding (stripPrefix)
 import qualified Data.Map  as Map
-import Data.Maybe (fromMaybe, mapMaybe)
+import Data.Maybe (listToMaybe, fromMaybe, mapMaybe, catMaybes)
 import qualified Data.Text as T
 import qualified Text.Fuzzy as Fuzzy
 
@@ -47,7 +47,6 @@ import Development.IDE.Spans.Common
 import Development.IDE.GHC.Util
 import Outputable (Outputable)
 import qualified Data.Set as Set
-import Maybes (catMaybes)
 import ConLike
 
 import GhcPlugins (
