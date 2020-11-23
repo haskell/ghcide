@@ -17,6 +17,11 @@ import Control.Monad
 import Debug.Trace (traceIO)
 import Foreign.Storable (Storable(sizeOf))
 import HeapSize (runHeapsize, recursiveSizeNoGC)
+import Data.List (sortBy)
+import Data.Function (on)
+import Development.IDE.Core.RuleTypes
+import Data.Typeable
+import Data.Hashable
 
 -- | Trace a handler using OpenTelemetry. Adds various useful info into tags in the OpenTelemetry span.
 otTracedHandler
@@ -63,7 +68,9 @@ startTelemetry stateRef = do
     _ <- regularly 1000 $
         withSpan_ "Measure Memory" $ do
         values <- readVar stateRef
-        let groupedValues = HMap.toList $
+        let groupedValues =
+                sortBy (compare `on` keyFunction . fst) $
+                HMap.toList $
                 HMap.fromListWith (++)
                 [ (k, [v])
                 | ((_, k), v) <- HMap.toList values
@@ -96,6 +103,19 @@ startTelemetry stateRef = do
                 modifyVar_ instrumentMap (return . (HMap.insert k instrument))
                 return instrument
             Just v -> return v
+
+-- | Map every key type to an int
+--   This is used for sorting key types,
+--   where the order matters for cost attribution:
+--   shared costs will be attributed to the first key that incurrs them
+keyFunction :: Key -> Int
+keyFunction (Key k)
+  -- Attribute cost to the GhcSession keys first, since many values contain
+  --  references to the HscEnv or DynFlags
+  | Just GhcSession <- cast k = 0
+  | Just GhcSessionIO <- cast k = 1
+  | Just GhcSessionDeps <- cast k = 2
+  | otherwise = hash k
 
 repeatUntilJust :: Monad m => m (Maybe b) -> m b
 repeatUntilJust action = do
