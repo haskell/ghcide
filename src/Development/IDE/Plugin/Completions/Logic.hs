@@ -348,7 +348,7 @@ localCompletionsForParsedModule pm@ParsedModule{pm_parsed_source = L _ HsModule{
                         | id <- listify (\(_ :: Located(IdP GhcPs)) -> True) x
                         , let cl = occNameToComKind Nothing (rdrNameOcc $ unLoc id)]
                     -- here we only have to look at the outermost type
-                    recordCompls = findRecordCompl' pm thisModName x
+                    recordCompls = findRecordCompl pm thisModName x
                 in
                    -- the constructors and snippets will be duplicated here giving the user 2 choices.
                    generalCompls ++ recordCompls
@@ -370,22 +370,17 @@ localCompletionsForParsedModule pm@ParsedModule{pm_parsed_source = L _ HsModule{
 
     --recordCompls = localRecordSnippetProducer pm thisModName
 
-findRecordCompl' :: ParsedModule -> T.Text -> TyClDecl GhcPs -> [CompItem]
-findRecordCompl' pmod mn x = case x of
-    DataDecl {tcdLName, tcdDataDefn} -> findRecordCompl pmod mn tcdLName tcdDataDefn
-    _ -> []
-
-findRecordCompl :: ParsedModule -> T.Text -> Located (IdP GhcPs) -> HsDataDefn GhcPs -> [CompItem]
-findRecordCompl pmod mn lname dd = result
+findRecordCompl :: ParsedModule -> T.Text -> TyClDecl GhcPs -> [CompItem]
+findRecordCompl pmod mn (DataDecl {tcdLName, tcdDataDefn}) = result
     where
         result = [mkRecordSnippetCompItem (T.pack . showGhc . unLoc $ con_name) field_labels mn doc
-                 | ConDeclH98{..} <- unLoc <$> dd_cons dd
+                 | ConDeclH98{..} <- unLoc <$> dd_cons tcdDataDefn
                  , Just  con_details <- [getFlds con_args]
                  , field_names <- [mapMaybe extract con_details]
                  , field_labels <- [T.pack . showGhc . unLoc <$> field_names]
                  , (not . List.null) $ field_labels
                  ]
-        doc = SpanDocText (getDocumentation [pmod] lname) (SpanDocUris Nothing Nothing)
+        doc = SpanDocText (getDocumentation [pmod] tcdLName) (SpanDocUris Nothing Nothing)
 
         getFlds :: HsConDetails arg (Located [LConDeclField GhcPs]) -> Maybe [ConDeclField GhcPs]
         getFlds conArg = case conArg of
@@ -399,6 +394,7 @@ findRecordCompl pmod mn lname dd = result
             | otherwise = Nothing
         -- XConDeclField
         extract _ = Nothing
+findRecordCompl _ _ _ = []
 
 ppr :: Outputable a => a -> T.Text
 ppr = T.pack . prettyPrint
