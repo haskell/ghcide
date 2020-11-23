@@ -126,14 +126,6 @@ import NameCache
 import UniqSupply
 import PrelInfo
 import Data.Int (Int64)
-import qualified Data.HashSet as HSet
-import OpenTelemetry.Eventlog (ValueObserver, observe, mkValueObserver, withSpan, setTag, withSpan_)
-import System.Mem (performGC)
-import HeapSize (recursiveSizeNoGC)
-import Data.Functor ((<&>))
-import Data.Function ((&))
-import Foreign (Storable(sizeOf))
-import Debug.Trace (traceIO)
 
 -- information we stash inside the shakeExtra field
 data ShakeExtras = ShakeExtras
@@ -411,7 +403,9 @@ shakeOpen getLspId eventer withProgress withIndefiniteProgress logger debouncer
     shakeSession <- newMVar initSession
     let ideState = IdeState{..}
 
-    startTelemetry shakeExtras
+    IdeOptions{ optOTProfiling = IdeOTProfiling otProfilingEnabled } <- getIdeOptionsIO shakeExtras
+    when otProfilingEnabled $
+        startTelemetry $ state shakeExtras
 
     return ideState
     where
@@ -1153,51 +1147,3 @@ updatePositionMapping IdeState{shakeExtras = ShakeExtras{positionMapping}} Versi
         pure $! HMap.insert uri updatedMapping allMappings
   where
     shared_change = mkDelta changes
-
-startTelemetry :: ShakeExtras -> IO ()
-startTelemetry shakeExtras = do
-    IdeOptions{ optOTProfiling = (IdeOTProfiling otProfilingEnabled) } <- getIdeOptionsIO shakeExtras
-
-    when otProfilingEnabled $ do
-        let ShakeExtras { state=stateRef } = shakeExtras
-        instrumentFor <- getInstrumentCached <$> (newVar HMap.empty)
-
-        mapBytesInstrument <- mkValueObserver ("value map size_bytes")
-        mapCountInstrument <- mkValueObserver ("values map count")
-
-        _ <- regularly 10000 $ -- 100 times/s
-            withSpan_ "Measure length" $
-            readVar stateRef
-            >>= observe mapCountInstrument . length
-
-        _ <- regularly 0 $
-            withSpan_ "Measure Memory" $ do
-            performGC
-            values <- readVar stateRef
-            let groupedValues =
-                    HMap.toList values
-                    <&> (\((f, k), v) -> (k, [(f, v)]))
-                    & HMap.fromListWith (++)
-            valuesSize <- sequence $ HMap.mapWithKey (\k v -> withSpan ("Measure " <> (BS.pack $ show k)) $ \sp -> do
-                    { instrument <- instrumentFor k
-                    ; byteSize <- (sizeOf (undefined :: Word) *) <$> recursiveSizeNoGC v
-                    ; setTag sp "size" (BS.pack $ (show byteSize ++ " bytes"))
-                    ; observe instrument byteSize
-                    ; return byteSize
-                    })
-                    groupedValues
-            observe mapBytesInstrument (sum valuesSize)
-            traceIO "=== ALL DONE ==="
-        return ()
-
-    where
-        regularly :: Int -> IO () -> IO (Async ())
-        regularly delay act = async $ forever (act >> threadDelay delay)
-
-        getInstrumentCached :: Var (HMap.HashMap Key ValueObserver) -> Key -> IO ValueObserver
-        getInstrumentCached instrumentMap k = HMap.lookup k <$> readVar instrumentMap >>= \case
-            Nothing -> do
-                instrument <- mkValueObserver (BS.pack (show k ++ " size_bytes"))
-                modifyVar_ instrumentMap (return . (HMap.insert k instrument))
-                return instrument
-            Just v -> return v
