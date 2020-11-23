@@ -1,5 +1,4 @@
 {-# LANGUAGE CPP #-}
-{-# LANGUAGE ParallelListComp #-}
 
 #include "ghc-api-version.h"
 -- Mostly taken from "haskell-ide-engine"
@@ -16,7 +15,8 @@ import Data.Char (isUpper)
 import Data.Generics
 import Data.List.Extra as List hiding (stripPrefix)
 import qualified Data.Map  as Map
-import Data.Maybe (listToMaybe, fromMaybe, mapMaybe, catMaybes)
+
+import Data.Maybe (listToMaybe, fromMaybe, mapMaybe)
 import qualified Data.Text as T
 import qualified Text.Fuzzy as Fuzzy
 
@@ -52,7 +52,6 @@ import ConLike
 import GhcPlugins (
     flLabel,
     unpackFS)
-import Data.Bifunctor
 
 -- From haskell-ide-engine/hie-plugin-api/Haskell/Ide/Engine/Context.hs
 
@@ -371,14 +370,14 @@ localCompletionsForParsedModule pm@ParsedModule{pm_parsed_source = L _ HsModule{
     --recordCompls = localRecordSnippetProducer pm thisModName
 
 findRecordCompl :: ParsedModule -> T.Text -> TyClDecl GhcPs -> [CompItem]
-findRecordCompl pmod mn (DataDecl {tcdLName, tcdDataDefn}) = result
+findRecordCompl pmod mn DataDecl {tcdLName, tcdDataDefn} = result
     where
         result = [mkRecordSnippetCompItem (T.pack . showGhc . unLoc $ con_name) field_labels mn doc
                  | ConDeclH98{..} <- unLoc <$> dd_cons tcdDataDefn
                  , Just  con_details <- [getFlds con_args]
                  , field_names <- [mapMaybe extract con_details]
                  , field_labels <- [T.pack . showGhc . unLoc <$> field_names]
-                 , (not . List.null) $ field_labels
+                 , (not . List.null) field_labels
                  ]
         doc = SpanDocText (getDocumentation [pmod] tcdLName) (SpanDocUris Nothing Nothing)
 
