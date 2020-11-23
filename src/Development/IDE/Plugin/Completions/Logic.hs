@@ -398,22 +398,20 @@ findRecordCompl pmod mn lname dd = catMaybes name_type''
                              PrefixCon _ -> Just []
                              _ -> Nothing
 
-        --name_type :: [(RdrName, (Located RdrName, HsType GhcPs))]
-        decompose' x = (fst x, catMaybes $ extract <$> snd x)
+        decompose' =  second (mapMaybe extract)
         name_type = decompose' <$> name_flds
 
-        extract ConDeclField{..} = let
-            fld_type = unLoc cd_fld_type
-            fld_name = rdrNameFieldOcc $ unLoc . head $ cd_fld_names --TODO: Why is cd_fld_names a list?
-            in
-                Just (fld_name, fld_type)
-        extract _ = Nothing
+        extract ConDeclField{..}
+             -- TODO: Why is cd_fld_names a list?
+            | Just fld_name <- rdrNameFieldOcc . unLoc <$> listToMaybe cd_fld_names = Just (fld_name, unLoc cd_fld_type)
+            | otherwise = Nothing
+
 
         name_type'' = decompose'' <$> name_type
         decompose'' :: (RdrName, [(Located RdrName, HsType GhcPs)]) -> Maybe CompItem
-        decompose'' x = let
-            ctxStr = T.pack . showGhc . fst $ x
-            flds = bimap (T.pack . showGhc . unLoc) (T.pack . showGhc) <$> snd x
+        decompose'' (name, con) = let
+            ctxStr = T.pack . showGhc $ name
+            flds = bimap (T.pack . showGhc . unLoc) (T.pack . showGhc) <$> con
             doc = SpanDocText (getDocumentation [pmod] lname) (SpanDocUris Nothing Nothing)
             result = case flds of
                 [] -> Nothing
