@@ -426,11 +426,10 @@ newtype WithSnippets = WithSnippets Bool
 
 toggleSnippets :: ClientCapabilities -> WithSnippets -> CompletionItem -> CompletionItem
 toggleSnippets ClientCapabilities { _textDocument } (WithSnippets with) x
-  | with || supported = x
+  | with = x
   | otherwise = x { _insertTextFormat = Just PlainText
                 , _insertText       = Nothing
                 }
-  where supported = Just True == (_textDocument >>= _completion >>= _completionItem >>= _snippetSupport)
 
 -- | Returns the cached completions for the given module and position.
 getCompletions
