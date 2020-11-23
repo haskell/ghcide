@@ -2774,7 +2774,7 @@ topLevelCompletionTests = [
         ["data XxRecord = XyRecord { x:: String, y:: Int}", "bar = Xy" ]
         (Position 1 19)
         [("XyRecord", CiConstructor, "XyRecord", False, True),
-         ("XyRecord", CiSnippet, "XyRecord {x=${1:x}, y=${2:y}}", False, True)]
+         ("XyRecord", CiSnippet, "XyRecord {x=${1:_x}, y=${2:_y}}", False, True)]
     ]
 
 localCompletionTests :: [TestTree]
@@ -2878,7 +2878,7 @@ nonLocalCompletionTests =
       [("FormatParse", CiStruct, "FormatParse ", False, False),
        ("FormatParse", CiConstructor, "FormatParse ${1:String} ${2:Char} ${3:String}", False, False),
        ("FormatParse", CiSnippet,
-           "FormatParse {fpModifiers=${1:fpModifiers}, fpChar=${2:fpChar}, fpRest=${3:fpRest}}", False, False)
+           "FormatParse {fpModifiers=${1:_fpModifiers}, fpChar=${2:_fpChar}, fpRest=${3:_fpRest}}", False, False)
       ]
   ]
 

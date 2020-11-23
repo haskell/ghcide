@@ -706,7 +706,7 @@ mkRecordSnippetCompItem ctxStr compl mn docs = r
           }
 
       placeholder_pairs = zip compl ([1..]::[Int])
-      snippet_parts = map (\(x, i) -> fst x <> "=${" <> T.pack (show i) <> ":" <> fst x <> "}") placeholder_pairs
+      snippet_parts = map (\(x, i) -> fst x <> "=${" <> T.pack (show i) <> ":_" <> fst x <> "}") placeholder_pairs
       snippet = T.intercalate (T.pack ", ") snippet_parts
       buildSnippet = ctxStr <> " {" <> snippet <> "}"
       importedFrom = Right mn
