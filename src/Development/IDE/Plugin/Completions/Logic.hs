@@ -375,8 +375,8 @@ findRecordCompl pmod mn DataDecl {tcdLName, tcdDataDefn} = result
         result = [mkRecordSnippetCompItem (T.pack . showGhc . unLoc $ con_name) field_labels mn doc
                  | ConDeclH98{..} <- unLoc <$> dd_cons tcdDataDefn
                  , Just  con_details <- [getFlds con_args]
-                 , field_names <- [mapMaybe extract con_details]
-                 , field_labels <- [T.pack . showGhc . unLoc <$> field_names]
+                 , let field_names = mapMaybe extract con_details
+                 , let field_labels = T.pack . showGhc . unLoc <$> field_names
                  , (not . List.null) field_labels
                  ]
         doc = SpanDocText (getDocumentation [pmod] tcdLName) (SpanDocUris Nothing Nothing)
