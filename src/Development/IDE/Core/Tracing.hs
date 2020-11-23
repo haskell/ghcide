@@ -14,7 +14,6 @@ import Control.Concurrent.Extra
 import qualified Data.HashMap.Strict as HMap
 import Control.Concurrent.Async
 import Control.Monad
-import Debug.Trace (traceIO)
 import Foreign.Storable (Storable(sizeOf))
 import HeapSize (runHeapsize, recursiveSizeNoGC)
 import Data.List (sortBy)
@@ -88,7 +87,6 @@ startTelemetry stateRef = do
             return byteSize
 
         observe mapBytesInstrument $ sum valuesSize
-        traceIO "=== ALL DONE ==="
     return ()
 
     where
