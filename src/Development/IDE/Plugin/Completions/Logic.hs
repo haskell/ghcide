@@ -385,13 +385,12 @@ findRecordCompl pmod mn lname dd = catMaybes name_type''
           ConDeclGADT{} -> Nothing  -- TODO: Expand this out later
           _ -> Nothing
 
-        decompose x = case getFlds $ snd x of
-                          Just con_details -> Just (fst x, con_details)
+        decompose (name, con) = case getFlds $ con of
+                          Just con_details -> Just (name, con_details)
                           Nothing -> Nothing
 
         name_flds :: [(RdrName, [ConDeclField GhcPs])]
-        name_flds = catMaybes $ decompose <$> h98
-
+        name_flds = mapMaybe decompose h98
 
         getFlds :: HsConDetails arg (Located [LConDeclField GhcPs]) -> Maybe [ConDeclField GhcPs]
         getFlds conArg = case conArg of
