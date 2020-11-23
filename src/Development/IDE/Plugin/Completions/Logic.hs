@@ -385,7 +385,7 @@ findRecordCompl pmod mn lname dd = catMaybes name_type''
           ConDeclGADT{} -> Nothing  -- TODO: Expand this out later
           _ -> Nothing
 
-        decompose (name, con) = case getFlds $ con of
+        decompose (name, con) = case getFlds con of
                           Just con_details -> Just (name, con_details)
                           Nothing -> Nothing
 
