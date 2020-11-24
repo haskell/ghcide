@@ -22,10 +22,10 @@ ghcide +RTS -l -ol ghcide.eventlog -RTS
 You can also optionally enable reporting detailed memory data with `--ot-memory-profiling`
 
 ```sh
-ghcide --ot-memory-profiling +RTS -l -ol ghcide.eventlog -RTS
+ghcide --ot-memory-profiling +RTS -A4G -l -ol ghcide.eventlog -RTS
 ```
 
-*Note:* This option, while functional, is extremely slow. You will notice this because the memory graph in the output will have datapoints spaced apart by a couple of minutes.
+*Note:* This option, while functional, is extremely slow. You will notice this because the memory graph in the output will have datapoints spaced apart by a couple of minutes. The nursery must be big enough (-A1G or larger) or the measurements will self-abort.
 
 ## Viewing with tracy
 
