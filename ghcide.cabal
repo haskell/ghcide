@@ -57,6 +57,7 @@ library
         hie-compat,
         mtl,
         network-uri,
+        parallel,
         prettyprinter-ansi-terminal,
         prettyprinter-ansi-terminal,
         prettyprinter,
