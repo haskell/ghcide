@@ -5,32 +5,24 @@ module Development.IDE.Core.Tracing
     , startTelemetry
     , measureMemory
     , getInstrumentCached
-    , groupForObservableSharing
     )
 where
 
 import           Control.Concurrent.Async       (Async, async)
 import           Control.Concurrent.Extra       (Var, modifyVar_, newVar,
                                                  readVar, threadDelay)
+import           Control.Exception              (evaluate)
 import           Control.Monad                  (forM_, forever, (>=>))
 import           Control.Seq                    (r0, seqList, seqTuple2, using)
 import           Data.Dynamic                   (Dynamic)
 import qualified Data.HashMap.Strict            as HMap
 import           Data.IORef                     (modifyIORef', newIORef,
                                                  readIORef, writeIORef)
+import           Data.List                      (nub)
 import           Data.String                    (IsString (fromString))
-import           Development.IDE.Core.RuleTypes (GenerateCore (GenerateCore),
-                                                 GetDependencyInformation (GetDependencyInformation),
-                                                 GetHieAst (GetHieAst),
-                                                 GetModIface (GetModIface),
-                                                 GetModSummary (GetModSummary),
-                                                 GetModSummaryWithoutTimestamps (GetModSummaryWithoutTimestamps),
-                                                 GetModuleGraph (GetModuleGraph),
-                                                 GetParsedModule (GetParsedModule),
-                                                 GhcSession (GhcSession),
+import           Development.IDE.Core.RuleTypes (GhcSession (GhcSession),
                                                  GhcSessionDeps (GhcSessionDeps),
-                                                 GhcSessionIO (GhcSessionIO),
-                                                 TypeCheck (TypeCheck))
+                                                 GhcSessionIO (GhcSessionIO))
 import           Development.IDE.Types.Logger   (Logger, logDebug)
 import           Development.IDE.Types.Shake    (Key (..), Value, Values)
 import           Development.Shake              (Action, actionBracket, liftIO)
@@ -83,14 +75,24 @@ startTelemetry logger stateRef = do
         readVar stateRef
         >>= observe mapCountInstrument . length
 
-    _ <- regularly (1 * seconds) $
-        measureMemory logger groupForObservableSharing instrumentFor stateRef
+    _ <- regularly (1 * seconds) $ do
+        values <- readVar stateRef
+        let keys = nub
+                     $ Key GhcSession : Key GhcSessionDeps
+                     : [ k | (_,k) <- HMap.keys values
+                           -- do GhcSessionIO last since it closes over stateRef itself
+                           , k /= Key GhcSessionIO]
+                     ++ [Key GhcSessionIO]
+        !groupedForSharing <- evaluate (keys `using` seqList r0)
+        measureMemory logger [groupedForSharing] instrumentFor stateRef
     return ()
   where
         seconds = 1000000
 
         regularly :: Int -> IO () -> IO (Async ())
         regularly delay act = async $ forever (act >> threadDelay delay)
+
+{-# ANN startTelemetry ("HLint: ignore Use nubOrd" :: String) #-}
 
 type OurValueObserver = Int -> IO ()
 
@@ -114,7 +116,12 @@ whenNothing act mb = mb >>= f
   where f Nothing = act
         f Just{}  = return ()
 
-measureMemory :: Logger -> [[Key]] -> (Maybe Key -> IO OurValueObserver) -> Var Values -> IO ()
+measureMemory
+    :: Logger
+    -> [[Key]]     -- ^ Grouping of keys for the sharing-aware analysis
+    -> (Maybe Key -> IO OurValueObserver)
+    -> Var Values
+    -> IO ()
 measureMemory logger groups instrumentFor stateRef = withSpan_ "Measure Memory" $ do
     values <- readVar stateRef
     valuesSizeRef <- newIORef Nothing
@@ -145,48 +152,17 @@ measureMemory logger groups instrumentFor stateRef = withSpan_ "Measure Memory" 
             logDebug logger "Memory profiling could not be completed: increase the size of your nursery (+RTS -Ax) and try again"
 
     where
-        blacklist = []
-
         groupValues :: Values -> [ [(Key, [Value Dynamic])] ]
         groupValues values =
-            let groupedValues =
+            let !groupedValues =
                     [ [ (k, vv)
                       | k <- groupKeys
                       , let vv = [ v | ((_,k'), v) <- HMap.toList values , k == k']
                       ]
                     | groupKeys <- groups
                     ]
-                otherValues =
-                    HMap.toList $
-                    HMap.fromListWith (++)
-                    [ (k, [v])
-                    | ((_, k), v) <- HMap.toList values
-                    , k `notElem` blacklist
-                    , k `notElem` concat groups
-                    ]
-                !result = groupedValues <> map (:[]) otherValues
                 -- force the spine of the nested lists
-            in result `using` seqList (seqList (seqTuple2 r0 (seqList r0)))
-
-groupForObservableSharing :: [[Key]]
-groupForObservableSharing =
-        -- Group keys in bundles to be analysed jointly (for sharing)
-        -- Ideally all the keys would be analysed together, but if we try to do too much the GC will interrupt the analysis
-            [
-              [ Key GhcSessionDeps
-              , Key GhcSession
-              , Key TypeCheck
-              , Key GetModIface
-              , Key GetHieAst
-              , Key GetModSummary
-              , Key GetModSummaryWithoutTimestamps
-              , Key GetDependencyInformation
-              , Key GetModuleGraph
-              , Key GenerateCore
-              , Key GetParsedModule
-              , Key GhcSessionIO
-              ]
-            ]
+            in groupedValues `using` seqList (seqList (seqTuple2 r0 (seqList r0)))
 
 repeatUntilJust :: Monad m => Natural -> m (Maybe a) -> m (Maybe a)
 repeatUntilJust 0 _ = return Nothing
