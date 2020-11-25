@@ -1128,9 +1128,9 @@ addBindingToImportList parent renderedBinding importLine = case T.breakOn "(" im
       "importLine does not have the expected structure: "
         <> T.unpack importLine
   where
-    removeTrailingComma s = case T.breakOnEnd ")" s of
-      (T.unsnoc -> Just (h, _), t) -> T.dropWhileEnd (\x -> x == ',' || isSpace x) h <> ")" <> t
-      _ -> s
+    removeTrailingComma (T.unsnoc -> Just (T.unsnoc -> Just (T.unsnoc -> Just (xs, ','), ' '), ')')) = xs <> ")"
+    removeTrailingComma (T.unsnoc -> Just (xs, x)) = T.snoc (removeTrailingComma xs) x
+    removeTrailingComma x = x
     removeHeadingComma (T.stripStart -> s) = case T.uncons s of
       Just (',', xs) -> xs
       _ -> s

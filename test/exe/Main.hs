@@ -542,8 +542,8 @@ diagnosticTests = testGroup "diagnostics"
   ]
 
 codeActionTests :: TestTree
-codeActionTests = testGroup "code actions" [extendImportTests]
-{-   [ renameActionTests
+codeActionTests = testGroup "code actions"
+  [ renameActionTests
   , typeWildCardActionTests
   , removeImportTests
   , extendImportTests
@@ -560,7 +560,7 @@ codeActionTests = testGroup "code actions" [extendImportTests]
   , removeRedundantConstraintsTests
   , addTypeAnnotationsToLiteralsTest
   , exportUnusedTests
-  ] -}
+  ]
 
 codeActionHelperFunctionTests :: TestTree
 codeActionHelperFunctionTests = testGroup "code action helpers"
