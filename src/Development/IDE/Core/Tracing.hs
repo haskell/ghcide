@@ -84,7 +84,9 @@ getInstrumentCached = do
     instrumentMap <- newVar HMap.empty
     mapBytesInstrument <- mkValueObserver "value map size_bytes"
 
-    let instrumentFor k = HMap.lookup k <$> readVar instrumentMap >>= \case
+    let instrumentFor k = do
+          mb_inst <- HMap.lookup k <$> readVar instrumentMap
+          case mb_inst of
             Nothing -> do
                 instrument <- mkValueObserver (BS.pack (show k ++ " size_bytes"))
                 modifyVar_ instrumentMap (return . HMap.insert k instrument)

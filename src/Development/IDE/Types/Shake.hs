@@ -1,5 +1,5 @@
 {-# LANGUAGE ExistentialQuantification #-}
-module Development.IDE.Types.Shake where
+module Development.IDE.Types.Shake (Value(..), Values, Key(..), currentValue) where
 
 import Control.DeepSeq
 import Data.Dynamic

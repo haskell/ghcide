@@ -1,6 +1,6 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DerivingStrategies #-}
-module Development.IDE.Types.KnownTargets where
+module Development.IDE.Types.KnownTargets (KnownTargets, Target(..), toKnownFiles) where
 
 import Data.HashMap.Strict
 import Development.IDE.Types.Location
