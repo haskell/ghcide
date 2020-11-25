@@ -194,4 +194,4 @@ repeatUntilJust nattempts action = do
     res <- action
     case res of
         Nothing -> repeatUntilJust (nattempts-1) action
-        Just{} -> return res
+        Just{}  -> return res
