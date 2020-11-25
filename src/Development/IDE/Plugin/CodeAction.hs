@@ -19,53 +19,48 @@ module Development.IDE.Plugin.CodeAction
     -- * For testing
     , blockCommandId
     , typeSignatureCommandId
+    , matchRegExMultipleImports
     ) where
 
-import           Bag                                               (isEmptyBag)
-import           Control.Applicative                               ((<|>))
-import           Control.Arrow                                     ((>>>))
-import           Control.Concurrent.Extra                          (readVar,
-                                                                    threadDelay)
-import           Control.Monad                                     (guard, join)
-import           Data.Aeson.Types                                  (Result (..),
-                                                                    Value (..),
-                                                                    fromJSON,
-                                                                    toJSON)
-import           Data.Char
-import           Data.Function
-import           Data.Functor
-import qualified Data.HashMap.Strict                               as Map
-import qualified Data.HashSet                                      as Set
-import           Data.List.Extra
-import           Data.Maybe
-import qualified Data.Rope.UTF16                                   as Rope
-import qualified Data.Text                                         as T
-import           Data.Tuple.Extra                                  ((&&&))
-import           Development.IDE.Core.RuleTypes
-import           Development.IDE.Core.Rules
-import           Development.IDE.Core.Service
-import           Development.IDE.Core.Shake
-import           Development.IDE.GHC.Compat
-import           Development.IDE.GHC.Error
-import           Development.IDE.LSP.Server
-import           Development.IDE.Plugin
-import           Development.IDE.Plugin.CodeAction.PositionIndexed
-import           Development.IDE.Plugin.CodeAction.RuleTypes
-import           Development.IDE.Plugin.CodeAction.Rules
-import           Development.IDE.Types.Exports
-import           Development.IDE.Types.Location
-import           Development.IDE.Types.Options
-import           Development.Shake                                 (Rules)
-import           GHC.LanguageExtensions.Type                       (Extension)
-import qualified Language.Haskell.LSP.Core                         as LSP
-import           Language.Haskell.LSP.Messages
-import           Language.Haskell.LSP.Types
-import           Language.Haskell.LSP.VFS
-import           Outputable                                        (ppr,
-                                                                    showSDocUnsafe)
-import           Safe                                              (atMay)
-import           Text.Regex.TDFA                                   (mrAfter,
-                                                                    (=~), (=~~))
+import Control.Monad (join, guard)
+import Development.IDE.Plugin
+import Development.IDE.GHC.Compat
+import Development.IDE.Core.Rules
+import Development.IDE.Core.RuleTypes
+import Development.IDE.Core.Service
+import Development.IDE.Core.Shake
+import Development.IDE.GHC.Error
+import Development.IDE.LSP.Server
+import Development.IDE.Plugin.CodeAction.PositionIndexed
+import Development.IDE.Plugin.CodeAction.RuleTypes
+import Development.IDE.Plugin.CodeAction.Rules
+import Development.IDE.Types.Exports
+import Development.IDE.Types.Location
+import Development.IDE.Types.Options
+import Development.Shake (Rules)
+import qualified Data.HashMap.Strict as Map
+import qualified Language.Haskell.LSP.Core as LSP
+import Language.Haskell.LSP.VFS
+import Language.Haskell.LSP.Messages
+import Language.Haskell.LSP.Types
+import qualified Data.Rope.UTF16 as Rope
+import Data.Aeson.Types (toJSON, fromJSON, Value(..), Result(..))
+import Data.Char
+import Data.Maybe
+import Data.List.Extra
+import qualified Data.Text as T
+import Data.Tuple.Extra ((&&&))
+import Text.Regex.TDFA (mrAfter, (=~), (=~~))
+import Outputable (ppr, showSDocUnsafe)
+import GHC.LanguageExtensions.Type (Extension)
+import Data.Function
+import Control.Arrow ((>>>))
+import Data.Functor
+import Control.Applicative ((<|>))
+import Safe (atMay)
+import Bag (isEmptyBag)
+import qualified Data.HashSet as Set
+import Control.Concurrent.Extra (threadDelay, readVar)
 
 plugin :: Plugin c
 plugin = codeActionPluginWithRules rules codeAction <> Plugin mempty setHandlersCodeLens
@@ -649,19 +644,31 @@ suggestExtendImport exportsMap contents Diagnostic{_range=_range,..}
       matchRegexUnifySpaces _message
       "Perhaps you want to add ‘([^’]*)’ to the import list in the import of ‘([^’]*)’ *\\((.*)\\).$"
     , Just c <- contents
-    , [(renderImportWithParent -> (parent,renderedBinding), _)] <- filter (\(_,m) -> mod == m) $ maybe [] Set.toList $ Map.lookup binding (getExportsMap exportsMap)
-    = let range = case [ x | (x,"") <- readSrcSpan (T.unpack srcspan)] of
-            [s] -> let x = realSrcSpanToRange s
-                   in x{_end = (_end x){_character = succ (_character (_end x))}}
-            _ -> error "bug in srcspan parser"
-          importLine = textInRange range c
-        in [("Add " <> renderedBinding <> " to the import list of " <> mod
-        , [TextEdit range (addBindingToImportList parent renderedBinding importLine)])]
+    = suggestions c binding mod srcspan
+    | Just (binding, mod_srcspan) <-
+      matchRegExMultipleImports _message
+    , Just c <- contents
+    = mod_srcspan >>= (\(x, y) -> suggestions c binding x y) 
     | otherwise = []
-  where
-  renderImportWithParent IdentInfo {parent, rendered}
-    | Just p <- parent = (p, p <> "(" <> rendered <> ")")
-    | otherwise        = ("", rendered)
+    where
+        suggestions c binding mod srcspan
+          |  range <- case [ x | (x,"") <- readSrcSpan (T.unpack srcspan)] of
+                [s] -> let x = realSrcSpanToRange s
+                   in x{_end = (_end x){_character = succ (_character (_end x))}}
+                _ -> error "bug in srcspan parser",
+            importLine <- textInRange range c,
+            Just (parent,r) <- lookupExportMap binding mod
+            =
+                [("Add " <> r <> " to the import list of " <> mod
+                , [TextEdit range (addBindingToImportList parent r importLine)])]
+          | otherwise = []
+        renderImport IdentInfo {parent, rendered}
+          | Just p <- parent = (p, p <> "(" <> rendered <> ")")
+          | otherwise        = ("", rendered)
+        lookupExportMap binding mod 
+          | [(renderImport -> pair, _)] <- filter (\(_,m) -> mod == m) $ maybe [] Set.toList $ Map.lookup binding (getExportsMap exportsMap)
+           = Just pair
+          | otherwise = Nothing
 
 suggestFixConstructorImport :: Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
 suggestFixConstructorImport _ Diagnostic{_range=_range,..}
@@ -1147,3 +1154,41 @@ filterNewlines = T.concat  . T.lines
 
 unifySpaces :: T.Text -> T.Text
 unifySpaces    = T.unwords . T.words
+
+-- functions to help parse multiple import suggestions
+
+-- | Returns the first match if found
+regexSingleMatch :: T.Text -> T.Text -> Maybe T.Text
+regexSingleMatch msg regex = case matchRegexUnifySpaces msg regex of
+    Just (h:_) -> Just h
+    _ -> Nothing
+
+-- | Parses tuples like (‘Data.Map’, (app/ModuleB.hs:2:1-18)) and
+-- | return (Data.Map, app/ModuleB.hs:2:1-18)
+regExPair :: (T.Text, T.Text) -> Maybe (T.Text, T.Text)
+regExPair (modname, srcpair) = do
+  x <- regexSingleMatch modname "‘([^’]*)’"
+  y <- regexSingleMatch srcpair "\\((.*)\\)"
+  return (x, y)
+
+-- | Process a list of (module_name, filename:src_span) values
+-- | Eg. [(Data.Map, app/ModuleB.hs:2:1-18), (Data.HashMap.Strict, app/ModuleB.hs:3:1-29)]
+regExImports :: T.Text -> Maybe [(T.Text, T.Text)]
+regExImports msg = result
+  where
+    parts = T.words msg
+    isPrefix = not . T.isPrefixOf "("
+    (mod, srcspan) = partition isPrefix  parts
+    -- check we have matching pairs like (Data.Map, (app/src.hs:1:2-18))
+    result = if length mod == length srcspan then
+               regExPair `traverse` zip mod srcspan
+             else Nothing
+
+matchRegExMultipleImports :: T.Text -> Maybe (T.Text, [(T.Text, T.Text)])
+matchRegExMultipleImports message = do
+  let pat = T.pack "Perhaps you want to add ‘([^’]*)’ to one of these import lists: *(‘.*\\))$"
+  (binding, imports) <- case matchRegexUnifySpaces message pat of
+                            Just [x, xs] -> Just (x, xs)
+                            _ -> Nothing
+  imps <- regExImports imports
+  return (binding, imps)
