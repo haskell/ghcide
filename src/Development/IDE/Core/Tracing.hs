@@ -13,6 +13,7 @@ import           Control.Concurrent.Extra       (Var, modifyVar_, newVar,
                                                  readVar, threadDelay)
 import           Control.Exception              (evaluate)
 import           Control.Monad                  (forM_, forever, (>=>))
+import           Control.Monad.Extra            (whenJust)
 import           Control.Seq                    (r0, seqList, seqTuple2, using)
 import           Data.Dynamic                   (Dynamic)
 import qualified Data.HashMap.Strict            as HMap
@@ -23,7 +24,7 @@ import           Data.String                    (IsString (fromString))
 import           Development.IDE.Core.RuleTypes (GhcSession (GhcSession),
                                                  GhcSessionDeps (GhcSessionDeps),
                                                  GhcSessionIO (GhcSessionIO))
-import           Development.IDE.Types.Logger   (Logger, logDebug)
+import           Development.IDE.Types.Logger   (logInfo, Logger, logDebug)
 import           Development.IDE.Types.Shake    (Key (..), Value, Values)
 import           Development.Shake              (Action, actionBracket, liftIO)
 import           Foreign.Storable               (Storable (sizeOf))
@@ -124,23 +125,25 @@ measureMemory
     -> IO ()
 measureMemory logger groups instrumentFor stateRef = withSpan_ "Measure Memory" $ do
     values <- readVar stateRef
-    valuesSizeRef <- newIORef Nothing
+    valuesSizeRef <- newIORef $ Just 0
     let !groupsOfGroupedValues = groupValues values
     logDebug logger "STARTING MEMORY PROFILING"
-    forM_ groupsOfGroupedValues $ \groupedValues ->
-        whenNothing (writeIORef valuesSizeRef Nothing) $
-        repeatUntilJust 3 $ do
-        logDebug logger (fromString $ show $ map fst groupedValues)
-        runHeapsize $
-            forM_ groupedValues $ \(k,v) -> withSpan ("Measure " <> (fromString $ show k)) $ \sp -> do
-            acc <- liftIO $ newIORef 0
-            observe <- liftIO $ instrumentFor $ Just k
-            mapM_ (recursiveSize >=> \x -> liftIO (modifyIORef' acc (+ x))) v
-            size <- liftIO $ readIORef acc
-            let !byteSize = sizeOf (undefined :: Word) * size
-            setTag sp "size" (fromString (show byteSize ++ " bytes"))
-            () <- liftIO $ observe byteSize
-            liftIO $ modifyIORef' valuesSizeRef (fmap (+ byteSize))
+    forM_ groupsOfGroupedValues $ \groupedValues -> do
+        keepGoing <- readIORef valuesSizeRef
+        whenJust keepGoing $ \_ ->
+          whenNothing (writeIORef valuesSizeRef Nothing) $
+          repeatUntilJust 3 $ do
+          -- logDebug logger (fromString $ show $ map fst groupedValues)
+          runHeapsize $
+              forM_ groupedValues $ \(k,v) -> withSpan ("Measure " <> (fromString $ show k)) $ \sp -> do
+              acc <- liftIO $ newIORef 0
+              observe <- liftIO $ instrumentFor $ Just k
+              mapM_ (recursiveSize >=> \x -> liftIO (modifyIORef' acc (+ x))) v
+              size <- liftIO $ readIORef acc
+              let !byteSize = sizeOf (undefined :: Word) * size
+              setTag sp "size" (fromString (show byteSize ++ " bytes"))
+              () <- liftIO $ observe byteSize
+              liftIO $ modifyIORef' valuesSizeRef (fmap (+ byteSize))
 
     mbValuesSize <- readIORef valuesSizeRef
     case mbValuesSize of
@@ -149,7 +152,7 @@ measureMemory logger groups instrumentFor stateRef = withSpan_ "Measure Memory" 
             observe valuesSize
             logDebug logger "MEMORY PROFILING COMPLETED"
         Nothing ->
-            logDebug logger "Memory profiling could not be completed: increase the size of your nursery (+RTS -Ax) and try again"
+            logInfo logger "Memory profiling could not be completed: increase the size of your nursery (+RTS -Ax) and try again"
 
     where
         groupValues :: Values -> [ [(Key, [Value Dynamic])] ]
