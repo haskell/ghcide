@@ -137,7 +137,7 @@ measureMemory logger groups instrumentFor stateRef = withSpan_ "Measure Memory" 
           whenNothing (writeIORef valuesSizeRef Nothing) $
           repeatUntilJust 3 $ do
           -- logDebug logger (fromString $ show $ map fst groupedValues)
-          runHeapsize $
+          runHeapsize 25000000 $
               forM_ groupedValues $ \(k,v) -> withSpan ("Measure " <> (fromString $ show k)) $ \sp -> do
               acc <- liftIO $ newIORef 0
               observe <- liftIO $ instrumentFor $ Just k
