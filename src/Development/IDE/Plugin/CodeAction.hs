@@ -1114,20 +1114,26 @@ addBindingToImportList parent renderedBinding importLine = case T.breakOn "(" im
   (pre, T.uncons -> Just (_, rest)) ->
     -- If the data type is in the import list wiouht the constructor, we should remove it and import it again
     let rest' = case parent of
-          "" -> rest
+          "" -> ", " <> rest
           _ -> case T.breakOn parent rest of
             (h, T.stripPrefix parent -> Just r) -> case T.uncons (T.dropWhile isSpace r) of
-              Just (')', _) -> T.dropWhileEnd (== ',') h <> r
-              _ -> h <> r
-            _ -> rest
-     in case T.uncons (T.dropWhile isSpace rest') of
-          Just (')', _) -> T.concat [pre, "(", renderedBinding, rest']
-          _ -> T.concat [pre, "(", renderedBinding, ", ", rest']
+              Just (')', _) -> ")" <> h <> r
+              Just ('(', xs) -> let imported = T.takeWhile (/= ')') xs in T.concat ["," ,imported , "), " , h , removeHeadingComma (T.tail (T.dropWhile (/= ')') r))]
+              _ -> "), " <> h <> r
+            _ -> "), " <> rest
+        binding' = (if T.null parent then id else T.init) renderedBinding
+     in removeTrailingComma $ T.concat [pre, "(", binding', rest']
   _ ->
     error $
       "importLine does not have the expected structure: "
         <> T.unpack importLine
-
+  where
+    removeTrailingComma s = case T.breakOnEnd ")" s of
+      (T.unsnoc -> Just (h, _), t) -> T.dropWhileEnd (\x -> x == ',' || isSpace x) h <> ")" <> t
+      _ -> s
+    removeHeadingComma (T.stripStart -> s) = case T.uncons s of
+      Just (',', xs) -> xs
+      _ -> s
 -- | 'matchRegex' combined with 'unifySpaces'
 matchRegexUnifySpaces :: T.Text -> T.Text -> Maybe [T.Text]
 matchRegexUnifySpaces message = matchRegex (unifySpaces message)

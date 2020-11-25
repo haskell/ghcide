@@ -542,8 +542,8 @@ diagnosticTests = testGroup "diagnostics"
   ]
 
 codeActionTests :: TestTree
-codeActionTests = testGroup "code actions"
-  [ renameActionTests
+codeActionTests = testGroup "code actions" [extendImportTests]
+{-   [ renameActionTests
   , typeWildCardActionTests
   , removeImportTests
   , extendImportTests
@@ -560,7 +560,7 @@ codeActionTests = testGroup "code actions"
   , removeRedundantConstraintsTests
   , addTypeAnnotationsToLiteralsTest
   , exportUnusedTests
-  ]
+  ] -}
 
 codeActionHelperFunctionTests :: TestTree
 codeActionHelperFunctionTests = testGroup "code action helpers"
@@ -1039,6 +1039,26 @@ extendImportTests = testGroup "extend import actions"
             , "import ModuleA (A(Constructor))"
             , "b :: A"
             , "b = Constructor"
+            ])  
+  , testSession "extend single line import with mixed constructors" $ template
+      [("ModuleA.hs", T.unlines
+            [ "module ModuleA where"
+            , "data A = ConstructorFoo | ConstructorBar"
+            , "a = 1"
+            ])]
+      ("ModuleB.hs", T.unlines
+            [ "module ModuleB where"
+            , "import ModuleA (A(ConstructorBar),a)"
+            , "b :: A"
+            , "b = ConstructorFoo"
+            ])
+      (Range (Position 2 5) (Position 2 5))
+      ["Add A(ConstructorFoo) to the import list of ModuleA"]
+      (T.unlines
+            [ "module ModuleB where"
+            , "import ModuleA (A(ConstructorFoo,ConstructorBar), a)"
+            , "b :: A"
+            , "b = ConstructorFoo"
             ])
   , testSession "extend single line qualified import with value" $ template
       [("ModuleA.hs", T.unlines
