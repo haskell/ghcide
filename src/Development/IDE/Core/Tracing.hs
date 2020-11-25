@@ -12,6 +12,7 @@ import           Control.Concurrent.Async       (Async, async)
 import           Control.Concurrent.Extra       (Var, modifyVar_, newVar,
                                                  readVar, threadDelay)
 import           Control.Exception              (evaluate)
+import           Control.Exception.Safe         (catch, SomeException)
 import           Control.Monad                  (forM_, forever, (>=>))
 import           Control.Monad.Extra            (whenJust)
 import           Control.Seq                    (r0, seqList, seqTuple2, using)
@@ -86,6 +87,8 @@ startTelemetry logger stateRef = do
                      ++ [Key GhcSessionIO]
         !groupedForSharing <- evaluate (keys `using` seqList r0)
         measureMemory logger [groupedForSharing] instrumentFor stateRef
+          `catch` \(e::SomeException) ->
+            logInfo logger ("MEMORY PROFILING ERROR: " <> fromString (show e))
     return ()
   where
         seconds = 1000000
