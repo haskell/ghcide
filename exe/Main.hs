@@ -177,7 +177,10 @@ main = do
             -- measureMemory [] consoleObserver valuesRef
 
             -- putStrLn "## With full sharing"
-            let keys = nub $ Key GhcSession : Key GhcSessionDeps : map snd (HashMap.keys values)
+            let keys = nub
+                     $ Key GhcSession : Key GhcSessionDeps
+                     : [ k | (_,k) <- HashMap.keys values, k /= Key GhcSessionIO]
+                     ++ [Key GhcSessionIO]
             measureMemory [keys] consoleObserver valuesRef
 
         unless (null failed) (exitWith $ ExitFailure (length failed))

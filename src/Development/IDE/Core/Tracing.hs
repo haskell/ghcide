@@ -144,7 +144,6 @@ groupForObservableSharing =
         -- Ideally all the keys would be analysed together, but if we try to do too much the GC will interrupt the analysis
             [
               [ Key GhcSessionDeps
-              , Key GhcSessionIO
               , Key GhcSession
               , Key TypeCheck
               , Key GetModIface
@@ -155,6 +154,7 @@ groupForObservableSharing =
               , Key GetModuleGraph
               , Key GenerateCore
               , Key GetParsedModule
+              , Key GhcSessionIO
               ]
             ]
 
