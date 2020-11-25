@@ -9,24 +9,39 @@ module Development.IDE.Core.Tracing
     )
 where
 
-import           Control.Seq
-import           Development.Shake
-import           Development.IDE.Types.Shake
-import           Language.Haskell.LSP.Types
-import           OpenTelemetry.Eventlog
-import qualified Data.ByteString.Char8         as BS
-import Control.Concurrent.Extra
-import qualified Data.HashMap.Strict as HMap
-import Control.Concurrent.Async
-import Control.Monad
-import Foreign.Storable (Storable(sizeOf))
-import HeapSize (recursiveSize, runHeapsize)
-import Development.IDE.Core.RuleTypes
-import Data.Dynamic (Dynamic)
-import Data.IORef
-import Numeric.Natural
-import Development.IDE.Types.Logger
-import Data.Text (pack)
+import           Control.Concurrent.Async       (Async, async)
+import           Control.Concurrent.Extra       (Var, modifyVar_, newVar,
+                                                 readVar, threadDelay)
+import           Control.Monad                  (forM_, forever, (>=>))
+import           Control.Seq                    (r0, seqList, seqTuple2, using)
+import           Data.Dynamic                   (Dynamic)
+import qualified Data.HashMap.Strict            as HMap
+import           Data.IORef                     (modifyIORef', newIORef,
+                                                 readIORef, writeIORef)
+import           Data.String                    (IsString (fromString))
+import           Development.IDE.Core.RuleTypes (GenerateCore (GenerateCore),
+                                                 GetDependencyInformation (GetDependencyInformation),
+                                                 GetHieAst (GetHieAst),
+                                                 GetModIface (GetModIface),
+                                                 GetModSummary (GetModSummary),
+                                                 GetModSummaryWithoutTimestamps (GetModSummaryWithoutTimestamps),
+                                                 GetModuleGraph (GetModuleGraph),
+                                                 GetParsedModule (GetParsedModule),
+                                                 GhcSession (GhcSession),
+                                                 GhcSessionDeps (GhcSessionDeps),
+                                                 GhcSessionIO (GhcSessionIO),
+                                                 TypeCheck (TypeCheck))
+import           Development.IDE.Types.Logger   (Logger, logDebug)
+import           Development.IDE.Types.Shake    (Key (..), Value, Values)
+import           Development.Shake              (Action, actionBracket, liftIO)
+import           Foreign.Storable               (Storable (sizeOf))
+import           HeapSize                       (recursiveSize, runHeapsize)
+import           Language.Haskell.LSP.Types     (NormalizedFilePath,
+                                                 fromNormalizedFilePath)
+import           Numeric.Natural                (Natural)
+import           OpenTelemetry.Eventlog         (addEvent, beginSpan, endSpan,
+                                                 mkValueObserver, observe,
+                                                 setTag, withSpan, withSpan_)
 
 -- | Trace a handler using OpenTelemetry. Adds various useful info into tags in the OpenTelemetry span.
 otTracedHandler
@@ -37,10 +52,10 @@ otTracedHandler
 otTracedHandler requestType label act =
   let !name =
         if null label
-          then BS.pack requestType
-          else BS.pack (requestType <> ":" <> show label)
+          then requestType
+          else requestType <> ":" <> show label
    -- Add an event so all requests can be quickly seen in the viewer without searching
-   in withSpan name (\sp -> addEvent sp "" (name <> " received") >> act)
+   in withSpan (fromString name) (\sp -> addEvent sp "" (fromString $ name <> " received") >> act)
 
 -- | Trace a Shake action using opentelemetry.
 otTracedAction
@@ -51,8 +66,8 @@ otTracedAction
     -> Action a
 otTracedAction key file act = actionBracket
     (do
-        sp <- beginSpan (BS.pack (show key))
-        setTag sp "File" (BS.pack $ fromNormalizedFilePath file)
+        sp <- beginSpan (fromString (show key))
+        setTag sp "File" (fromString $ fromNormalizedFilePath file)
         return sp
     )
     endSpan
@@ -88,7 +103,7 @@ getInstrumentCached = do
           mb_inst <- HMap.lookup k <$> readVar instrumentMap
           case mb_inst of
             Nothing -> do
-                instrument <- mkValueObserver (BS.pack (show k ++ " size_bytes"))
+                instrument <- mkValueObserver (fromString (show k ++ " size_bytes"))
                 modifyVar_ instrumentMap (return . HMap.insert k instrument)
                 return $ observe instrument
             Just v -> return $ observe v
@@ -108,15 +123,15 @@ measureMemory logger groups instrumentFor stateRef = withSpan_ "Measure Memory" 
     forM_ groupsOfGroupedValues $ \groupedValues ->
         whenNothing (writeIORef valuesSizeRef Nothing) $
         repeatUntilJust 3 $ do
-        logDebug logger (pack $ show $ map fst groupedValues)
+        logDebug logger (fromString $ show $ map fst groupedValues)
         runHeapsize $
-            forM_ groupedValues $ \(k,v) -> withSpan ("Measure " <> (BS.pack $ show k)) $ \sp -> do
+            forM_ groupedValues $ \(k,v) -> withSpan ("Measure " <> (fromString $ show k)) $ \sp -> do
             acc <- liftIO $ newIORef 0
             observe <- liftIO $ instrumentFor $ Just k
             mapM_ (recursiveSize >=> \x -> liftIO (modifyIORef' acc (+ x))) v
             size <- liftIO $ readIORef acc
             let !byteSize = sizeOf (undefined :: Word) * size
-            setTag sp "size" (BS.pack (show byteSize ++ " bytes"))
+            setTag sp "size" (fromString (show byteSize ++ " bytes"))
             () <- liftIO $ observe byteSize
             liftIO $ modifyIORef' valuesSizeRef (fmap (+ byteSize))
 
