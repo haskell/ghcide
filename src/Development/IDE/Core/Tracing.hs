@@ -72,7 +72,7 @@ startTelemetry logger stateRef = do
     instrumentFor <- getInstrumentCached
     mapCountInstrument <- mkValueObserver "values map count"
 
-    _ <- regularly 10000 $ -- 100 times/s
+    _ <- regularly (1 * seconds) $
         withSpan_ "Measure length" $
         readVar stateRef
         >>= observe mapCountInstrument . length
