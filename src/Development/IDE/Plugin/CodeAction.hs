@@ -1,8 +1,8 @@
 -- Copyright (c) 2019 The DAML Authors. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
 
-{-# LANGUAGE CPP                   #-}
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE CPP                   #-}
 #include "ghc-api-version.h"
 
 -- | Go to the definition of a variable.
@@ -390,9 +390,9 @@ suggestExportUnusedTopBinding srcOpt ParsedModule{pm_parsed_source = L _ HsModul
        in loc >= Just l && loc <= Just r
 
     printExport :: ExportsAs -> T.Text -> T.Text
-    printExport ExportName x    = parenthesizeIfNeeds False x
+    printExport ExportName x = parenthesizeIfNeeds False x
     printExport ExportPattern x = "pattern " <> x
-    printExport ExportAll x     = parenthesizeIfNeeds True x <> "(..)"
+    printExport ExportAll x = parenthesizeIfNeeds True x <> "(..)"
 
     isTopLevel :: Range -> Bool
     isTopLevel l = (_character . _start) l == 0
@@ -621,7 +621,7 @@ processHoleSuggestions mm = (holeSuggestions, refSuggestions)
       return holeFit
 
     mapHead f (a:aa) = f a : aa
-    mapHead _ []     = []
+    mapHead _ [] = []
 
 -- > getIndentedGroups [" H1", "  l1", "  l2", " H2", "  l3"] = [[" H1,", "  l1", "  l2"], [" H2", "  l3"]]
 getIndentedGroups :: [T.Text] -> [[T.Text]]
@@ -940,10 +940,10 @@ suggestNewImport packageExportsMap ParsedModule {pm_parsed_source = L _ HsModule
   , Just insertLine <- case hsmodImports of
         [] -> case srcSpanStart $ getLoc (head hsmodDecls) of
           RealSrcLoc s -> Just $ srcLocLine s - 1
-          _            -> Nothing
+          _ -> Nothing
         _ -> case srcSpanEnd $ getLoc (last hsmodImports) of
           RealSrcLoc s -> Just $ srcLocLine s
-          _            -> Nothing
+          _ -> Nothing
   , insertPos <- Position insertLine 0
   , extendImportSuggestions <- matchRegexUnifySpaces msg
     "Perhaps you want to add ‘[^’]*’ to the import list in the import of ‘([^’]*)’"
@@ -988,9 +988,9 @@ data NotInScope
     deriving Show
 
 notInScope :: NotInScope -> T.Text
-notInScope (NotInScopeDataConstructor t)        = t
+notInScope (NotInScopeDataConstructor t) = t
 notInScope (NotInScopeTypeConstructorOrClass t) = t
-notInScope (NotInScopeThing t)                  = t
+notInScope (NotInScopeThing t) = t
 
 extractNotInScopeName :: T.Text -> Maybe NotInScope
 extractNotInScopeName x
@@ -1136,7 +1136,7 @@ matchRegexUnifySpaces message = matchRegex (unifySpaces message)
 matchRegex :: T.Text -> T.Text -> Maybe [T.Text]
 matchRegex message regex = case message =~~ regex of
     Just (_ :: T.Text, _ :: T.Text, _ :: T.Text, bindings) -> Just bindings
-    Nothing                                                -> Nothing
+    Nothing -> Nothing
 
 setHandlersCodeLens :: PartialHandlers c
 setHandlersCodeLens = PartialHandlers $ \WithMessage{..} x -> return x{
