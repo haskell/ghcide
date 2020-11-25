@@ -125,6 +125,7 @@ import NameCache
 import UniqSupply
 import PrelInfo
 import Data.Int (Int64)
+import OpenTelemetry.Eventlog
 
 -- information we stash inside the shakeExtra field
 data ShakeExtras = ShakeExtras
@@ -579,11 +580,12 @@ newSession extras@ShakeExtras{..} shakeDb acts = do
     let
         -- A daemon-like action used to inject additional work
         -- Runs actions from the work queue sequentially
-        pumpActionThread = do
+        pumpActionThread otSpan = do
             d <- liftIO $ atomically $ popQueue actionQueue
-            void $ parallel [run d, pumpActionThread]
+            void $ parallel [run otSpan d, pumpActionThread otSpan]
 
-        run d  = do
+        -- TODO figure out how to thread the otSpan into defineEarlyCutoff
+        run _otSpan d  = do
             start <- liftIO offsetTime
             getAction d
             liftIO $ atomically $ doneQueue d actionQueue
@@ -594,8 +596,8 @@ newSession extras@ShakeExtras{..} shakeDb acts = do
                 logPriority logger (actionPriority d) msg
                 notifyTestingLogMessage extras msg
 
-        workRun restore = do
-          let acts' = pumpActionThread : map run (reenqueued ++ acts)
+        workRun restore = withSpan "Shake session" $ \otSpan -> do
+          let acts' = pumpActionThread otSpan : map (run otSpan) (reenqueued ++ acts)
           res <- try @SomeException (restore $ shakeRunDatabase shakeDb acts')
           let res' = case res of
                       Left e -> "exception: " <> displayException e
