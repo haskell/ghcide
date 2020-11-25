@@ -173,15 +173,11 @@ main = do
                 consoleObserver (Just k) = return $ \size -> printf "  - %s: %.2fKB\n" (show k) (fromIntegral @Int @Double size / 1e3)
 
             printf "# Shake value store contents(%d):\n" (length values)
-            -- putStrLn "## Without sharing"
-            -- measureMemory [] consoleObserver valuesRef
-
-            -- putStrLn "## With full sharing"
             let keys = nub
                      $ Key GhcSession : Key GhcSessionDeps
                      : [ k | (_,k) <- HashMap.keys values, k /= Key GhcSessionIO]
                      ++ [Key GhcSessionIO]
-            measureMemory [keys] consoleObserver valuesRef
+            measureMemory (logger logLevel) [keys] consoleObserver valuesRef
 
         unless (null failed) (exitWith $ ExitFailure (length failed))
 

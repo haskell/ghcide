@@ -405,7 +405,7 @@ shakeOpen getLspId eventer withProgress withIndefiniteProgress logger debouncer
 
     IdeOptions{ optOTMemoryProfiling = IdeOTMemoryProfiling otProfilingEnabled } <- getIdeOptionsIO shakeExtras
     when otProfilingEnabled $
-        startTelemetry $ state shakeExtras
+        startTelemetry logger $ state shakeExtras
 
     return ideState
     where

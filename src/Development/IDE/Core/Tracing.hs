@@ -22,9 +22,11 @@ import Control.Monad
 import Foreign.Storable (Storable(sizeOf))
 import HeapSize (recursiveSize, runHeapsize)
 import Development.IDE.Core.RuleTypes
-import Debug.Trace
 import Data.Dynamic (Dynamic)
 import Data.IORef
+import Numeric.Natural
+import Development.IDE.Types.Logger
+import Data.Text (pack)
 
 -- | Trace a handler using OpenTelemetry. Adds various useful info into tags in the OpenTelemetry span.
 otTracedHandler
@@ -56,8 +58,8 @@ otTracedAction key file act = actionBracket
     endSpan
     (const act)
 
-startTelemetry :: Var Values -> IO ()
-startTelemetry stateRef = do
+startTelemetry :: Logger -> Var Values -> IO ()
+startTelemetry logger stateRef = do
     instrumentFor <- getInstrumentCached
     mapCountInstrument <- mkValueObserver "values map count"
 
@@ -67,7 +69,7 @@ startTelemetry stateRef = do
         >>= observe mapCountInstrument . length
 
     _ <- regularly (1 * seconds) $
-        measureMemory groupForObservableSharing instrumentFor stateRef
+        measureMemory logger groupForObservableSharing instrumentFor stateRef
     return ()
   where
         seconds = 1000000
@@ -90,15 +92,21 @@ getInstrumentCached = do
             Just v -> return $ observe v
     return $ maybe (return $ observe mapBytesInstrument) instrumentFor
 
-measureMemory :: [[Key]] -> (Maybe Key -> IO OurValueObserver) -> Var Values -> IO ()
-measureMemory groups instrumentFor stateRef = withSpan_ "Measure Memory" $ do
+whenNothing :: IO () -> IO (Maybe a) -> IO ()
+whenNothing act mb = mb >>= f
+  where f Nothing = act
+        f Just{}  = return ()
+
+measureMemory :: Logger -> [[Key]] -> (Maybe Key -> IO OurValueObserver) -> Var Values -> IO ()
+measureMemory logger groups instrumentFor stateRef = withSpan_ "Measure Memory" $ do
     values <- readVar stateRef
-    valuesSizeRef <- newIORef 0
+    valuesSizeRef <- newIORef Nothing
     let !groupsOfGroupedValues = groupValues values
-    traceIO "STARTING MEMORY PROFILING"
+    logDebug logger "STARTING MEMORY PROFILING"
     forM_ groupsOfGroupedValues $ \groupedValues ->
-        repeatUntilJust $ do
-        traceIO (show $ map fst groupedValues)
+        whenNothing (writeIORef valuesSizeRef Nothing) $
+        repeatUntilJust 3 $ do
+        logDebug logger (pack $ show $ map fst groupedValues)
         runHeapsize $
             forM_ groupedValues $ \(k,v) -> withSpan ("Measure " <> (BS.pack $ show k)) $ \sp -> do
             acc <- liftIO $ newIORef 0
@@ -108,12 +116,17 @@ measureMemory groups instrumentFor stateRef = withSpan_ "Measure Memory" $ do
             let !byteSize = sizeOf (undefined :: Word) * size
             setTag sp "size" (BS.pack (show byteSize ++ " bytes"))
             () <- liftIO $ observe byteSize
-            liftIO $ modifyIORef' valuesSizeRef (+ byteSize)
+            liftIO $ modifyIORef' valuesSizeRef (fmap (+ byteSize))
 
-    valuesSize <- readIORef valuesSizeRef
-    observe <- instrumentFor Nothing
-    observe valuesSize
-    traceIO "MEMORY PROFILING COMPLETED"
+    mbValuesSize <- readIORef valuesSizeRef
+    case mbValuesSize of
+        Just valuesSize -> do
+            observe <- instrumentFor Nothing
+            observe valuesSize
+            logDebug logger "MEMORY PROFILING COMPLETED"
+        Nothing ->
+            logDebug logger "Memory profiling could not be completed: increase the size of your nursery (+RTS -Ax) and try again"
+
     where
         blacklist = []
 
@@ -158,9 +171,10 @@ groupForObservableSharing =
               ]
             ]
 
-repeatUntilJust :: Monad m => m (Maybe b) -> m b
-repeatUntilJust action = do
+repeatUntilJust :: Monad m => Natural -> m (Maybe a) -> m (Maybe a)
+repeatUntilJust 0 _ = return Nothing
+repeatUntilJust nattempts action = do
     res <- action
     case res of
-        Nothing -> trace "RETRYING MEMORY PROFILING" $ repeatUntilJust action
-        Just x -> return x
+        Nothing -> repeatUntilJust (nattempts-1) action
+        Just{} -> return res
