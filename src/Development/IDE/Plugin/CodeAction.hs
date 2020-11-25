@@ -649,19 +649,19 @@ suggestExtendImport exportsMap contents Diagnostic{_range=_range,..}
       matchRegexUnifySpaces _message
       "Perhaps you want to add ‘([^’]*)’ to the import list in the import of ‘([^’]*)’ *\\((.*)\\).$"
     , Just c <- contents
-    , [(renderImport -> renderedBinding, _)] <- filter (\(_,m) -> mod == m) $ maybe [] Set.toList $ Map.lookup binding (getExportsMap exportsMap)
+    , [(renderImportWithParent -> (parent,renderedBinding), _)] <- filter (\(_,m) -> mod == m) $ maybe [] Set.toList $ Map.lookup binding (getExportsMap exportsMap)
     = let range = case [ x | (x,"") <- readSrcSpan (T.unpack srcspan)] of
             [s] -> let x = realSrcSpanToRange s
                    in x{_end = (_end x){_character = succ (_character (_end x))}}
             _ -> error "bug in srcspan parser"
           importLine = textInRange range c
         in [("Add " <> renderedBinding <> " to the import list of " <> mod
-        , [TextEdit range (addBindingToImportList renderedBinding importLine)])]
+        , [TextEdit range (addBindingToImportList parent renderedBinding importLine)])]
     | otherwise = []
   where
-  renderImport IdentInfo {parent, rendered}
-    | Just p <- parent = p <> "(" <> rendered <> ")"
-    | otherwise        = rendered
+  renderImportWithParent IdentInfo {parent, rendered}
+    | Just p <- parent = (p, p <> "(" <> rendered <> ")")
+    | otherwise        = ("", rendered)
 
 suggestFixConstructorImport :: Maybe T.Text -> Diagnostic -> [(T.Text, [TextEdit])]
 suggestFixConstructorImport _ Diagnostic{_range=_range,..}
@@ -1102,15 +1102,23 @@ rangesForBinding' _ _ = []
 --       import (qualified) A (..) ..
 --   Places the new binding first, preserving whitespace.
 --   Copes with multi-line import lists
-addBindingToImportList :: T.Text -> T.Text -> T.Text
-addBindingToImportList binding importLine = case T.breakOn "(" importLine of
-    (pre, T.uncons -> Just (_, rest)) ->
-      case T.uncons (T.dropWhile isSpace rest) of
-        Just (')', _) -> T.concat [pre, "(", binding, rest]
-        _             -> T.concat [pre, "(", binding, ", ", rest]
-    _ ->
-      error
-        $  "importLine does not have the expected structure: "
+addBindingToImportList :: T.Text -> T.Text -> T.Text -> T.Text
+addBindingToImportList parent renderedBinding importLine = case T.breakOn "(" importLine of
+  (pre, T.uncons -> Just (_, rest)) ->
+    -- If the data type is in the import list wiouht the constructor, we should remove it and import it again
+    let rest' = case parent of
+          "" -> rest
+          _ -> case T.breakOn parent rest of
+            (h, T.stripPrefix parent -> Just r) -> case T.uncons (T.dropWhile isSpace r) of
+              Just (')', _) -> T.dropWhileEnd (== ',') h <> r
+              _ -> h <> r
+            _ -> rest
+     in case T.uncons (T.dropWhile isSpace rest') of
+          Just (')', _) -> T.concat [pre, "(", renderedBinding, rest']
+          _ -> T.concat [pre, "(", renderedBinding, ", ", rest']
+  _ ->
+    error $
+      "importLine does not have the expected structure: "
         <> T.unpack importLine
 
 -- | 'matchRegex' combined with 'unifySpaces'
