@@ -57,7 +57,7 @@ import Test.Tasty.Ingredients.Rerun
 import Test.Tasty.HUnit
 import Test.Tasty.QuickCheck
 import System.Time.Extra
-import Development.IDE.Plugin.CodeAction (typeSignatureCommandId, blockCommandId)
+import Development.IDE.Plugin.CodeAction (typeSignatureCommandId, blockCommandId, matchRegExMultipleImports)
 import Development.IDE.Plugin.Test (TestRequest(BlockSeconds,GetInterfaceFilesDir))
 
 main :: IO ()
@@ -97,6 +97,8 @@ main = do
     , rootUriTests
     , asyncTests
     , clientSettingsTest
+
+    , codeActionHelperFunctionTests
     ]
 
 initializeResponseTests :: TestTree
@@ -560,6 +562,13 @@ codeActionTests = testGroup "code actions"
   , exportUnusedTests
   ]
 
+codeActionHelperFunctionTests :: TestTree
+codeActionHelperFunctionTests = testGroup "code action helpers"
+    [
+    extendImportTestsRegEx
+    ]
+
+
 codeLensesTests :: TestTree
 codeLensesTests = testGroup "code lenses"
   [ addSigLensesTests
@@ -954,58 +963,58 @@ removeImportTests = testGroup "remove import actions"
 extendImportTests :: TestTree
 extendImportTests = testGroup "extend import actions"
   [ testSession "extend single line import with value" $ template
-      (T.unlines
+      [("ModuleA.hs", T.unlines
             [ "module ModuleA where"
             , "stuffA :: Double"
             , "stuffA = 0.00750"
             , "stuffB :: Integer"
             , "stuffB = 123"
-            ])
-      (T.unlines
+            ])]
+      ("ModuleB.hs", T.unlines
             [ "module ModuleB where"
             , "import ModuleA as A (stuffB)"
             , "main = print (stuffA, stuffB)"
             ])
       (Range (Position 3 17) (Position 3 18))
-      "Add stuffA to the import list of ModuleA"
+      ["Add stuffA to the import list of ModuleA"]
       (T.unlines
             [ "module ModuleB where"
             , "import ModuleA as A (stuffA, stuffB)"
             , "main = print (stuffA, stuffB)"
             ])
   , testSession "extend single line import with operator" $ template
-      (T.unlines
+      [("ModuleA.hs", T.unlines
             [ "module ModuleA where"
             , "(.*) :: Integer -> Integer -> Integer"
             , "x .* y = x * y"
             , "stuffB :: Integer"
             , "stuffB = 123"
-            ])
-      (T.unlines
+            ])]
+      ("ModuleB.hs", T.unlines
             [ "module ModuleB where"
             , "import ModuleA as A (stuffB)"
             , "main = print (stuffB .* stuffB)"
             ])
       (Range (Position 3 17) (Position 3 18))
-      "Add .* to the import list of ModuleA"
+      ["Add .* to the import list of ModuleA"]
       (T.unlines
             [ "module ModuleB where"
             , "import ModuleA as A ((.*), stuffB)"
             , "main = print (stuffB .* stuffB)"
             ])
   , testSession "extend single line import with type" $ template
-      (T.unlines
+      [("ModuleA.hs", T.unlines
             [ "module ModuleA where"
             , "type A = Double"
-            ])
-      (T.unlines
+            ])]
+      ("ModuleB.hs", T.unlines
             [ "module ModuleB where"
             , "import ModuleA ()"
             , "b :: A"
             , "b = 0"
             ])
       (Range (Position 2 5) (Position 2 5))
-      "Add A to the import list of ModuleA"
+      ["Add A to the import list of ModuleA"]
       (T.unlines
             [ "module ModuleB where"
             , "import ModuleA (A)"
@@ -1013,18 +1022,18 @@ extendImportTests = testGroup "extend import actions"
             , "b = 0"
             ])
   ,  (`xfail` "known broken") $ testSession "extend single line import with constructor" $ template
-      (T.unlines
+      [("ModuleA.hs", T.unlines
             [ "module ModuleA where"
             , "data A = Constructor"
-            ])
-      (T.unlines
+            ])]
+      ("ModuleB.hs", T.unlines
             [ "module ModuleB where"
             , "import ModuleA (A)"
             , "b :: A"
             , "b = Constructor"
             ])
       (Range (Position 2 5) (Position 2 5))
-      "Add Constructor to the import list of ModuleA"
+      ["Add Constructor to the import list of ModuleA"]
       (T.unlines
             [ "module ModuleB where"
             , "import ModuleA (A(Constructor))"
@@ -1032,60 +1041,107 @@ extendImportTests = testGroup "extend import actions"
             , "b = Constructor"
             ])
   , testSession "extend single line qualified import with value" $ template
-      (T.unlines
+      [("ModuleA.hs", T.unlines
             [ "module ModuleA where"
             , "stuffA :: Double"
             , "stuffA = 0.00750"
             , "stuffB :: Integer"
             , "stuffB = 123"
-            ])
-      (T.unlines
+            ])]
+      ("ModuleB.hs", T.unlines
             [ "module ModuleB where"
             , "import qualified ModuleA as A (stuffB)"
             , "main = print (A.stuffA, A.stuffB)"
             ])
       (Range (Position 3 17) (Position 3 18))
-      "Add stuffA to the import list of ModuleA"
+      ["Add stuffA to the import list of ModuleA"]
       (T.unlines
             [ "module ModuleB where"
             , "import qualified ModuleA as A (stuffA, stuffB)"
             , "main = print (A.stuffA, A.stuffB)"
             ])
   , testSession "extend multi line import with value" $ template
-      (T.unlines
+      [("ModuleA.hs", T.unlines
             [ "module ModuleA where"
             , "stuffA :: Double"
             , "stuffA = 0.00750"
             , "stuffB :: Integer"
             , "stuffB = 123"
-            ])
-      (T.unlines
+            ])]
+      ("ModuleB.hs", T.unlines
             [ "module ModuleB where"
             , "import ModuleA (stuffB"
             , "               )"
             , "main = print (stuffA, stuffB)"
             ])
       (Range (Position 3 17) (Position 3 18))
-      "Add stuffA to the import list of ModuleA"
+      ["Add stuffA to the import list of ModuleA"]
       (T.unlines
             [ "module ModuleB where"
             , "import ModuleA (stuffA, stuffB"
             , "               )"
             , "main = print (stuffA, stuffB)"
             ])
+  , testSession "extend import list with multiple choices" $ template
+      [("ModuleA.hs", T.unlines
+            --  this is just a dummy module to help the arguments needed for this test
+            [  "module ModuleA (bar) where"
+             , "bar = 10"
+               ]),
+      ("ModuleB.hs", T.unlines
+            --  this is just a dummy module to help the arguments needed for this test
+            [  "module ModuleB (bar) where"
+             , "bar = 10"
+               ])]
+      ("ModuleC.hs", T.unlines
+            [ "module ModuleC where"
+            , "import ModuleB ()"
+            , "import ModuleA ()"
+            , "foo = bar"
+            ])
+      (Range (Position 3 17) (Position 3 18))
+      ["Add bar to the import list of ModuleA",
+       "Add bar to the import list of ModuleB"]
+      (T.unlines
+            [ "module ModuleC where"
+            , "import ModuleB ()"
+            , "import ModuleA (bar)"
+            , "foo = bar"
+            ])
   ]
   where
-    template contentA contentB range expectedAction expectedContentB = do
-      _docA <- createDoc "ModuleA.hs" "haskell" contentA
-      docB <- createDoc "ModuleB.hs" "haskell" contentB
-      _ <- waitForDiagnostics
-      CACodeAction action@CodeAction { _title = actionTitle } : _
-                  <- sortOn (\(CACodeAction CodeAction{_title=x}) -> x) <$>
-                     getCodeActions docB range
-      liftIO $ expectedAction @=? actionTitle
+    template setUpModules moduleUnderTest range expectedActions expectedContentB = do
+      mapM_ (\x -> createDoc (fst x) "haskell" (snd x)) setUpModules
+      docB <- createDoc (fst moduleUnderTest) "haskell" (snd moduleUnderTest)
+      _  <- waitForDiagnostics
+      codeActions <- filter (\(CACodeAction CodeAction{_title=x}) -> T.isPrefixOf "Add" x)
+          <$>  getCodeActions docB range
+      let expectedTitles = (\(CACodeAction CodeAction{_title=x}) ->x) <$> codeActions
+      liftIO $ expectedActions @=? expectedTitles
+
+      -- Get the first action and execute the first action
+      let CACodeAction action :  _
+                  = sortOn (\(CACodeAction CodeAction{_title=x}) -> x) codeActions
       executeCodeAction action
       contentAfterAction <- documentContents docB
       liftIO $ expectedContentB @=? contentAfterAction
+
+extendImportTestsRegEx :: TestTree
+extendImportTestsRegEx = testGroup "regex parsing"
+    [
+      testCase "parse invalid multiple imports" $ template "foo bar foo" Nothing
+    , testCase "parse malformed import list" $ template
+                  "\n\8226 Perhaps you want to add \8216fromList\8217 to one of these import lists:\n    \8216Data.Map\8217)"
+                  Nothing
+    , testCase "parse multiple imports" $ template
+                 "\n\8226 Perhaps you want to add \8216fromList\8217 to one of these import lists:\n    \8216Data.Map\8217 (app/testlsp.hs:7:1-18)\n    \8216Data.HashMap.Strict\8217 (app/testlsp.hs:8:1-29)"
+                 $ Just ("fromList",[("Data.Map","app/testlsp.hs:7:1-18"),("Data.HashMap.Strict","app/testlsp.hs:8:1-29")])
+    ]
+    where
+        template message expected = do
+            liftIO $ matchRegExMultipleImports message @=? expected
+
+
 
 suggestImportTests :: TestTree
 suggestImportTests = testGroup "suggest import actions"
@@ -2661,15 +2717,16 @@ completionTests
     , testGroup "other" otherCompletionTests
     ]
 
-completionTest :: String -> [T.Text] -> Position -> [(T.Text, CompletionItemKind, Bool, Bool)] -> TestTree
+completionTest :: String -> [T.Text] -> Position -> [(T.Text, CompletionItemKind, T.Text, Bool, Bool)] -> TestTree
 completionTest name src pos expected = testSessionWait name $ do
     docId <- createDoc "A.hs" "haskell" (T.unlines src)
     _ <- waitForDiagnostics
     compls <- getCompletions docId pos
-    let compls' = [ (_label, _kind) | CompletionItem{..} <- compls]
+    let compls' = [ (_label, _kind, _insertText) | CompletionItem{..} <- compls]
     liftIO $ do
-        compls' @?= [ (l, Just k) | (l,k,_,_) <- expected]
-        forM_ (zip compls expected) $ \(CompletionItem{..}, (_,_,expectedSig, expectedDocs)) -> do
+        let emptyToMaybe x = if T.null x then Nothing else Just x
+        compls' @?= [ (l, Just k, emptyToMaybe t) | (l,k,t,_,_) <- expected]
+        forM_ (zip compls expected) $ \(CompletionItem{..}, (_,_,_,expectedSig, expectedDocs)) -> do
             when expectedSig $
                 assertBool ("Missing type signature: " <> T.unpack _label) (isJust _detail)
             when expectedDocs $
@@ -2681,42 +2738,43 @@ topLevelCompletionTests = [
         "variable"
         ["bar = xx", "-- | haddock", "xxx :: ()", "xxx = ()", "-- | haddock", "data Xxx = XxxCon"]
         (Position 0 8)
-        [("xxx", CiFunction, True, True),
-         ("XxxCon", CiConstructor, False, True)
+        [("xxx", CiFunction, "xxx", True, True),
+         ("XxxCon", CiConstructor, "XxxCon", False, True)
         ],
     completionTest
         "constructor"
         ["bar = xx", "-- | haddock", "xxx :: ()", "xxx = ()", "-- | haddock", "data Xxx = XxxCon"]
         (Position 0 8)
-        [("xxx", CiFunction, True, True),
-         ("XxxCon", CiConstructor, False, True)
+        [("xxx", CiFunction, "xxx", True, True),
+         ("XxxCon", CiConstructor, "XxxCon", False, True)
         ],
     completionTest
         "class method"
         ["bar = xx", "class Xxx a where", "-- | haddock", "xxx :: ()", "xxx = ()"]
         (Position 0 8)
-        [("xxx", CiFunction, True, True)],
+        [("xxx", CiFunction, "xxx", True, True)],
     completionTest
         "type"
         ["bar :: Xx", "xxx = ()", "-- | haddock", "data Xxx = XxxCon"]
         (Position 0 9)
-        [("Xxx", CiStruct, False, True)],
+        [("Xxx", CiStruct, "Xxx", False, True)],
     completionTest
         "class"
         ["bar :: Xx", "xxx = ()", "-- | haddock", "class Xxx a"]
         (Position 0 9)
-        [("Xxx", CiClass, False, True)],
+        [("Xxx", CiClass, "Xxx", False, True)],
     completionTest
         "records"
         ["data Person = Person { _personName:: String, _personAge:: Int}", "bar = Person { _pers }" ]
         (Position 1 19)
-        [("_personName", CiFunction, False, True),
-         ("_personAge", CiFunction, False, True)],
+        [("_personName", CiFunction, "_personName", False, True),
+         ("_personAge", CiFunction, "_personAge", False, True)],
     completionTest
         "recordsConstructor"
         ["data XxRecord = XyRecord { x:: String, y:: Int}", "bar = Xy" ]
         (Position 1 19)
-        [("XyRecord", CiConstructor, False, True)]
+        [("XyRecord", CiConstructor, "XyRecord", False, True),
+         ("XyRecord", CiSnippet, "XyRecord {x=${1:_x}, y=${2:_y}}", False, True)]
     ]
 
 localCompletionTests :: [TestTree]
@@ -2725,8 +2783,8 @@ localCompletionTests = [
         "argument"
         ["bar (Just abcdef) abcdefg = abcd"]
         (Position 0 32)
-        [("abcdef", CiFunction, True, False),
-         ("abcdefg", CiFunction , True, False)
+        [("abcdef", CiFunction, "abcdef", True, False),
+         ("abcdefg", CiFunction , "abcdefg", True, False)
         ],
     completionTest
         "let"
@@ -2735,8 +2793,8 @@ localCompletionTests = [
         ,"        in abcd"
         ]
         (Position 2 15)
-        [("abcdef", CiFunction, True, False),
-         ("abcdefg", CiFunction , True, False)
+        [("abcdef", CiFunction, "abcdef", True, False),
+         ("abcdefg", CiFunction , "abcdefg", True, False)
         ],
     completionTest
         "where"
@@ -2745,8 +2803,8 @@ localCompletionTests = [
         ,"        abcdefg = let abcd = undefined in undefined"
         ]
         (Position 0 10)
-        [("abcdef", CiFunction, True, False),
-         ("abcdefg", CiFunction , True, False)
+        [("abcdef", CiFunction, "abcdef", True, False),
+         ("abcdefg", CiFunction , "abcdefg", True, False)
         ],
     completionTest
         "do/1"
@@ -2757,7 +2815,7 @@ localCompletionTests = [
         ,"  pure ()"
         ]
         (Position 2 6)
-        [("abcdef", CiFunction, True, False)
+        [("abcdef", CiFunction, "abcdef", True, False)
         ],
     completionTest
         "do/2"
@@ -2771,12 +2829,12 @@ localCompletionTests = [
         ,"    abcdefghij = undefined"
         ]
         (Position 5 8)
-        [("abcde", CiFunction, True, False)
-        ,("abcdefghij", CiFunction, True, False)
-        ,("abcdef", CiFunction, True, False)
-        ,("abcdefg", CiFunction, True, False)
-        ,("abcdefgh", CiFunction, True, False)
-        ,("abcdefghi", CiFunction, True, False)
+        [("abcde", CiFunction, "abcde", True, False)
+        ,("abcdefghij", CiFunction, "abcdefghij", True, False)
+        ,("abcdef", CiFunction, "abcdef", True, False)
+        ,("abcdefg", CiFunction, "abcdefg", True, False)
+        ,("abcdefgh", CiFunction, "abcdefgh", True, False)
+        ,("abcdefghi", CiFunction, "abcdefghi", True, False)
         ]
     ]
 
@@ -2786,39 +2844,39 @@ nonLocalCompletionTests =
       "variable"
       ["module A where", "f = hea"]
       (Position 1 7)
-      [("head", CiFunction, True, True)],
+      [("head", CiFunction, "head ${1:[a]}", True, True)],
     completionTest
       "constructor"
       ["module A where", "f = Tru"]
       (Position 1 7)
-      [ ("True", CiConstructor, True, True),
-        ("truncate", CiFunction, True, True)
+      [ ("True", CiConstructor, "True ", True, True),
+        ("truncate", CiFunction, "truncate ${1:a}", True, True)
       ],
     completionTest
       "type"
       ["{-# OPTIONS_GHC -Wall #-}", "module A () where", "f :: Bo", "f = True"]
       (Position 2 7)
-      [ ("Bounded", CiClass, True, True),
-        ("Bool", CiStruct, True, True)
+      [ ("Bounded", CiClass, "Bounded ${1:*}", True, True),
+        ("Bool", CiStruct, "Bool ", True, True)
       ],
     completionTest
       "qualified"
       ["{-# OPTIONS_GHC -Wunused-binds #-}", "module A () where", "f = Prelude.hea"]
       (Position 2 15)
-      [ ("head", CiFunction, True, True)
+      [ ("head", CiFunction, "head ${1:[a]}", True, True)
       ],
     completionTest
       "duplicate import"
       ["module A where", "import Data.List", "import Data.List", "f = perm"]
       (Position 3 8)
-      [ ("permutations", CiFunction, False, False)
+      [ ("permutations", CiFunction, "permutations ${1:[a]}", False, False)
       ],
     completionTest
       "show imports not in list but available in module"
       ["{-# LANGUAGE NoImplicitPrelude #-}",
        "module A where", "import Control.Monad (msum)", "f = joi"]
       (Position 3 6)
-      [("join", CiFunction, False, False)],
+      [("join", CiFunction, "join ${1:m (m a)}", False, False)],
     completionTest
        "dont show hidden items"
        [ "{-# LANGUAGE NoImplicitPrelude #-}",
@@ -2827,7 +2885,16 @@ nonLocalCompletionTests =
          "f = joi"
        ]
        (Position 3 6)
-       []
+       [],
+    completionTest
+      "record snippet on import"
+      ["module A where", "import Text.Printf (FormatParse(FormatParse))", "FormatParse"]
+      (Position 2 10)
+      [("FormatParse", CiStruct, "FormatParse ", False, False),
+       ("FormatParse", CiConstructor, "FormatParse ${1:String} ${2:Char} ${3:String}", False, False),
+       ("FormatParse", CiSnippet,
+           "FormatParse {fpModifiers=${1:_fpModifiers}, fpChar=${2:_fpChar}, fpRest=${3:_fpRest}}", False, False)
+      ]
   ]
 
 otherCompletionTests :: [TestTree]
@@ -2836,7 +2903,7 @@ otherCompletionTests = [
       "keyword"
       ["module A where", "f = newty"]
       (Position 1 9)
-      [("newtype", CiKeyword, False, False)],
+      [("newtype", CiKeyword, "", False, False)],
     completionTest
       "type context"
       [ "{-# OPTIONS_GHC -Wunused-binds #-}",
@@ -2848,7 +2915,7 @@ otherCompletionTests = [
       -- This should be sufficient to detect that we are in a
       -- type context and only show the completion to the type.
       (Position 3 11)
-      [("Integer", CiStruct, True, True)]
+      [("Integer", CiStruct, "Integer ", True, True)]
   ]
 
 highlightTests :: TestTree
