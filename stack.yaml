@@ -11,7 +11,7 @@ extra-deps:
 - hie-bios-0.7.1
 - ghc-events-0.13.0
 - ghc-trace-events-0.1.2.1
-- heapsize-0.2
+- heapsize-0.3.0
 - opentelemetry-0.6.1
 - opentelemetry-extra-0.6.1
 
