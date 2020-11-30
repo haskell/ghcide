@@ -294,6 +294,10 @@ cacheDataProducer packageState curMod rdrEnv limports deps = do
   let dflags = hsc_dflags packageState
       curModName = moduleName curMod
 
+      !importMap = Map.fromList [
+          (showGhc . getLoc $ imp, imp)
+          | imp <- limports ]
+
       iDeclToModName :: ImportDecl name -> ModuleName
       iDeclToModName = unLoc . ideclName
 
@@ -319,10 +323,15 @@ cacheDataProducer packageState curMod rdrEnv limports deps = do
 
       getComplsForOne :: GlobalRdrElt -> IO ([CompItem],QualCompls)
       getComplsForOne (GRE n _ True _) =
-          (, mempty) <$> toCompItem curMod curModName n
+          (, mempty) <$> toCompItem curMod curModName n Nothing
       getComplsForOne (GRE n _ False prov) =
         flip foldMapM (map is_decl prov) $ \spec -> do
-          compItem <- toCompItem curMod (is_mod spec) n
+          let !src_span = showGhc . is_dloc $ spec
+          let !originalImportDecl = Map.lookup src_span importMap
+          putStrLn "----building srcp span"
+          putStrLn $ show originalImportDecl
+          putStrLn "----print origin import decl"
+          compItem <- toCompItem curMod (is_mod spec) n originalImportDecl
           let unqual
                 | is_qual spec = []
                 | otherwise = compItem
@@ -333,8 +342,8 @@ cacheDataProducer packageState curMod rdrEnv limports deps = do
               origMod = showModName (is_mod spec)
           return (unqual,QualCompls qual)
 
-      toCompItem :: Module -> ModuleName -> Name -> IO [CompItem]
-      toCompItem m mn n = do
+      toCompItem :: Module -> ModuleName -> Name -> Maybe (LImportDecl GhcPs) -> IO [CompItem]
+      toCompItem m mn n imp' = do
         docs <- getDocumentationTryGhc packageState curMod deps n
         ty <- catchSrcErrors (hsc_dflags packageState) "completion" $ do
                 name' <- lookupName packageState m n
@@ -350,7 +359,7 @@ cacheDataProducer packageState curMod rdrEnv limports deps = do
                     _ -> [mkRecordSnippetCompItem ctxStr flds (ppr mn) docs]
                 Nothing -> []
 
-        return $ [mkNameCompItem n mn (either (const Nothing) id ty) Nothing docs] ++
+        return $ [mkNameCompItem n mn (either (const Nothing) id ty) Nothing docs imp'] ++
                  recordCompls
 
   (unquals,quals) <- getCompls rdrElts
