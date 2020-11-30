@@ -174,7 +174,7 @@ mkNameCompItem origName origMod thingType isInfix docs = CI{..}
     typeText
           | Just t <- thingType = Just . stripForall $ T.pack (showGhc t)
           | otherwise = Nothing
-
+    additionalTextEdit = Nothing
 
     stripForall :: T.Text -> T.Text
     stripForall t
@@ -360,7 +360,7 @@ localCompletionsForParsedModule pm@ParsedModule{pm_parsed_source = L _ HsModule{
         ]
 
     mkComp n ctyp ty =
-        CI ctyp pn (Right thisModName) ty pn Nothing doc (ctyp `elem` [CiStruct, CiClass])
+        CI ctyp pn (Right thisModName) ty pn Nothing doc (ctyp `elem` [CiStruct, CiClass]) Nothing
       where
         pn = ppr n
         doc = SpanDocText (getDocumentation [pm] n) (SpanDocUris Nothing Nothing)
@@ -465,7 +465,7 @@ getCompletions ideOpts CC { allModNamesAsNS, unqualCompls, qualCompls, importabl
           endLoc = upperRange oldPos
           localCompls = map (uncurry localBindsToCompItem) $ getFuzzyScope localBindings startLoc endLoc
           localBindsToCompItem :: Name -> Maybe Type -> CompItem
-          localBindsToCompItem name typ = CI ctyp pn thisModName ty pn Nothing emptySpanDoc (not $ isValOcc occ)
+          localBindsToCompItem name typ = CI ctyp pn thisModName ty pn Nothing emptySpanDoc (not $ isValOcc occ) Nothing
             where
               occ = nameOccName name
               ctyp = occNameToComKind Nothing occ
@@ -674,6 +674,7 @@ mkRecordSnippetCompItem ctxStr compl mn docs = r
           , isInfix = Nothing
           , docs = docs
           , isTypeCompl = False
+          , additionalTextEdits = Nothing
           }
 
       placeholder_pairs = zip compl ([1..]::[Int])
