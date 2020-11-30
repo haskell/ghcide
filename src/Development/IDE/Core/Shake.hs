@@ -125,7 +125,6 @@ import NameCache
 import UniqSupply
 import PrelInfo
 import Data.Int (Int64)
-import qualified Data.HashSet as HSet
 import Language.Haskell.LSP.Types.Capabilities
 import OpenTelemetry.Eventlog
 
