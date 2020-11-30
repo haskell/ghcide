@@ -144,21 +144,44 @@ occNameToComKind ty oc
 showModName :: ModuleName -> T.Text
 showModName = T.pack . moduleNameString
 
+-- mkCompl :: IdeOptions -> CompItem -> CompletionItem
+-- mkCompl IdeOptions{..} CI{compKind,insertText, importedFrom,typeText,label,docs} =
+--   CompletionItem label kind (List []) ((colon <>) <$> typeText)
+--     (Just $ CompletionDocMarkup $ MarkupContent MkMarkdown $ T.intercalate sectionSeparator docs')
+--     Nothing Nothing Nothing Nothing (Just insertText) (Just Snippet)
+--     Nothing Nothing Nothing Nothing Nothing
+
 mkCompl :: IdeOptions -> CompItem -> CompletionItem
-mkCompl IdeOptions{..} CI{compKind,insertText, importedFrom,typeText,label,docs} =
-  CompletionItem label kind (List []) ((colon <>) <$> typeText)
-    (Just $ CompletionDocMarkup $ MarkupContent MkMarkdown $ T.intercalate sectionSeparator docs')
-    Nothing Nothing Nothing Nothing (Just insertText) (Just Snippet)
-    Nothing Nothing Nothing Nothing Nothing
+mkCompl IdeOptions{..} CI{compKind,insertText, importedFrom,typeText,label,docs, additionalTextEdits} =
+  CompletionItem {_label = label,
+                  _kind = kind,
+                  _tags = List [],
+                  _detail = (colon <>) <$> typeText,
+                  _documentation = documentation,
+                  _deprecated = Nothing,
+                  _preselect = Nothing,
+                  _sortText = Nothing,
+                  _filterText = Nothing,
+                  _insertText = Just insertText,
+                  _insertTextFormat = Just Snippet,
+                  _textEdit = Nothing,
+                  _additionalTextEdits = List <$> additionalTextEdits,
+                  _commitCharacters = Nothing,
+                  _command = Nothing,
+                  _xdata = Nothing}
+
   where kind = Just compKind
         docs' = imported : spanDocToMarkdown docs
         imported = case importedFrom of
           Left pos -> "*Defined at '" <> ppr pos <> "'*\n'"
           Right mod -> "*Defined in '" <> mod <> "'*\n"
         colon = if optNewColonConvention then ": " else ":: "
+        documentation = Just $ CompletionDocMarkup $
+                        MarkupContent MkMarkdown $
+                        T.intercalate sectionSeparator docs'
 
-mkNameCompItem :: Name -> ModuleName -> Maybe Type -> Maybe Backtick -> SpanDoc -> CompItem
-mkNameCompItem origName origMod thingType isInfix docs = CI{..}
+mkNameCompItem :: Name -> ModuleName -> Maybe Type -> Maybe Backtick -> SpanDoc -> Maybe (LImportDecl GhcPs) -> CompItem
+mkNameCompItem origName origMod thingType isInfix docs !imp = CI{..}
   where
     compKind = occNameToComKind typeText $ occName origName
     importedFrom = Right $ showModName origMod
