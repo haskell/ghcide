@@ -197,7 +197,7 @@ mkNameCompItem origName origMod thingType isInfix docs !imp = CI{..}
     typeText
           | Just t <- thingType = Just . stripForall $ T.pack (showGhc t)
           | otherwise = Nothing
-    additionalTextEdit = Nothing
+    additionalTextEdits = maybe Nothing (\x -> extendImports x (showGhc origName)) imp
 
     stripForall :: T.Text -> T.Text
     stripForall t
