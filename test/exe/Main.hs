@@ -2722,10 +2722,12 @@ completionTest name src pos expected = testSessionWait name $ do
     docId <- createDoc "A.hs" "haskell" (T.unlines src)
     _ <- waitForDiagnostics
     compls <- getCompletions docId pos
-    let compls' = [ (_label, _kind, _insertText) | CompletionItem{..} <- compls]
+    let compls' = [ (_label, _kind, _insertText, _additionalTextEdits) | CompletionItem{..} <- compls]
     liftIO $ do
         let emptyToMaybe x = if T.null x then Nothing else Just x
-        compls' @?= [ (l, Just k, emptyToMaybe t) | (l,k,t,_,_) <- expected]
+        --qliftIO $ putStrLn "-----------additional Edits-----"
+        --liftIO $ print . show $ compls'
+        compls' @?= [ (l, Just k, emptyToMaybe t, Nothing) | (l,k,t,_,_) <- expected]
         forM_ (zip compls expected) $ \(CompletionItem{..}, (_,_,_,expectedSig, expectedDocs)) -> do
             when expectedSig $
                 assertBool ("Missing type signature: " <> T.unpack _label) (isJust _detail)
@@ -2872,10 +2874,29 @@ nonLocalCompletionTests =
       [ ("permutations", CiFunction, "permutations ${1:[a]}", False, False)
       ],
     completionTest
-      "show imports not in list but available in module"
+      "show imports not in list - simple"
       ["{-# LANGUAGE NoImplicitPrelude #-}",
        "module A where", "import Control.Monad (msum)", "f = joi"]
       (Position 3 6)
+      [("join", CiFunction, "join ${1:m (m a)}", False, False)],
+    completionTest
+      "show imports not in list - pre qualified"
+      ["{-# LANGUAGE NoImplicitPrelude #-}",
+       "module A where", "import qualified Control.Monad (msum)", "f = Control.Monad.joi"]
+      (Position 3 20)
+      [("join", CiFunction, "join ${1:m (m a)}", False, False)],
+    completionTest
+      "show imports not in list - post qualified"
+      ["{-# LANGUAGE NoImplicitPrelude #-}",
+       "{-# LANGUAGE ImportQualifiedPost #-}",
+       "module A where", "import Control.Monad qualified (msum)", "f = Control.Monad.joi"]
+      (Position 4 20)
+      [("join", CiFunction, "join ${1:m (m a)}", False, False)],
+    completionTest
+      "show imports not in list - qualified string"
+      ["{-# LANGUAGE NoImplicitPrelude #-}",
+       "module A where", "import qualified Control.Monad as Foo (msum, join)", "f = Foo.joi"]
+      (Position 3 10)
       [("join", CiFunction, "join ${1:m (m a)}", False, False)],
     completionTest
        "dont show hidden items"
