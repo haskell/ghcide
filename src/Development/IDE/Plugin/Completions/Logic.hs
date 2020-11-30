@@ -11,7 +11,7 @@ module Development.IDE.Plugin.Completions.Logic (
 ) where
 
 import Control.Applicative
-import Data.Char (isUpper)
+import Data.Char (isAlphaNum, isUpper)
 import Data.Generics
 import Data.List.Extra as List hiding (stripPrefix)
 import qualified Data.Map  as Map
@@ -261,32 +261,26 @@ mkPragmaCompl label insertText =
 
 extendImports :: LImportDecl GhcPs -> String -> Maybe [TextEdit]
 extendImports lDecl name = let
-    f (Just range) d@ImportDecl {..} = case ideclHiding of
-        Just (False, x) ->
-            let (pre, post) = case ideclQualified of
-                                  QualifiedPre -> ("qualified", "")
-                                  QualifiedPost -> ("", "qualified")
-                                  _ -> ("", "")
-                qualifier = case ideclAs of
-                                Just mn -> "as " ++ (showGhc . unLoc $ mn)
-                                _ -> ""
-                name = showGhc . unLoc $ ideclName
-                result = List.intercalate " " [
-                    "import",
-                    pre,
-                    name,
-                    post,
-                    qualifier,
-                    "(" ++ (List.intercalate ", " $ (showGhc <$> unLoc x)) ++  ")"
-                    ]
-            in Just $ [TextEdit range (T.pack result)]
+    f (Just range) ImportDecl {ideclHiding} = case ideclHiding of
+        Just (False, x) -> let
+            already_defined = Set.member name (Set.fromList [show y| y <- unLoc x])
+            start_pos = _end range
+            new_start_pos = start_pos {_character = _character start_pos - 1}
+            line = _line . _end $ range
+            char = (_character . _end $ range) + 3 + length name
+            end_pos = Position line char
+            new_range = Range new_start_pos end_pos
+            alpha = all isAlphaNum name
+            result = if alpha then ", " ++ name ++ ")"
+                else ", (" ++ name ++ "))"
+            in
+                if already_defined
+                then Nothing
+                else Just $ [TextEdit new_range (T.pack result)]
         _ -> Nothing
     f _ _ = Nothing
     src_span = srcSpanToRange . getLoc $ lDecl
-    -- pos1 = Position {_line = 1, _character = 0}
-    -- pos2 = Position {_line = 1, _character = 10}
-    -- range = Range pos1 pos2
-    in (f src_span) . unLoc $ lDecl
+    in f src_span . unLoc $ lDecl
 
 
 cacheDataProducer :: HscEnv -> Module -> GlobalRdrEnv -> [LImportDecl GhcPs] -> [ParsedModule] -> IO CachedCompletions
