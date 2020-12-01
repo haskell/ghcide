@@ -12,7 +12,7 @@ import Language.Haskell.LSP.Messages
 import Language.Haskell.LSP.Types
 import qualified Language.Haskell.LSP.Core as LSP
 import qualified Language.Haskell.LSP.VFS as VFS
-import Language.Haskell.LSP.Types.Capabilities
+
 import Development.Shake.Classes
 import Development.Shake
 import GHC.Generics
@@ -76,7 +76,7 @@ produceCompletions = do
               res <- liftIO $ tcRnImportDecls env imps'
               case res of
                   (_, Just rdrEnv) -> do
-                      cdata <- liftIO $ cacheDataProducer env (ms_mod ms) rdrEnv imps parsedDeps
+                      cdata <- liftIO $ cacheDataProducer env (ms_mod ms) rdrEnv imps' parsedDeps
                       return ([], Just cdata)
                   (_diag, _) ->
                       return ([], Nothing)
@@ -142,9 +142,8 @@ getCompletionsLSP lsp ide
               (Just (VFS.PosPrefixInfo _ "" _ _), Just CompletionContext { _triggerCharacter = Just "."})
                 -> return (Completions $ List [])
               (Just pfix', _) -> do
-                  -- TODO pass the real capabilities here (or remove the logic for snippets)
-                let fakeClientCapabilities = ClientCapabilities Nothing Nothing Nothing Nothing
-                Completions . List <$> getCompletions ideOpts cci' parsedMod bindMap pfix' fakeClientCapabilities (WithSnippets True)
+                let clientCaps = clientCapabilities $ shakeExtras ide
+                Completions . List <$> getCompletions ideOpts cci' parsedMod bindMap pfix' clientCaps (WithSnippets True)
               _ -> return (Completions $ List [])
           _ -> return (Completions $ List [])
       _ -> return (Completions $ List [])
