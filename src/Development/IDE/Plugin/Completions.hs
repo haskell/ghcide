@@ -76,7 +76,7 @@ produceCompletions = do
               res <- liftIO $ tcRnImportDecls env imps'
               case res of
                   (_, Just rdrEnv) -> do
-                      cdata <- liftIO $ cacheDataProducer env (ms_mod ms) rdrEnv imps' parsedDeps
+                      cdata <- liftIO $ cacheDataProducer env (ms_mod ms) rdrEnv imps parsedDeps
                       return ([], Just cdata)
                   (_diag, _) ->
                       return ([], Nothing)
