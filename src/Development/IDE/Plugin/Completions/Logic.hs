@@ -197,7 +197,7 @@ mkNameCompItem origName origMod thingType isInfix docs !imp = CI{..}
     typeText
           | Just t <- thingType = Just . stripForall $ T.pack (showGhc t)
           | otherwise = Nothing
-    additionalTextEdits = maybe Nothing (\x -> extendImports x (showGhc origName)) imp
+    additionalTextEdits = (\x -> extendImports x (showGhc origName)) =<< imp
 
     stripForall :: T.Text -> T.Text
     stripForall t
@@ -276,7 +276,7 @@ extendImports lDecl name = let
             in
                 if already_defined
                 then Nothing
-                else Just $ [TextEdit new_range (T.pack result)]
+                else Just [TextEdit new_range (T.pack result)]
         _ -> Nothing
     f _ _ = Nothing
     src_span = srcSpanToRange . getLoc $ lDecl
@@ -322,9 +322,6 @@ cacheDataProducer packageState curMod rdrEnv limports deps = do
         flip foldMapM (map is_decl prov) $ \spec -> do
           let !src_span = showGhc . is_dloc $ spec
           let !originalImportDecl = Map.lookup src_span importMap
-          putStrLn "----building srcp span"
-          putStrLn $ show originalImportDecl
-          putStrLn "----print origin import decl"
           compItem <- toCompItem curMod (is_mod spec) n originalImportDecl
           let unqual
                 | is_qual spec = []
