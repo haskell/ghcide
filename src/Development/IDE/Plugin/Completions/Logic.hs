@@ -197,7 +197,7 @@ mkNameCompItem origName origMod thingType isInfix docs !imp = CI{..}
     typeText
           | Just t <- thingType = Just . stripForall $ T.pack (showGhc t)
           | otherwise = Nothing
-    additionalTextEdits = (\x -> extendImports x (showGhc origName)) =<< imp
+    additionalTextEdits =  imp >>= extendImportList (showGhc origName)
 
     stripForall :: T.Text -> T.Text
     stripForall t
@@ -259,8 +259,8 @@ mkPragmaCompl label insertText =
     Nothing Nothing Nothing Nothing Nothing (Just insertText) (Just Snippet)
     Nothing Nothing Nothing Nothing Nothing
 
-extendImports :: LImportDecl GhcPs -> String -> Maybe [TextEdit]
-extendImports lDecl name = let
+extendImportList :: String -> LImportDecl GhcPs -> Maybe [TextEdit]
+extendImportList name lDecl = let
     f (Just range) ImportDecl {ideclHiding} = case ideclHiding of
         Just (False, x) -> let
             already_defined = Set.member name (Set.fromList [show y| y <- unLoc x])
