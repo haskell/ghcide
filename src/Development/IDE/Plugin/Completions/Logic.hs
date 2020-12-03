@@ -262,8 +262,9 @@ mkPragmaCompl label insertText =
 extendImportList :: String -> LImportDecl GhcPs -> Maybe [TextEdit]
 extendImportList name lDecl = let
     f (Just range) ImportDecl {ideclHiding} = case ideclHiding of
-        Just (False, x) -> let
-            already_defined = Set.member name (Set.fromList [show y| y <- unLoc x])
+        Just (False, x)
+          | Set.notMember name (Set.fromList [show y| y <- unLoc x])
+          -> let
             start_pos = _end range
             new_start_pos = start_pos {_character = _character start_pos - 1}
             line = _line . _end $ range
@@ -273,11 +274,8 @@ extendImportList name lDecl = let
             alpha = all isAlphaNum name
             result = if alpha then ", " ++ name ++ ")"
                 else ", (" ++ name ++ "))"
-            in
-                if already_defined
-                then Nothing
-                else Just [TextEdit new_range (T.pack result)]
-        _ -> Nothing
+            in Just [TextEdit new_range (T.pack result)]
+          | otherwise -> Nothing
     f _ _ = Nothing
     src_span = srcSpanToRange . getLoc $ lDecl
     in f src_span . unLoc $ lDecl
