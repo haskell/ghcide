@@ -271,9 +271,8 @@ extendImportList name lDecl = let
             new_range = Range new_start_pos new_start_pos
             -- we cannot wrap mapM_ inside (mapM_) but we need to wrap (<$)
             alpha = all isAlphaNum $ filter (\c -> c /= '_') name
-            comma_sep = if List.null (unLoc x) then "" else ", "
-            result = if alpha then comma_sep ++ name
-                else comma_sep ++ "(" ++ name ++ ")"
+            result = if alpha then name ++ ", "
+                else "(" ++ name ++ "), "
             in Just [TextEdit new_range (T.pack result)]
           | otherwise -> Nothing
         _ -> Nothing  -- hiding import list and no list
