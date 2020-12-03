@@ -267,15 +267,18 @@ extendImportList name lDecl = let
           -> let
             start_pos = _end range
             new_start_pos = start_pos {_character = _character start_pos - 1}
-            line = _line . _end $ range
-            char = (_character . _end $ range) + 3 + length name
-            end_pos = Position line char
-            new_range = Range new_start_pos end_pos
+            --line = _line . _end $ range
+            --char = (_character . _end $ range) + 3 + length name
+            --end_pos = Position line char
+            --end_pos = new_start_pos -- {_character = _character new_start_pos}
+            -- use to same start_pos to handle situation where we do not have latest edits due to caching of Rules
+            new_range = Range new_start_pos new_start_pos
             alpha = all isAlphaNum name
-            result = if alpha then ", " ++ name ++ ")"
-                else ", (" ++ name ++ "))"
+            result = if alpha then ", " ++ name
+                else ", (" ++ name ++ ")"
             in Just [TextEdit new_range (T.pack result)]
           | otherwise -> Nothing
+        otherwise -> Nothing  -- hiding import list and no list
     f _ _ = Nothing
     src_span = srcSpanToRange . getLoc $ lDecl
     in f src_span . unLoc $ lDecl
