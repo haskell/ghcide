@@ -269,7 +269,8 @@ extendImportList name lDecl = let
             new_start_pos = start_pos {_character = _character start_pos - 1}
             -- use to same start_pos to handle situation where we do not have latest edits due to caching of Rules
             new_range = Range new_start_pos new_start_pos
-            alpha = all isAlphaNum name
+            -- we cannot wrap mapM_ inside (mapM_) but we need to wrap (<$)
+            alpha = all isAlphaNum $ filter (\c -> c /= '_') name
             comma_sep = if List.null (unLoc x) then "" else ", "
             result = if alpha then comma_sep ++ name
                 else comma_sep ++ "(" ++ name ++ ")"

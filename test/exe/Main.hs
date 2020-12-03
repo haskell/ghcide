@@ -2886,6 +2886,13 @@ nonLocalCompletionTests =
       [("join", CiFunction, "join ${1:m (m a)}", False, False,
         Just (List [TextEdit {_range = Range {_start = Position {_line = 3, _character = 8}, _end = Position {_line = 3, _character = 8}}, _newText = ", join"}]))],
     completionTest
+      "show imports not in list - names with _"
+      ["{-# LANGUAGE NoImplicitPrelude #-}",
+       "module A where", "import qualified Control.Monad as M (msum)", "f = M.mapM_"]
+      (Position 3 11)
+      [("mapM_", CiFunction, "mapM_ ${1:a -> m b} ${2:t a}", False, False,
+        Just (List [TextEdit {_range = Range {_start = Position {_line = 2, _character = 41}, _end = Position {_line = 2, _character = 41}}, _newText = ", mapM_"}]))],
+    completionTest
       "show imports not in list - initial empty list"
       ["{-# LANGUAGE NoImplicitPrelude #-}",
        "module A where", "import qualified Control.Monad as M ()", "f = M.joi"]
