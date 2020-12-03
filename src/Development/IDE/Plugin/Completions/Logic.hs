@@ -279,7 +279,7 @@ extendImportList name lDecl = let
                 else comma_sep ++ "(" ++ name ++ ")"
             in Just [TextEdit new_range (T.pack result)]
           | otherwise -> Nothing
-        otherwise -> Nothing  -- hiding import list and no list
+        Nothing -> Nothing  -- hiding import list and no list
     f _ _ = Nothing
     src_span = srcSpanToRange . getLoc $ lDecl
     in f src_span . unLoc $ lDecl
