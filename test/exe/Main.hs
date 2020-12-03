@@ -2877,14 +2877,14 @@ nonLocalCompletionTests =
        "module A where", "import Control.Monad (msum)", "f = joi"]
       (Position 3 6)
       [("join", CiFunction, "join ${1:m (m a)}", False, False,
-        Just (List [TextEdit {_range = Range {_start = Position {_line = 2, _character = 26}, _end = Position {_line = 2, _character = 34}}, _newText = ", join)"}]))],
+        Just (List [TextEdit {_range = Range {_start = Position {_line = 2, _character = 26}, _end = Position {_line = 2, _character = 26}}, _newText = ", join"}]))],
     completionTest
       "show imports not in list - multi-line"
       ["{-# LANGUAGE NoImplicitPrelude #-}",
        "module A where", "import Control.Monad (\n    msum)", "f = joi"]
       (Position 4 6)
       [("join", CiFunction, "join ${1:m (m a)}", False, False,
-        Just (List [TextEdit {_range = Range {_start = Position {_line = 3, _character = 8}, _end = Position {_line = 3, _character = 16}}, _newText = ", join)"}]))],
+        Just (List [TextEdit {_range = Range {_start = Position {_line = 3, _character = 8}, _end = Position {_line = 3, _character = 8}}, _newText = ", join"}]))],
     completionTest
        "dont show hidden items"
        [ "{-# LANGUAGE NoImplicitPrelude #-}",
