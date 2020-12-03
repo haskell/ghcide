@@ -274,8 +274,9 @@ extendImportList name lDecl = let
             -- use to same start_pos to handle situation where we do not have latest edits due to caching of Rules
             new_range = Range new_start_pos new_start_pos
             alpha = all isAlphaNum name
-            result = if alpha then ", " ++ name
-                else ", (" ++ name ++ ")"
+            comma_sep = if List.null (unLoc x) then "" else ", "
+            result = if alpha then comma_sep ++ name
+                else comma_sep ++ "(" ++ name ++ ")"
             in Just [TextEdit new_range (T.pack result)]
           | otherwise -> Nothing
         otherwise -> Nothing  -- hiding import list and no list
