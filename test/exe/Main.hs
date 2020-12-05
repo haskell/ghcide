@@ -2912,10 +2912,12 @@ nonLocalCompletionTests =
       "record snippet on import"
       ["module A where", "import Text.Printf (FormatParse(FormatParse))", "FormatParse"]
       (Position 2 10)
-      [("FormatParse", CiStruct, "FormatParse ", False, False, Nothing),
-       ("FormatParse", CiConstructor, "FormatParse ${1:String} ${2:Char} ${3:String}", False, False, Nothing),
-       ("FormatParse", CiSnippet,
-           "FormatParse {fpModifiers=${1:_fpModifiers}, fpChar=${2:_fpChar}, fpRest=${3:_fpRest}}", False, False, Nothing)
+      [("FormatParse", CiStruct, "FormatParse ", False, False,
+       Just (List [TextEdit {_range = Range {_start = Position {_line = 1, _character = 44}, _end = Position {_line = 1, _character = 44}}, _newText = "FormatParse, "}])),
+       ("FormatParse", CiConstructor, "FormatParse ${1:String} ${2:Char} ${3:String}", False, False,
+       Just (List [TextEdit {_range = Range {_start = Position {_line = 1, _character = 44}, _end = Position {_line = 1, _character = 44}}, _newText = "FormatParse, "}])),
+       ("FormatParse", CiSnippet, "FormatParse {fpModifiers=${1:_fpModifiers}, fpChar=${2:_fpChar}, fpRest=${3:_fpRest}}", False, False,
+       Just (List [TextEdit {_range = Range {_start = Position {_line = 1, _character = 44}, _end = Position {_line = 1, _character = 44}}, _newText = "FormatParse, "}]))
       ]
   ]
 

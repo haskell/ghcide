@@ -197,7 +197,7 @@ mkNameCompItem origName origMod thingType isInfix docs !imp = CI{..}
     typeText
           | Just t <- thingType = Just . stripForall $ T.pack (showGhc t)
           | otherwise = Nothing
-    additionalTextEdits =  imp >>= extendImportList (showGhc origName)
+    additionalTextEdits = imp >>= extendImportList (showGhc origName)
 
     stripForall :: T.Text -> T.Text
     stripForall t
@@ -344,7 +344,7 @@ cacheDataProducer packageState curMod rdrEnv limports deps = do
         let recordCompls = case either (const Nothing) id record_ty of
                 Just (ctxStr, flds) -> case flds of
                     [] -> []
-                    _ -> [mkRecordSnippetCompItem ctxStr flds (ppr mn) docs]
+                    _ -> [mkRecordSnippetCompItem ctxStr flds (ppr mn) docs imp']
                 Nothing -> []
 
         return $ [mkNameCompItem n mn (either (const Nothing) id ty) Nothing docs imp'] ++
@@ -417,12 +417,12 @@ localCompletionsForParsedModule pm@ParsedModule{pm_parsed_source = L _ HsModule{
 
     thisModName = ppr hsmodName
 
-    --recordCompls = localRecordSnippetProducer pm thisModName
+--recordCompls = localRecordSnippetProducer pm thisModName
 
 findRecordCompl :: ParsedModule -> T.Text -> TyClDecl GhcPs -> [CompItem]
 findRecordCompl pmod mn DataDecl {tcdLName, tcdDataDefn} = result
     where
-        result = [mkRecordSnippetCompItem (T.pack . showGhc . unLoc $ con_name) field_labels mn doc
+        result = [mkRecordSnippetCompItem (T.pack . showGhc . unLoc $ con_name) field_labels mn doc Nothing
                  | ConDeclH98{..} <- unLoc <$> dd_cons tcdDataDefn
                  , Just  con_details <- [getFlds con_args]
                  , let field_names = mapMaybe extract con_details
@@ -715,8 +715,8 @@ safeTyThingForRecord (AConLike dc) =
         Just (ctxStr, field_names)
 safeTyThingForRecord _ = Nothing
 
-mkRecordSnippetCompItem :: T.Text -> [T.Text] -> T.Text -> SpanDoc -> CompItem
-mkRecordSnippetCompItem ctxStr compl mn docs = r
+mkRecordSnippetCompItem :: T.Text -> [T.Text] -> T.Text -> SpanDoc -> Maybe (LImportDecl GhcPs) -> CompItem
+mkRecordSnippetCompItem ctxStr compl mn docs imp = r
   where
       r  = CI {
             compKind = CiSnippet
@@ -727,7 +727,7 @@ mkRecordSnippetCompItem ctxStr compl mn docs = r
           , isInfix = Nothing
           , docs = docs
           , isTypeCompl = False
-          , additionalTextEdits = Nothing
+          , additionalTextEdits = imp >>= extendImportList (T.unpack ctxStr)
           }
 
       placeholder_pairs = zip compl ([1..]::[Int])
