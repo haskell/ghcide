@@ -420,8 +420,6 @@ localCompletionsForParsedModule pm@ParsedModule{pm_parsed_source = L _ HsModule{
 
     thisModName = ppr hsmodName
 
---recordCompls = localRecordSnippetProducer pm thisModName
-
 findRecordCompl :: ParsedModule -> T.Text -> TyClDecl GhcPs -> [CompItem]
 findRecordCompl pmod mn DataDecl {tcdLName, tcdDataDefn} = result
     where
