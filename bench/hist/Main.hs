@@ -1,3 +1,8 @@
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE DisambiguateRecordFields #-}
+
 {-  Bench history
 
     A Shake script to analyze the performance of ghcide over the git history of the project
@@ -66,12 +71,13 @@ import qualified Text.ParserCombinators.ReadP as P
 import Text.Read (Read (..), get, readMaybe, readP_to_Prec)
 import GHC.Stack (HasCallStack)
 import Data.List (transpose)
+import GHC.Records (HasField(getField))
 
 config :: FilePath
 config = "bench/config.yaml"
 
 -- | Read the config without dependency
-readConfigIO :: FilePath -> IO Config
+readConfigIO :: FilePath -> IO (Config BuildSystem)
 readConfigIO = decodeFileThrow
 
 newtype GetExample = GetExample String deriving newtype (Binary, Eq, Hashable, NFData, Show)
@@ -81,6 +87,7 @@ newtype GetExperiments = GetExperiments () deriving newtype (Binary, Eq, Hashabl
 newtype GetVersions = GetVersions () deriving newtype (Binary, Eq, Hashable, NFData, Show)
 newtype GetParent = GetParent Text deriving newtype (Binary, Eq, Hashable, NFData, Show)
 newtype GetCommitId = GetCommitId String deriving newtype (Binary, Eq, Hashable, NFData, Show)
+newtype GetBuildSystem = GetBuildSystem () deriving newtype (Binary, Eq, Hashable, NFData, Show)
 
 type instance RuleResult GetExample = Maybe Example
 type instance RuleResult GetExamples = [Example]
@@ -89,35 +96,60 @@ type instance RuleResult GetExperiments = [Unescaped String]
 type instance RuleResult GetVersions = [GitCommit]
 type instance RuleResult GetParent = Text
 type instance RuleResult GetCommitId = String
+type instance RuleResult GetBuildSystem = BuildSystem
 
 main :: IO ()
 main = shakeArgs shakeOptions {shakeChange = ChangeModtimeAndDigest} $ do
-  want ["all"]
+  createBuildSystem readConfigIO $ \build resource -> do
+      buildRules build ghcideBuildRules
+      benchRules build resource ghcideBuildRules
+      csvRules build
+      svgRules build
+      action $ defaultAll build
 
-  readConfig <- newCache $ \fp -> need [fp] >> liftIO (readConfigIO fp)
 
-  _ <- addOracle $ \GetSamples {} -> samples <$> readConfig config
+ghcideBuildRules :: MkBuildRules BuildSystem Example
+ghcideBuildRules = MkBuildRules findGhcDefault buildGhcide benchGhcide
+
+data MkBuildRules buildSystem example = MkBuildRules
+  { findGhc            :: buildSystem -> FilePath -> IO FilePath
+  , buildProject       :: buildSystem -> FilePath -> String
+  , benchProject       :: buildSystem -> BenchProject example -> [String]
+  }
+
+data BenchProject example = BenchProject
+    { outcsv  :: FilePath
+    , ghcPath :: FilePath
+    , example :: example
+    , experiment :: Escaped String
+    , samples :: Natural
+    }
+
+-- TODO Generalize
+createBuildSystem :: (FilePath -> IO (Config BuildSystem)) -> (String -> Resource -> Rules a) -> Rules a
+createBuildSystem readConfigFromFile userRules = do
+  readConfig <- newCache $ \fp -> need [fp] >> liftIO (readConfigFromFile fp)
+
+  _ <- addOracle $ \GetSamples {} -> getField @"samples" <$> readConfig config
   _ <- addOracle $ \GetExperiments {} -> experiments <$> readConfig config
   _ <- addOracle $ \GetVersions {} -> versions <$> readConfig config
   _ <- addOracle $ \GetExamples{} -> examples <$> readConfig config
   _ <- addOracle $ \(GetParent name) -> findPrev name . versions <$> readConfig config
   _ <- addOracle $ \(GetExample name) -> find (\e -> getExampleName e == name) . examples <$> readConfig config
+  _ <- addOracle $ \GetBuildSystem {} -> buildTool <$> readConfig config
 
-  let readVersions = askOracle $ GetVersions ()
-      readExperiments = askOracle $ GetExperiments ()
-      readExamples = askOracle $ GetExamples ()
-      readSamples = askOracle $ GetSamples ()
-      getParent = askOracle . GetParent
-      getExample = askOracle . GetExample
+  benchResource <- newResource "ghcide-bench" 1
 
   configStatic <- liftIO $ readConfigIO config
-  ghcideBenchPath <- ghcideBench <$> liftIO (readConfigIO config)
   let build = outputFolder configStatic
-      buildSystem = buildTool configStatic
+  userRules build benchResource
 
-  phony "all" $ do
-    Config {..} <- readConfig config
 
+defaultAll :: FilePath -> Action ()
+defaultAll build = do
+    experiments <- askOracle $ GetExperiments ()
+    examples    <- askOracle $ GetExamples ()
+    versions    <- askOracle $ GetVersions ()
     need $
       [build </> getExampleName e </> "results.csv" | e <- examples ] ++
       [build </> "results.csv"]
@@ -132,11 +164,13 @@ main = shakeArgs shakeOptions {shakeChange = ChangeModtimeAndDigest} $ do
                mode <- ["", "diff"]
            ]
 
+buildRules :: FilePattern -> MkBuildRules BuildSystem example -> Rules ()
+buildRules build MkBuildRules{..} = do
   build -/- "*/commitid" %> \out -> do
       alwaysRerun
 
       let [_,ver,_] = splitDirectories out
-      mbEntry <- find ((== T.pack ver) . humanName) <$> readVersions
+      mbEntry <- find ((== T.pack ver) . humanName) <$> askOracle (GetVersions ())
       let gitThing :: String
           gitThing = maybe ver (T.unpack . gitName) mbEntry
       Stdout commitid <- command [] "git" ["rev-list", "-n", "1", gitThing]
@@ -148,8 +182,9 @@ main = shakeArgs shakeOptions {shakeChange = ChangeModtimeAndDigest} $ do
     &%> \[out, ghcpath] -> do
       liftIO $ createDirectoryIfMissing True $ dropFileName out
       need =<< getDirectoryFiles "." ["src//*.hs", "exe//*.hs", "ghcide.cabal"]
-      cmd_ $ buildGhcide buildSystem (takeDirectory out)
-      ghcLoc <- findGhc "." buildSystem
+      bt <- askOracle $ GetBuildSystem ()
+      cmd_ $ buildProject bt (takeDirectory out)
+      ghcLoc <- liftIO $ findGhc bt "."
       writeFile' ghcpath ghcLoc
 
   [ build -/- "*/ghcide",
@@ -160,13 +195,47 @@ main = shakeArgs shakeOptions {shakeChange = ChangeModtimeAndDigest} $ do
       liftIO $ createDirectoryIfMissing True $ dropFileName out
       commitid <- readFile' $ b </> ver </> "commitid"
       cmd_ $ "git worktree add bench-temp " ++ commitid
+      buildSystem <- askOracle $ GetBuildSystem ()
       flip actionFinally (cmd_ (s "git worktree remove bench-temp --force")) $ do
-        ghcLoc <- findGhc "bench-temp" buildSystem
+        ghcLoc <- liftIO $ findGhc buildSystem "bench-temp"
         cmd_ [Cwd "bench-temp"] $ buildGhcide buildSystem (".." </> takeDirectory out)
         writeFile' ghcpath ghcLoc
 
+benchRules :: FilePattern -> Resource -> MkBuildRules BuildSystem Example -> Rules ()
+benchRules build benchResource MkBuildRules{benchProject} = do
+  priority 0 $
+    [ build -/- "*/*/*.csv",
+      build -/- "*/*/*.benchmark-gcStats",
+      build -/- "*/*/*.log"
+    ]
+      &%> \[outcsv, _outGc, outLog] -> do
+        let [_, exampleName, ver, exp] = splitDirectories outcsv
+        example <- fromMaybe (error $ "Unknown example " <> exampleName)
+                    <$> askOracle (GetExample exampleName)
+        buildSystem <- askOracle  $ GetBuildSystem ()
+        samples <- askOracle $ GetSamples ()
+        liftIO $ createDirectoryIfMissing True $ dropFileName outcsv
+        let ghcide = build </> ver </> "ghcide"
+            ghcpath = build </> ver </> "ghc.path"
+            experiment = Escaped exp
+        need [ghcide, ghcpath]
+        ghcPath <- readFile' ghcpath
+        withResource benchResource 1 $ do
+          command_
+              [ EchoStdout False,
+                FileStdout outLog,
+                RemEnv "NIX_GHC_LIBDIR",
+                RemEnv "GHC_PACKAGE_PATH",
+                AddPath [takeDirectory ghcPath, "."] []
+              ]
+              "ghcide-bench" $
+              benchProject buildSystem BenchProject{..}
+          cmd_ Shell $ "mv *.benchmark-gcStats " <> dropFileName outcsv
+
+csvRules :: FilePattern -> Rules ()
+csvRules build = do
   build -/- "*/*/results.csv" %> \out -> do
-      experiments <- readExperiments
+      experiments <- askOracle $ GetExperiments ()
 
       let allResultFiles = [takeDirectory out </> escaped (escapeExperiment e) <.> "csv" | e <- experiments]
       allResults <- traverse readFileLines allResultFiles
@@ -175,46 +244,8 @@ main = shakeArgs shakeOptions {shakeChange = ChangeModtimeAndDigest} $ do
           results = map tail allResults
       writeFileChanged out $ unlines $ header : concat results
 
-  ghcideBenchResource <- newResource "ghcide-bench" 1
-
-  priority 0 $
-    [ build -/- "*/*/*.csv",
-      build -/- "*/*/*.benchmark-gcStats",
-      build -/- "*/*/*.log"
-    ]
-      &%> \[outcsv, _outGc, outLog] -> do
-        let [_, exampleName, ver, exp] = splitDirectories outcsv
-        example <- fromMaybe (error $ "Unknown example " <> exampleName) <$> getExample exampleName
-        samples <- readSamples
-        liftIO $ createDirectoryIfMissing True $ dropFileName outcsv
-        let ghcide = build </> ver </> "ghcide"
-            ghcpath = build </> ver </> "ghc.path"
-        need [ghcide, ghcpath]
-        ghcPath <- readFile' ghcpath
-        withResource ghcideBenchResource 1 $ do
-          command_
-              [ EchoStdout False,
-                FileStdout outLog,
-                RemEnv "NIX_GHC_LIBDIR",
-                RemEnv "GHC_PACKAGE_PATH",
-                AddPath [takeDirectory ghcPath, "."] []
-              ]
-              ghcideBenchPath $
-              [ "--timeout=3000",
-                "-v",
-                "--samples=" <> show samples,
-                "--csv=" <> outcsv,
-                "--ghcide-options= +RTS -I0.5 -RTS",
-                "--ghcide=" <> ghcide,
-                "--select",
-                unescaped (unescapeExperiment (Escaped $ dropExtension exp))
-              ] ++
-              exampleToOptions example ++
-              [ "--stack" | Stack == buildSystem]
-          cmd_ Shell $ "mv *.benchmark-gcStats " <> dropFileName outcsv
-
   build -/- "results.csv" %> \out -> do
-    examples <- map getExampleName <$> readExamples
+    examples <- map getExampleName <$> askOracle (GetExamples ())
     let allResultFiles = [build </> e </> "results.csv" | e <- examples]
 
     allResults <- traverse readFileLines allResultFiles
@@ -227,7 +258,7 @@ main = shakeArgs shakeOptions {shakeChange = ChangeModtimeAndDigest} $ do
     writeFileChanged out $ unlines $ header' : concat results'
 
   build -/- "*/results.csv" %> \out -> do
-    versions <- map (T.unpack . humanName) <$> readVersions
+    versions <- map (T.unpack . humanName) <$> askOracle (GetVersions ())
     let example = takeFileName $ takeDirectory out
         allResultFiles =
           [build </> example </> v </> "results.csv" | v <- versions]
@@ -241,11 +272,13 @@ main = shakeArgs shakeOptions {shakeChange = ChangeModtimeAndDigest} $ do
 
     writeFileChanged out $ unlines $ header' : interleave results'
 
+svgRules :: FilePattern -> Rules ()
+svgRules build = do
   priority 2 $
     build -/- "*/*/*.diff.svg" %> \out -> do
       let [b, example, ver, exp_] = splitDirectories out
           exp = Escaped $ dropExtension $ dropExtension exp_
-      prev <- getParent $ T.pack ver
+      prev <- askOracle $ GetParent $ T.pack ver
 
       runLog <- loadRunLog b example exp ver
       runLogPrev <- loadRunLog b example exp $ T.unpack prev
@@ -254,6 +287,7 @@ main = shakeArgs shakeOptions {shakeChange = ChangeModtimeAndDigest} $ do
           title = show (unescapeExperiment exp) <> " - live bytes over time compared"
       plotDiagram True diagram out
 
+
   priority 1 $
     build -/- "*/*/*.svg" %> \out -> do
       let [b, example, ver, exp] = splitDirectories out
@@ -261,11 +295,10 @@ main = shakeArgs shakeOptions {shakeChange = ChangeModtimeAndDigest} $ do
       let diagram = Diagram Live [runLog] title
           title = ver <> " live bytes over time"
       plotDiagram True diagram out
-
   build -/- "*/*.svg" %> \out -> do
     let exp = Escaped $ dropExtension $ takeFileName out
         example = takeFileName $ takeDirectory out
-    versions <- readVersions
+    versions <- askOracle $ GetVersions ()
 
     runLogs <- forM (filter include versions) $ \v -> do
       loadRunLog build example exp $ T.unpack $ humanName v
@@ -290,25 +323,36 @@ buildGhcide Stack out =
         <> " build ghcide:ghcide --copy-bins --ghc-options -rtsopts"
 
 
-findGhc :: FilePath -> BuildSystem -> Action FilePath
-findGhc _cwd Cabal =
+findGhcDefault :: BuildSystem -> FilePath -> IO FilePath
+findGhcDefault Cabal _cwd =
     liftIO $ fromMaybe (error "ghc is not in the PATH") <$> findExecutable "ghc"
-findGhc cwd Stack = do
+findGhcDefault Stack cwd = do
     Stdout ghcLoc <- cmd [Cwd cwd] (s "stack exec which ghc")
     return ghcLoc
 
+benchGhcide :: BuildSystem -> BenchProject Example -> [String]
+benchGhcide buildSystem BenchProject{..} =
+  [ "--timeout=3000",
+    "-v",
+    "--samples=" <> show samples,
+    "--csv=" <> outcsv,
+    "--ghcide-options= +RTS -I0.5 -RTS",
+    "--select",
+    unescaped (unescapeExperiment experiment)
+  ] ++
+  exampleToOptions example ++
+  [ "--stack" | Stack == buildSystem]
+
 --------------------------------------------------------------------------------
 
-data Config = Config
+data Config buildSystem = Config
   { experiments :: [Unescaped String],
     examples :: [Example],
     samples :: Natural,
     versions :: [GitCommit],
-    -- | Path to the ghcide-bench binary for the experiments
-    ghcideBench :: FilePath,
     -- | Output folder ('foo' works, 'foo/bar' does not)
     outputFolder :: String,
-    buildTool :: BuildSystem
+    buildTool :: buildSystem
   }
   deriving (Generic, Show)
   deriving anyclass (FromJSON)
@@ -353,7 +397,8 @@ findPrev name (x : y : xx)
 findPrev name _ = name
 
 data BuildSystem = Cabal | Stack
-  deriving (Eq, Read, Show)
+  deriving (Eq, Read, Show, Generic)
+  deriving (Binary, Hashable, NFData)
 
 instance FromJSON BuildSystem where
     parseJSON x = fromString . map toLower <$> parseJSON x
