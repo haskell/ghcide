@@ -41,7 +41,24 @@
    For diff graphs, the "previous version" is the preceding entry in the list of versions
    in the config file. A possible improvement is to obtain this info via `git rev-list`.
  -}
-module Development.Benchmark.Rules where
+module Development.Benchmark.Rules
+  (
+      buildRules, MkBuildRules(..),
+      benchRules, MkBenchRules(..), BenchProject(..),
+      csvRules,
+      svgRules,
+      allTargets,
+      GetExample(..), GetExamples(..),
+      IsExample(..), RuleResultForExample,
+      GetExperiments(..),
+      GetVersions(..),
+      GetCommitId(..),
+      GetBuildSystem(..),
+      BuildSystem(..), findGhcForBuildSystem,
+      Escaped(..), Unescaped(..), escapeExperiment, unescapeExperiment,
+      GitCommit
+
+  ) where
 
 import           Control.Applicative
 import           Control.Monad
@@ -57,8 +74,6 @@ import qualified Data.Text                                 as T
 import           Development.Shake
 import           Development.Shake.Classes                 (Binary, Hashable,
                                                             NFData, Typeable)
-import           Development.Shake.Command                 (CmdArgument,
-                                                            IsCmdArgument)
 import           GHC.Exts                                  (IsList (toList),
                                                             fromList)
 import           GHC.Generics                              (Generic)
@@ -66,15 +81,12 @@ import           GHC.Stack                                 (HasCallStack)
 import qualified Graphics.Rendering.Chart.Backend.Diagrams as E
 import           Graphics.Rendering.Chart.Easy             ((.=))
 import qualified Graphics.Rendering.Chart.Easy             as E
-import           Numeric.Natural
-import           System.Directory                          (copyFile,
-                                                            createDirectoryIfMissing)
+import           System.Directory                          (findExecutable, createDirectoryIfMissing)
 import           System.FilePath
 import qualified Text.ParserCombinators.ReadP              as P
 import           Text.Read                                 (Read (..), get,
                                                             readMaybe,
                                                             readP_to_Prec)
-import Text.Printf
 
 newtype GetExperiments = GetExperiments () deriving newtype (Binary, Eq, Hashable, NFData, Show)
 newtype GetVersions = GetVersions () deriving newtype (Binary, Eq, Hashable, NFData, Show)
@@ -170,7 +182,7 @@ buildRules build MkBuildRules{..} = do
   [build -/- "binaries/*/" <> executableName
    ,build -/- "binaries/*/ghc.path"
    ] &%> \[out, ghcPath] -> do
-      let [b, _binaries, ver, _] = splitDirectories out
+      let [_, _binaries, _ver, _] = splitDirectories out
       liftIO $ createDirectoryIfMissing True $ dropFileName out
       commitid <- readFile' $ takeDirectory out </> "commitid"
       cmd_ $ "git worktree add bench-temp " ++ commitid
@@ -279,6 +291,9 @@ csvRules build = do
 -- | Rules to produce charts for the GC stats
 svgRules :: FilePattern -> Rules ()
 svgRules build = do
+
+  _ <- addOracle $ \(GetParent name) -> findPrev name <$> askOracle (GetVersions ())
+
   -- chart GC stats for an experiment on a given revision
   priority 1 $
     build -/- "*/*/*.svg" %> \out -> do
@@ -319,9 +334,17 @@ svgRules build = do
 --------------------------------------------------------------------------------
 --------------------------------------------------------------------------------
 
+-- | Default build system that handles Cabal and Stack
 data BuildSystem = Cabal | Stack
   deriving (Eq, Read, Show, Generic)
   deriving (Binary, Hashable, NFData)
+
+findGhcForBuildSystem :: BuildSystem -> FilePath -> IO FilePath
+findGhcForBuildSystem Cabal _cwd =
+    liftIO $ fromMaybe (error "ghc is not in the PATH") <$> findExecutable "ghc"
+findGhcForBuildSystem Stack cwd = do
+    Stdout ghcLoc <- cmd [Cwd cwd] ("stack exec which ghc" :: String)
+    return ghcLoc
 
 instance FromJSON BuildSystem where
     parseJSON x = fromString . map toLower <$> parseJSON x

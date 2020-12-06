@@ -1,4 +1,3 @@
-{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE DisambiguateRecordFields #-}
@@ -50,7 +49,6 @@
 {-# OPTIONS -Wno-orphans #-}
 
 import Data.Foldable (find)
-import Data.Maybe (fromMaybe)
 import Data.Yaml (FromJSON (..), decodeFileThrow)
 import Development.Benchmark.Rules
 import Development.Shake
@@ -58,7 +56,6 @@ import Experiments.Types (Example, exampleToOptions)
 import qualified Experiments.Types as E
 import GHC.Generics (Generic)
 import Numeric.Natural (Natural)
-import System.Directory
 
 
 config :: FilePath
@@ -84,7 +81,7 @@ main = shakeArgs shakeOptions {shakeChange = ChangeModtimeAndDigest} $ do
       action $ allTargets build
 
 ghcideBuildRules :: MkBuildRules BuildSystem
-ghcideBuildRules = MkBuildRules findGhcDefault "ghcide" buildGhcide
+ghcideBuildRules = MkBuildRules findGhcForBuildSystem "ghcide" buildGhcide
 
 --------------------------------------------------------------------------------
 
@@ -107,7 +104,6 @@ createBuildSystem userRules = do
   _ <- addOracle $ \GetExperiments {} -> experiments <$> readConfig config
   _ <- addOracle $ \GetVersions {} -> versions <$> readConfig config
   _ <- addOracle $ \GetExamples{} -> examples <$> readConfig config
-  _ <- addOracle $ \(GetParent name) -> findPrev name . versions <$> readConfig config
   _ <- addOracle $ \(GetExample name) -> find (\e -> getExampleName e == name) . examples <$> readConfig config
   _ <- addOracle $ \GetBuildSystem {} -> buildTool <$> readConfig config
 
@@ -136,13 +132,6 @@ buildGhcide Stack args out =
         ,"--copy-bins"
         ,"--ghc-options=-rtsopts"
         ]
-
-findGhcDefault :: BuildSystem -> FilePath -> IO FilePath
-findGhcDefault Cabal _cwd =
-    liftIO $ fromMaybe (error "ghc is not in the PATH") <$> findExecutable "ghc"
-findGhcDefault Stack cwd = do
-    Stdout ghcLoc <- cmd [Cwd cwd] "stack exec which ghc"
-    return ghcLoc
 
 benchGhcide
   :: Natural -> BuildSystem -> [CmdOption] -> BenchProject Example -> Action ()
