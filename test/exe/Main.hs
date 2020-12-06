@@ -97,7 +97,6 @@ main = do
     , rootUriTests
     , asyncTests
     , clientSettingsTest
-
     , codeActionHelperFunctionTests
     ]
 
@@ -2228,7 +2227,7 @@ addSigLensesTests :: TestTree
 addSigLensesTests = let
   missing = "{-# OPTIONS_GHC -Wmissing-signatures -Wmissing-pattern-synonym-signatures -Wunused-matches #-}"
   notMissing = "{-# OPTIONS_GHC -Wunused-matches #-}"
-  moduleH = "{-# LANGUAGE PatternSynonyms #-}\nmodule Sigs where"
+  moduleH = "{-# LANGUAGE PatternSynonyms #-}\nmodule Sigs where\nimport qualified Data.Complex as C"
   other = T.unlines ["f :: Integer -> Integer", "f x = 3"]
   before  withMissing def
     = T.unlines $ (if withMissing then (missing :) else (notMissing :)) [moduleH, def, other]
@@ -2253,6 +2252,7 @@ addSigLensesTests = let
       , sigSession enableWarnings "a >>>> b = a + b"        "(>>>>) :: Num a => a -> a -> a"
       , sigSession enableWarnings "a `haha` b = a b"        "haha :: (t1 -> t2) -> t1 -> t2"
       , sigSession enableWarnings "pattern Some a = Just a" "pattern Some :: a -> Maybe a"
+      , sigSession enableWarnings "qualifiedSigTest= C.realPart" "qualifiedSigTest :: C.Complex a -> a"
       ]
       | (title, enableWarnings) <-
         [("with warnings enabled", True)
