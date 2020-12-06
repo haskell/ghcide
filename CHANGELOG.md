@@ -7,7 +7,7 @@
 * Bugfix: partial `pathToId` (#926) - (Samuel Ainsworth)
 * Bugfix: import suggestions when there's more than one option (#913) - (Guru Devanla)
 * Bugfix: parenthesize operators when exporting (#906) - (Potato Hatsue)
-* Opentelemetry traces and heapsize memory analysis (#922) - (Pepe Iborra)
+* Opentelemetry traces and heapsize memory analysis (#922) - (Michalis Pardalos / Pepe Iborra)
 * Make Filetargets absolute before continue using them (#914) - (fendor)
 * Do not enable every "unnecessary" warning by default (#907) - (Alejandro Serrano)
 * Update implicit-hie to 0.3.0 (#905) - (Avi Dessauer)
