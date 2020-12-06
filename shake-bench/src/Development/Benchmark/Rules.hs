@@ -1,4 +1,5 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE ApplicativeDo     #-}
 {-# LANGUAGE ConstraintKinds     #-}
 {-# LANGUAGE DeriveAnyClass      #-}
 {-# LANGUAGE DerivingStrategies  #-}
@@ -66,8 +67,8 @@ import           Data.Aeson                                (FromJSON (..),
                                                             ToJSON (..),
                                                             Value (..), (.!=),
                                                             (.:?))
-import           Data.Char                                 (toLower)
 import           Data.List                                 (find, transpose)
+import           Data.List.Extra                           (lower)
 import           Data.Maybe                                (fromMaybe)
 import           Data.Text                                 (Text)
 import qualified Data.Text                                 as T
@@ -347,7 +348,7 @@ findGhcForBuildSystem Stack cwd = do
     return ghcLoc
 
 instance FromJSON BuildSystem where
-    parseJSON x = fromString . map toLower <$> parseJSON x
+    parseJSON x = fromString . lower <$> parseJSON x
       where
         fromString "stack" = Stack
         fromString "cabal" = Cabal

@@ -1,7 +1,3 @@
-{-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE DisambiguateRecordFields #-}
-
 {-  Bench history
 
     A Shake script to analyze the performance of ghcide over the git history of the project
@@ -42,7 +38,6 @@
    > cabal bench --benchmark-options "bench-results/HEAD/results.csv bench-results/HEAD/edit.diff.svg"
 
  -}
-{-# LANGUAGE ApplicativeDo     #-}
 {-# LANGUAGE DeriveAnyClass    #-}
 {-# LANGUAGE DerivingStrategies#-}
 {-# LANGUAGE TypeFamilies      #-}
