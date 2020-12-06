@@ -273,16 +273,13 @@ runBenchmarksFun dir allBenchmarks = do
   outputRow $ (map . map) (const '-') paddedHeaders
   forM_ rowsHuman $ \row -> outputRow $ zipWith pad pads row
   where
-    gcStats name = escapeSpaces (name <> ".benchmark-gcStats")
     cmd name dir =
       unwords $
         [ ghcide ?config,
           "--lsp",
           "--test",
           "--cwd",
-          dir,
-          "+RTS",
-          "-S" <> gcStats name
+          dir
         ]
           ++ case otMemoryProfiling ?config of
             Just dir -> ["-l", "-ol" ++ (dir </> (map (\c -> if c == ' ' then '-' else c) name) <.> "eventlog")]

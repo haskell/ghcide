@@ -3,6 +3,8 @@ resolver: nightly-2020-09-02
 packages:
 - .
 - ./hie-compat/
+- ./shake-bench/
+
 extra-deps:
 - haskell-lsp-0.22.0.0
 - haskell-lsp-types-0.22.0.0
