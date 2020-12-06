@@ -1679,6 +1679,19 @@ fillTypedHoleTests = let
   , check "replace _ with foo _"
           "_" "n" "n"
           "(foo _)" "n" "n"
+  , testSession "replace _toException with E.toException" $ do
+      let mkDoc x = T.unlines
+            [ "module Testing where"
+            , "import qualified Control.Exception as E"
+            , "ioToSome :: E.IOException -> E.SomeException"
+            , "ioToSome = " <> x ]
+      doc <- createDoc "Test.hs" "haskell" $ mkDoc "_toException"
+      _ <- waitForDiagnostics
+      actions <- getCodeActions doc (Range (Position 3 0) (Position 3 maxBound))
+      chosen <- liftIO $ pickActionWithTitle "replace _toException with E.toException" actions
+      executeCodeAction chosen
+      modifiedCode <- documentContents doc
+      liftIO $ mkDoc "E.toException" @=? modifiedCode
   ]
 
 addInstanceConstraintTests :: TestTree
