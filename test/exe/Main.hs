@@ -1047,7 +1047,7 @@ extendImportTests = testGroup "extend import actions"
             ])]
       ("ModuleB.hs", T.unlines
             [ "module ModuleB where"
-            , "import ModuleA (A(ConstructorBar),a)"
+            , "import ModuleA (A(ConstructorBar), a)"
             , "b :: A"
             , "b = ConstructorFoo"
             ])
@@ -1055,7 +1055,7 @@ extendImportTests = testGroup "extend import actions"
       ["Add A(ConstructorFoo) to the import list of ModuleA"]
       (T.unlines
             [ "module ModuleB where"
-            , "import ModuleA (A(ConstructorFoo,ConstructorBar), a)"
+            , "import ModuleA (A(ConstructorFoo, ConstructorBar), a)"
             , "b :: A"
             , "b = ConstructorFoo"
             ])
