@@ -558,7 +558,9 @@ suggestModuleTypo Diagnostic{_range=_range,..}
 --     Could not find module ‘Data.Cha’
 --     Perhaps you meant Data.Char (from base-4.12.0.0)
     | "Could not find module" `T.isInfixOf` _message
-    , "Perhaps you meant"     `T.isInfixOf` _message = let
+    , "Perhaps you meant"     `T.isInfixOf` _message 
+    , Just "not found"         <- _source 
+    = let
       findSuggestedModules = map (head . T.words) . drop 2 . T.lines
       proposeModule mod = ("replace with " <> mod, [TextEdit _range mod])
       in map proposeModule $ nubOrd $ findSuggestedModules _message
