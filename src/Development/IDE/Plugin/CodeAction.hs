@@ -1132,7 +1132,7 @@ addBindingToImportList IdentInfo {parent = _parent, ..} importLine =
               | not (T.null children) -> T.concat [pre, "(", leading, parent, "(", rendered, ", ", children, rest'']
             -- case 4: no leading, e.g. `import A(Foo)` --> `import A(Foo(Cons))`
             Just (')', _) -> T.concat [pre, "(", parent, "(", rendered, "))"]
-            _ -> error $ "unknown case"
+            _ -> error "unknown case"
           -- current import list does not contain the parent, e.g. `import A(...)` --> `import A(Foo(Cons), ...)`
           _ -> T.concat [pre, "(", parent, "(", rendered, ")", addCommaIfNeeds rest]
     _ ->
