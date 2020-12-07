@@ -666,7 +666,8 @@ suggestExtendImport exportsMap contents Diagnostic{_range=_range,..}
           | Just p <- parent = p <> "(" <> rendered <> ")"
           | otherwise        = rendered
         lookupExportMap binding mod 
-          | [(ident, _)] <- filter (\(_,m) -> mod == m) $ maybe [] Set.toList $ Map.lookup binding (getExportsMap exportsMap)
+          | Just match <- Map.lookup binding (getExportsMap exportsMap)
+          , [(ident, _)] <- filter (\(_,m) -> mod == m) (Set.toList match)
            = Just ident
           | otherwise = Nothing
 
