@@ -1133,6 +1133,7 @@ extendImportTests = testGroup "extend import actions"
       mapM_ (\x -> createDoc (fst x) "haskell" (snd x)) setUpModules
       docB <- createDoc (fst moduleUnderTest) "haskell" (snd moduleUnderTest)
       _  <- waitForDiagnostics
+      void (skipManyTill anyMessage message :: Session WorkDoneProgressEndNotification)
       codeActions <- filter (\(CACodeAction CodeAction{_title=x}) -> T.isPrefixOf "Add" x)
           <$>  getCodeActions docB range
       let expectedTitles = (\(CACodeAction CodeAction{_title=x}) ->x) <$> codeActions
