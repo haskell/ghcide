@@ -1131,7 +1131,7 @@ addBindingToImportList IdentInfo {parent = _parent, ..} importLine =
             Just ('(', T.breakOn ")" -> (children, rest''))
               | not (T.null children),
                 -- ignore A(Foo({-...-}), ...)
-                not $ "{-" `T.isPrefixOf` (T.stripStart children)
+                not $ "{-" `T.isPrefixOf` T.stripStart children
               -> Just $ T.concat [pre, "(", leading, parent, "(", rendered, ", ", children, rest'']
             -- case 4: no trailing, e.g. `import A(..., Foo)` --> `import A(..., Foo(Cons))`
             Just (')', _) -> Just $ T.concat [pre, "(", leading, parent, "(", rendered, ")", rest']
