@@ -657,10 +657,9 @@ suggestExtendImport exportsMap contents Diagnostic{_range=_range,..}
                    in x{_end = (_end x){_character = succ (_character (_end x))}}
                 _ -> error "bug in srcspan parser",
             importLine <- textInRange range c,
-            Just ident <- lookupExportMap binding mod
-            =
-                [("Add " <> renderImport ident <> " to the import list of " <> mod
-                , [TextEdit range (addBindingToImportList ident importLine)])]
+            Just ident <- lookupExportMap binding mod,
+            Just result <- addBindingToImportList ident importLine
+            = [("Add " <> renderImport ident <> " to the import list of " <> mod, [TextEdit range result])]
           | otherwise = []
         renderImport IdentInfo {parent, rendered}
           | Just p <- parent = p <> "(" <> rendered <> ")"
@@ -1110,13 +1109,13 @@ rangesForBinding' _ _ = []
 --       import (qualified) A (..) ..
 --   Places the new binding first, preserving whitespace.
 --   Copes with multi-line import lists
-addBindingToImportList :: IdentInfo -> T.Text -> T.Text
+addBindingToImportList :: IdentInfo -> T.Text -> Maybe T.Text
 addBindingToImportList IdentInfo {parent = _parent, ..} importLine =
   case T.breakOn "(" importLine of
     (pre, T.uncons -> Just (_, rest)) ->
       case _parent of
         -- the binding is not a constructor, add it to the head of import list
-        Nothing -> T.concat [pre, "(", rendered, addCommaIfNeeds rest]
+        Nothing -> Just $ T.concat [pre, "(", rendered, addCommaIfNeeds rest]
         Just parent -> case T.breakOn parent rest of
           -- the binding is a constructor, and current import list contains its parent
           -- `rest'` could be 1. `,...)`
@@ -1125,25 +1124,26 @@ addBindingToImportList IdentInfo {parent = _parent, ..} importLine =
           --               or 4. `)`
           (leading, T.stripPrefix parent -> Just rest') -> case T.uncons (T.stripStart rest') of
             -- case 1: no children and parentheses, e.g. `import A(Foo,...)` --> `import A(Foo(Cons), ...)`
-            Just (',', rest'') -> T.concat [pre, "(", leading, parent, "(", rendered, ")", addCommaIfNeeds rest'']
+            Just (',', rest'') -> Just $ T.concat [pre, "(", leading, parent, "(", rendered, ")", addCommaIfNeeds rest'']
             -- case 2: no children but parentheses, e.g. `import A(Foo(),...)` --> `import A(Foo(Cons), ...)`
-            Just ('(', T.uncons -> Just (')', rest'')) -> T.concat [pre, "(", leading, parent, "(", rendered, ")", rest'']
+            Just ('(', T.uncons -> Just (')', rest'')) -> Just $ T.concat [pre, "(", leading, parent, "(", rendered, ")", rest'']
             -- case 3: children with parentheses, e.g. `import A(Foo(ConsA),...)` --> `import A(Foo(Cons, ConsA), ...)`
             Just ('(', T.breakOn ")" -> (children, rest''))
-              | not (T.null children) -> T.concat [pre, "(", leading, parent, "(", rendered, ", ", children, rest'']
+              | not (T.null children),
+                -- ignore A(Foo({-...-}), ...)
+                not $ "{-" `T.isPrefixOf` (T.stripStart children)
+              -> Just $ T.concat [pre, "(", leading, parent, "(", rendered, ", ", children, rest'']
             -- case 4: no trailing, e.g. `import A(..., Foo)` --> `import A(..., Foo(Cons))`
-            Just (')', _) -> T.concat [pre, "(", leading, parent, "(", rendered, ")", rest']
-            _ -> error "unknown case"
+            Just (')', _) -> Just $ T.concat [pre, "(", leading, parent, "(", rendered, ")", rest']
+            _ -> Nothing
           -- current import list does not contain the parent, e.g. `import A(...)` --> `import A(Foo(Cons), ...)`
-          _ -> T.concat [pre, "(", parent, "(", rendered, ")", addCommaIfNeeds rest]
-    _ ->
-      error $
-        "importLine does not have the expected structure: "
-          <> T.unpack importLine
+          _ -> Just $ T.concat [pre, "(", parent, "(", rendered, ")", addCommaIfNeeds rest]
+    _ -> Nothing
   where
     addCommaIfNeeds r = case T.uncons (T.stripStart r) of
       Just (')', _) -> r
       _ -> ", " <> r
+
 -- | 'matchRegex' combined with 'unifySpaces'
 matchRegexUnifySpaces :: T.Text -> T.Text -> Maybe [T.Text]
 matchRegexUnifySpaces message = matchRegex (unifySpaces message)
