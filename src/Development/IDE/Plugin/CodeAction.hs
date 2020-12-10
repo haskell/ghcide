@@ -49,10 +49,8 @@ import Data.Char
 import Data.Maybe
 import Data.List.Extra
 import qualified Data.Text as T
-import Data.Tuple.Extra ((&&&))
 import Text.Regex.TDFA (mrAfter, (=~), (=~~))
 import Outputable (ppr, showSDocUnsafe)
-import GHC.LanguageExtensions.Type (Extension)
 import Data.Function
 import Control.Arrow ((>>>))
 import Data.Functor
@@ -517,14 +515,6 @@ suggestFillTypeWildcard Diagnostic{_range=_range,..}
         =  [("Use type signature: ‘" <> typeSignature <> "’", [TextEdit _range typeSignature])]
     | otherwise = []
 
--- | All the GHC extensions
-ghcExtensions :: Map.HashMap T.Text Extension
-ghcExtensions = Map.fromList . filter notStrictFlag . map ( ( T.pack . flagSpecName ) &&& flagSpecFlag ) $ xFlags
-  where
-    -- Strict often causes false positives, as in Data.Map.Strict imports.
-    -- See discussion at https://github.com/digital-asset/ghcide/pull/638
-    notStrictFlag (name, _) = name /= "Strict"
-
 suggestModuleTypo :: Diagnostic -> [(T.Text, [TextEdit])]
 suggestModuleTypo Diagnostic{_range=_range,..}
 -- src/Development/IDE/Core/Compile.hs:58:1: error:
@@ -621,7 +611,7 @@ suggestExtendImport exportsMap contents Diagnostic{_range=_range,..}
     | Just (binding, mod_srcspan) <-
       matchRegExMultipleImports _message
     , Just c <- contents
-    = mod_srcspan >>= (\(x, y) -> suggestions c binding x y) 
+    = mod_srcspan >>= (\(x, y) -> suggestions c binding x y)
     | otherwise = []
     where
         suggestions c binding mod srcspan
@@ -637,7 +627,7 @@ suggestExtendImport exportsMap contents Diagnostic{_range=_range,..}
         renderImport IdentInfo {parent, rendered}
           | Just p <- parent = p <> "(" <> rendered <> ")"
           | otherwise        = rendered
-        lookupExportMap binding mod 
+        lookupExportMap binding mod
           | Just match <- Map.lookup binding (getExportsMap exportsMap)
           , [(ident, _)] <- filter (\(_,m) -> mod == m) (Set.toList match)
            = Just ident
