@@ -23,10 +23,13 @@ jobs:
             ghc: '8.10.1'
             ghc-lib: true
           # run the testsuite only once per ghc major version
+          - os: [macOS-latest, ubuntu-latest, windows-latest]
           - ghc: '8.10.2'
             test: true
+          - os: [macOS-latest, ubuntu-latest, windows-latest]
           - ghc: '8.8.4'
             test: true
+          - os: [macOS-latest, ubuntu-latest, windows-latest]
           - ghc: '8.6.5'
             test: true
 
