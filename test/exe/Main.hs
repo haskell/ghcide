@@ -547,7 +547,6 @@ codeActionTests = testGroup "code actions"
   , removeImportTests
   , extendImportTests
   , suggestImportTests
-  , addExtensionTests
   , fixConstructorImportTests
   , importRenameActionTests
   , fillTypedHoleTests
@@ -1038,7 +1037,7 @@ extendImportTests = testGroup "extend import actions"
             , "import ModuleA (A(Constructor))"
             , "b :: A"
             , "b = Constructor"
-            ])  
+            ])
   , testSession "extend single line import with mixed constructors" $ template
       [("ModuleA.hs", T.unlines
             [ "module ModuleA where"
