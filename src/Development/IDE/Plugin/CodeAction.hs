@@ -157,8 +157,7 @@ suggestAction
   -> [(T.Text, [TextEdit])]
 suggestAction packageExports ideOptions parsedModule text diag = concat
    -- Order these suggestions by priority
-    [ suggestAddExtension diag             -- Highest priority
-    , suggestSignature True diag
+    [ suggestSignature True diag
     , suggestExtendImport packageExports text diag
     , suggestFillTypeWildcard diag
     , suggestFixConstructorImport text diag
@@ -516,32 +515,6 @@ suggestFillTypeWildcard Diagnostic{_range=_range,..}
     , " standing for " `T.isInfixOf` _message
     , typeSignature <- extractWildCardTypeSignature _message
         =  [("Use type signature: ‘" <> typeSignature <> "’", [TextEdit _range typeSignature])]
-    | otherwise = []
-
-suggestAddExtension :: Diagnostic -> [(T.Text, [TextEdit])]
-suggestAddExtension Diagnostic{_range=_range,..}
--- File.hs:22:8: error:
---     Illegal lambda-case (use -XLambdaCase)
--- File.hs:22:6: error:
---     Illegal view pattern:  x -> foo
---     Use ViewPatterns to enable view patterns
--- File.hs:26:8: error:
---     Illegal `..' in record pattern
---     Use RecordWildCards to permit this
--- File.hs:53:28: error:
---     Illegal tuple section: use TupleSections
--- File.hs:238:29: error:
---     * Can't make a derived instance of `Data FSATrace':
---         You need DeriveDataTypeable to derive an instance for this class
---     * In the data declaration for `FSATrace'
--- C:\Neil\shake\src\Development\Shake\Command.hs:515:31: error:
---     * Illegal equational constraint a ~ ()
---       (Use GADTs or TypeFamilies to permit this)
---     * In the context: a ~ ()
---       While checking an instance declaration
---       In the instance declaration for `Unit (m a)'
-    | exts@(_:_) <- filter (`Map.member` ghcExtensions) $ T.split (not . isAlpha) $ T.replace "-X" "" _message
-        = [("Add " <> x <> " extension", [TextEdit (Range (Position 0 0) (Position 0 0)) $ "{-# LANGUAGE " <> x <> " #-}\n"]) | x <- exts]
     | otherwise = []
 
 -- | All the GHC extensions
