@@ -2952,7 +2952,16 @@ nonLocalCompletionTests =
        Just (List [TextEdit {_range = Range {_start = Position {_line = 1, _character = 44}, _end = Position {_line = 1, _character = 44}}, _newText = "FormatParse, "}])),
        ("FormatParse", CiSnippet, "FormatParse {fpModifiers=${1:_fpModifiers}, fpChar=${2:_fpChar}, fpRest=${3:_fpRest}}", False, False,
        Just (List [TextEdit {_range = Range {_start = Position {_line = 1, _character = 44}, _end = Position {_line = 1, _character = 44}}, _newText = "FormatParse, "}]))
+      ],
+      -- we need this test to make sure the ghcide completions module does not return completions for language pragmas. this functionality is turned on in hls
+     completionTest
+      "do not show pragma completions"
+      [ "{-# LANGUAGE  ",
+        "{module A where}",
+        "main = return ()"
       ]
+      (Position 0 13)
+      []
   ]
 
 otherCompletionTests :: [TestTree]
