@@ -8,9 +8,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # build not tested ghc versions
+        # all versions to only build or test for non windows os's
+        # inclusions will modify the major ones to mark them as testables
         os: [macOS-latest, ubuntu-latest]
         ghc: ['8.10.2', '8.10.1', '8.8.4', '8.8.3', '8.8.2', '8.6.5', '8.6.4']
+        ghc-lib: [false]
         include:
           # one ghc-lib build
           - os: ubuntu-latest
@@ -87,7 +89,7 @@ jobs:
       run: cabal build || cabal build || cabal build
 
     - name: Test
+      if: ${{ !matrix.ghc-lib && matrix.test }}
       shell: bash
       # run the tests without parallelism to avoid running out of memory
       run: cabal test --test-options="-j1 --rerun-update" || cabal test --test-options="-j1 --rerun" || LSP_TEST_LOG_COLOR=0 LSP_TEST_LOG_MESSAGES=true LSP_TEST_LOG_STDERR=true cabal test --test-options="-j1 --rerun"
-      if: ${{ !matrix.ghc-lib}} && {{matrix.test}}
