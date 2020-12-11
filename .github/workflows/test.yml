@@ -8,30 +8,45 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macOS-latest, ubuntu-latest, windows-latest]
+        # build not tested ghc versions
+        os: [macOS-latest, ubuntu-latest]
         ghc: ['8.10.2', '8.10.1', '8.8.4', '8.8.3', '8.8.2', '8.6.5', '8.6.4']
-        test: [false]
-        ghc-lib: [false]
-        exclude:
-          - os: windows-latest
-            ghc: '8.10.2' # broken due to https://gitlab.haskell.org/ghc/ghc/-/issues/18550
-          - os: windows-latest
-            ghc: '8.8.4' # also fails due to segfault :(
         include:
           # one ghc-lib build
           - os: ubuntu-latest
             ghc: '8.10.1'
             ghc-lib: true
-          # run the testsuite only once per ghc major version
-          - os: [macOS-latest, ubuntu-latest, windows-latest]
+          # only test supported ghc major versions
+          - os: macOS-latest
             ghc: '8.10.2'
             test: true
-          - os: [macOS-latest, ubuntu-latest, windows-latest]
+          - os: ubuntu-latest
+            ghc: '8.10.2'
+            test: true
+          # specific 8.10.2 version for windows and chocolatey
+          - os: windows-latest
+            ghc: '8.10.2.2'
+            test: true
+          - os: macOS-latest
             ghc: '8.8.4'
             test: true
-          - os: [macOS-latest, ubuntu-latest, windows-latest]
+          - os: ubuntu-latest
+            ghc: '8.8.4'
+            test: true
+          - os: macOS-latest
             ghc: '8.6.5'
             test: true
+          - os: ubuntu-latest
+            ghc: '8.6.5'
+            test: true
+          - os: windows-latest
+            ghc: '8.6.5'
+            test: true
+          # only build rest of supported ghc versions for windows
+          - os: windows-latest
+            ghc: '8.10.1'
+          - os: windows-latest
+            ghc: '8.6.4'
 
     steps:
     - uses: actions/checkout@v2
