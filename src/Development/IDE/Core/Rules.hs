@@ -553,16 +553,16 @@ getBindingsRule =
 getDocMapRule :: Rules ()
 getDocMapRule =
     define $ \GetDocMap file -> do
-      (tmrTypechecked -> tc,_) <- useWithStale_ TypeCheck file
-      (hscEnv -> hsc,_) <-useWithStale_ GhcSessionDeps file
-      (refMap -> rf, _) <- useWithStale_ GetHieAst file
+      (tmrTypechecked -> tc) <- use_ TypeCheck file
+      (hscEnv -> hsc) <- use_ GhcSessionDeps file
+      (refMap -> rf) <- use_ GetHieAst file
 
 -- When possible, rely on the haddocks embedded in our interface files
 -- This creates problems on ghc-lib, see comment on 'getDocumentationTryGhc'
 #if !defined(GHC_LIB)
       let parsedDeps = []
 #else
-      deps <- maybe (TransitiveDependencies [] [] []) fst <$> useWithStale GetDependencies file
+      deps <- fromMaybe (TransitiveDependencies [] [] []) <$> use GetDependencies file
       let tdeps = transitiveModuleDeps deps
       parsedDeps <- uses_ GetParsedModule tdeps
 #endif
@@ -664,8 +664,8 @@ ghcSessionDepsDefinition :: NormalizedFilePath -> Action (IdeResult HscEnvEq)
 ghcSessionDepsDefinition file = do
         env <- use_ GhcSession file
         let hsc = hscEnv env
-        ((ms,_),_) <- useWithStale_ GetModSummaryWithoutTimestamps file
-        (deps,_) <- useWithStale_ GetDependencies file
+        (ms,_) <- use_ GetModSummaryWithoutTimestamps file
+        deps <- use_ GetDependencies file
         let tdeps = transitiveModuleDeps deps
             uses_th_qq =
               xopt LangExt.TemplateHaskell dflags || xopt LangExt.QuasiQuotes dflags
@@ -894,7 +894,7 @@ getLinkableType f = do
 
 needsCompilationRule :: Rules ()
 needsCompilationRule = defineEarlyCutoff $ \NeedsCompilation file -> do
-  ((ms,_),_) <- useWithStale_ GetModSummaryWithoutTimestamps file
+  (ms,_) <- use_ GetModSummaryWithoutTimestamps file
   -- A file needs object code if it uses TemplateHaskell or any file that depends on it uses TemplateHaskell
   res <-
     if uses_th_qq ms
