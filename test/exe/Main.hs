@@ -538,6 +538,18 @@ diagnosticTests = testGroup "diagnostics"
       [("A.hs", [(DsError, (5, 4), "Couldn't match expected type 'Int' with actual type 'Bool'")])
       ]
     expectNoMoreDiagnostics 2
+
+  , testSessionWait "deduplicate missing module diagnostics" $  do
+      let fooContent = T.unlines [ "module Foo() where" , "import MissingModule" ]
+      doc <- createDoc "Foo.hs" "haskell" fooContent
+      expectDiagnostics [("Foo.hs", [(DsError, (1,7), "Could not find module 'MissingModule'")])]
+
+      changeDoc doc [TextDocumentContentChangeEvent Nothing Nothing "module Foo() where" ]
+      expectDiagnostics []
+
+      changeDoc doc [TextDocumentContentChangeEvent Nothing Nothing $ T.unlines
+            [ "module Foo() where" , "import MissingModule" ] ]
+      expectDiagnostics [("Foo.hs", [(DsError, (1,7), "Could not find module 'MissingModule'")])]
   ]
 
 codeActionTests :: TestTree
@@ -1038,7 +1050,7 @@ extendImportTests = testGroup "extend import actions"
             , "import ModuleA (A(Constructor))"
             , "b :: A"
             , "b = Constructor"
-            ])  
+            ])
   , testSession "extend single line import with mixed constructors" $ template
       [("ModuleA.hs", T.unlines
             [ "module ModuleA where"
