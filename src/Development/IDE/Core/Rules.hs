@@ -894,7 +894,15 @@ getLinkableType f = do
 
 needsCompilationRule :: Rules ()
 needsCompilationRule = defineEarlyCutoff $ \NeedsCompilation file -> do
-  (ms,_) <- use_ GetModSummaryWithoutTimestamps file
+  -- It's important to use stale data here to avoid wasted work.
+  -- if NeedsCompilation fails for a module M its result will be  under-approximated
+  -- to False in its dependencies. However, if M actually used TH, this will
+  -- cause a re-evaluation of GetModIface for all dependencies
+  -- (since we don't need to generate object code anymore).
+  -- Once M is fixed we will discover that we actually needed all the object code
+  -- that we just threw away, and thus have to recompile all dependencies once
+  -- again, this time keeping the object code.
+  (ms,_) <- fst <$> useWithStale_ GetModSummaryWithoutTimestamps file
   -- A file needs object code if it uses TemplateHaskell or any file that depends on it uses TemplateHaskell
   res <-
     if uses_th_qq ms
