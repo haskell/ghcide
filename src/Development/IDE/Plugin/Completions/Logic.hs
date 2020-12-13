@@ -560,7 +560,8 @@ getCompletions ideOpts CC { allModNamesAsNS, unqualCompls, qualCompls, importabl
       result
         | "import " `T.isPrefixOf` fullLine
         = filtImportCompls
-        -- we leave this condition here and return empty list since hls implements this completion
+        -- we leave this condition here to avoid duplications and return empty list
+        -- since HLS implements this completion (#haskell-language-server/pull/662)
         | "{-# language" `T.isPrefixOf` T.toLower fullLine
         = []
         | "{-# options_ghc" `T.isPrefixOf` T.toLower fullLine
