@@ -553,9 +553,11 @@ getBindingsRule =
 getDocMapRule :: Rules ()
 getDocMapRule =
     define $ \GetDocMap file -> do
-      (tmrTypechecked -> tc) <- use_ TypeCheck file
-      (hscEnv -> hsc) <- use_ GhcSessionDeps file
-      (refMap -> rf) <- use_ GetHieAst file
+      -- Stale data for the scenario where a broken module has previously typechecked
+      -- but we never generated a DocMap for it
+      (tmrTypechecked -> tc, _) <- useWithStale_ TypeCheck file
+      (hscEnv -> hsc, _)        <- useWithStale_ GhcSessionDeps file
+      (refMap -> rf, _)         <- useWithStale_ GetHieAst file
 
 -- When possible, rely on the haddocks embedded in our interface files
 -- This creates problems on ghc-lib, see comment on 'getDocumentationTryGhc'
