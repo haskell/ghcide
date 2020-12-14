@@ -624,9 +624,6 @@ suggestExtendImport exportsMap contents Diagnostic{_range=_range,..}
             Just result <- addBindingToImportList ident importLine
             = [("Add " <> renderIdentInfo ident <> " to the import list of " <> mod, [TextEdit range result])]
           | otherwise = []
-        renderImport IdentInfo {parent, rendered}
-          | Just p <- parent = p <> "(" <> rendered <> ")"
-          | otherwise        = rendered
         lookupExportMap binding mod
           | Just match <- Map.lookup binding (getExportsMap exportsMap)
           , [(ident, _)] <- filter (\(_,m) -> mod == m) (Set.toList match)
