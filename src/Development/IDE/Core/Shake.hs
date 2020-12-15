@@ -502,7 +502,7 @@ shakeShut IdeState{..} = withMVar shakeSession $ \runner -> do
 -- | This is a variant of withMVar where the first argument is run unmasked and if it throws
 -- an exception, the previous value is restored while the second argument is executed masked.
 withMVar' :: MVar a -> (a -> IO b) -> (b -> IO (a, c)) -> IO c
-withMVar' var unmasked masked = mask $ \restore -> do
+withMVar' var unmasked masked = uninterruptibleMask $ \restore -> do
     a <- takeMVar var
     b <- restore (unmasked a) `onException` putMVar var a
     (a', c) <- masked b
