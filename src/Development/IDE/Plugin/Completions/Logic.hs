@@ -321,7 +321,7 @@ cacheDataProducer packageState curMod rdrEnv limports deps = do
       getComplsForOne (GRE n _ False prov) =
         flip foldMapM (map is_decl prov) $ \spec -> do
           let originalImportDecl = Map.lookup (is_dloc spec) importMap
-          compItem <- toCompItem curMod (is_mod spec) n originalImportDecl
+          compItem <- toCompItem curMod (is_mod spec) n (const Nothing originalImportDecl)
           let unqual
                 | is_qual spec = []
                 | otherwise = compItem
