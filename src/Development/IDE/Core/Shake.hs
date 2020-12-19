@@ -84,6 +84,7 @@ import Development.IDE.Core.Debouncer
 import Development.IDE.GHC.Compat (NameCacheUpdater(..), upNameCache )
 import Development.IDE.GHC.Orphans ()
 import Development.IDE.Core.PositionMapping
+import Development.IDE.Core.RuleTypes
 import Development.IDE.Types.Action
 import Development.IDE.Types.Logger hiding (Priority)
 import Development.IDE.Types.KnownTargets
@@ -124,7 +125,6 @@ import Data.IORef
 import NameCache
 import UniqSupply
 import PrelInfo
-import Data.Int (Int64)
 import Language.Haskell.LSP.Types.Capabilities
 import OpenTelemetry.Eventlog
 
@@ -1050,45 +1050,6 @@ actionLogger = do
     ShakeExtras{logger} <- getShakeExtras
     return logger
 
-
--- The Shake key type for getModificationTime queries
-data GetModificationTime = GetModificationTime_
-    { missingFileDiagnostics :: Bool
-      -- ^ If false, missing file diagnostics are not reported
-    }
-    deriving (Show, Generic)
-
-instance Eq GetModificationTime where
-    -- Since the diagnostics are not part of the answer, the query identity is
-    -- independent from the 'missingFileDiagnostics' field
-    _ == _ = True
-
-instance Hashable GetModificationTime where
-    -- Since the diagnostics are not part of the answer, the query identity is
-    -- independent from the 'missingFileDiagnostics' field
-    hashWithSalt salt _ = salt
-
-instance NFData   GetModificationTime
-instance Binary   GetModificationTime
-
-pattern GetModificationTime :: GetModificationTime
-pattern GetModificationTime = GetModificationTime_ {missingFileDiagnostics=True}
-
--- | Get the modification time of a file.
-type instance RuleResult GetModificationTime = FileVersion
-
-data FileVersion
-    = VFSVersion !Int
-    | ModificationTime
-      !Int64   -- ^ Large unit (platform dependent, do not make assumptions)
-      !Int64   -- ^ Small unit (platform dependent, do not make assumptions)
-    deriving (Show, Generic)
-
-instance NFData FileVersion
-
-vfsVersion :: FileVersion -> Maybe Int
-vfsVersion (VFSVersion i) = Just i
-vfsVersion ModificationTime{} = Nothing
 
 getDiagnosticsFromStore :: StoreItem -> [Diagnostic]
 getDiagnosticsFromStore (StoreItem _ diags) = concatMap SL.fromSortedList $ Map.elems diags
