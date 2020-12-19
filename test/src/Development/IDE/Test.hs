@@ -13,7 +13,7 @@ module Development.IDE.Test
   , expectNoMoreDiagnostics
   , canonicalizeUri
   , standardizeQuotes
-  ) where
+  ,expectCurrentDiagnostics) where
 
 import Control.Applicative.Combinators
 import Control.Lens hiding (List)
@@ -94,42 +94,63 @@ expectDiagnostics
   = expectDiagnosticsWithTags
   . map (second (map (\(ds, c, t) -> (ds, c, t, Nothing))))
 
-expectDiagnosticsWithTags :: [(FilePath, [(DiagnosticSeverity, Cursor, T.Text, Maybe DiagnosticTag)])] -> Session ()
-expectDiagnosticsWithTags [] = do
-    diagsNot <- skipManyTill anyMessage diagnostic
-    let actual = diagsNot ^. params . diagnostics
+unwrapDiagnostic :: PublishDiagnosticsNotification -> (Uri, List Diagnostic)
+unwrapDiagnostic diagsNot = (diagsNot^.params.uri, diagsNot^.params.diagnostics)
+
+expectDiagnosticsWithTags :: [([Char], [(DiagnosticSeverity, Cursor, T.Text, Maybe DiagnosticTag)])] -> Session ()
+expectDiagnosticsWithTags expected = do
+    let f = getDocUri >=> liftIO . canonicalizeUri >=> pure . toNormalizedUri
+        next = unwrapDiagnostic <$> skipManyTill anyMessage diagnostic
+    expected' <- Map.fromListWith (<>) <$> traverseOf (traverse . _1) f expected
+    expectDiagnosticsWithTags' next expected'
+
+expectDiagnosticsWithTags' ::
+  MonadIO m =>
+  m (Uri, List Diagnostic) ->
+  Map.Map NormalizedUri [(DiagnosticSeverity, Cursor, T.Text, Maybe DiagnosticTag)] ->
+  m ()
+expectDiagnosticsWithTags' next m | null m = do
+    (_,actual) <- next
     case actual of
         List [] ->
             return ()
         _ ->
             liftIO $ assertFailure $ "Got unexpected diagnostics:" <> show actual
-expectDiagnosticsWithTags expected = do
-    let f = getDocUri >=> liftIO . canonicalizeUri >=> pure . toNormalizedUri
-    expected' <- Map.fromListWith (<>) <$> traverseOf (traverse . _1) f expected
-    go expected'
-    where
-        go m
-            | Map.null m = pure ()
-            | otherwise = do
-                  diagsNot <- skipManyTill anyMessage diagnostic
-                  let fileUri = diagsNot ^. params . uri
-                  canonUri <- liftIO $ toNormalizedUri <$> canonicalizeUri fileUri
-                  case Map.lookup canonUri m of
-                      Nothing -> do
-                          let actual = diagsNot ^. params . diagnostics
-                          liftIO $ assertFailure $
-                              "Got diagnostics for " <> show fileUri <>
-                              " but only expected diagnostics for " <> show (Map.keys m) <>
-                              " got " <> show actual
-                      Just expected -> do
-                          let actual = diagsNot ^. params . diagnostics
-                          liftIO $ mapM_ (requireDiagnostic actual) expected
-                          liftIO $ unless (length expected == length actual) $
-                              assertFailure $
-                              "Incorrect number of diagnostics for " <> show fileUri <>
-                              ", expected " <> show expected <>
-                              " but got " <> show actual
-                          go $ Map.delete canonUri m
+
+expectDiagnosticsWithTags' next expected = go expected
+  where
+    go m
+      | Map.null m = pure ()
+      | otherwise = do
+        (fileUri, actual) <- next
+        canonUri <- liftIO $ toNormalizedUri <$> canonicalizeUri fileUri
+        case Map.lookup canonUri m of
+          Nothing -> do
+            liftIO $
+              assertFailure $
+                "Got diagnostics for " <> show fileUri
+                  <> " but only expected diagnostics for "
+                  <> show (Map.keys m)
+                  <> " got "
+                  <> show actual
+          Just expected -> do
+            liftIO $ mapM_ (requireDiagnostic actual) expected
+            liftIO $
+              unless (length expected == length actual) $
+                assertFailure $
+                  "Incorrect number of diagnostics for " <> show fileUri
+                    <> ", expected "
+                    <> show expected
+                    <> " but got "
+                    <> show actual
+            go $ Map.delete canonUri m
+
+expectCurrentDiagnostics :: TextDocumentIdentifier -> [(DiagnosticSeverity, Cursor, T.Text)] -> Session ()
+expectCurrentDiagnostics doc@TextDocumentIdentifier {_uri} expected = do
+    diags <- getCurrentDiagnostics doc
+    let expected' = Map.fromList [(nuri, map (\(ds, c, t) -> (ds, c, t, Nothing)) expected)]
+        nuri = toNormalizedUri _uri
+    expectDiagnosticsWithTags' (return $ (_uri, List diags)) expected'
 
 canonicalizeUri :: Uri -> IO Uri
 canonicalizeUri uri = filePathToUri <$> canonicalizePath (fromJust (uriToFilePath uri))
