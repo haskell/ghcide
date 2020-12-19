@@ -58,7 +58,8 @@ import Test.Tasty.HUnit
 import Test.Tasty.QuickCheck
 import System.Time.Extra
 import Development.IDE.Plugin.CodeAction (typeSignatureCommandId, blockCommandId, matchRegExMultipleImports)
-import Development.IDE.Plugin.Test (TestRequest(BlockSeconds,GetInterfaceFilesDir))
+import Development.IDE.Plugin.Test (TestRequest(WaitForIdeRule, BlockSeconds,GetInterfaceFilesDir))
+import Control.Monad.Extra (whenJust)
 
 main :: IO ()
 main = do
@@ -556,7 +557,91 @@ diagnosticTests = testGroup "diagnostics"
       changeDoc doc [TextDocumentContentChangeEvent Nothing Nothing $ T.unlines
             [ "module Foo() where" , "import MissingModule" ] ]
       expectDiagnostics [("Foo.hs", [(DsError, (1,7), "Could not find module 'MissingModule'")])]
+
+  , testGroup "Cancellation"
+    [ cancellationTestGroup "edit header" editHeader yesDepends yesSession noParse  noTc
+    , cancellationTestGroup "edit import" editImport noDepends  noSession  yesParse noTc
+    , cancellationTestGroup "edit body"   editBody   yesDepends yesSession yesParse yesTc
+    ]
   ]
+  where
+      editPair x y = let p = Position x y ; p' = Position x (y+2) in
+        (TextDocumentContentChangeEvent {_range=Just (Range p p), _rangeLength=Nothing, _text="fd"}
+        ,TextDocumentContentChangeEvent {_range=Just (Range p p'), _rangeLength=Nothing, _text=""})
+      editHeader = editPair 0 0
+      editImport = editPair 2 10
+      editBody   = editPair 4 10
+
+      noParse = False
+      yesParse = True
+
+      noDepends = False
+      yesDepends = True
+
+      noSession = False
+      yesSession = True
+
+      noTc = False
+      yesTc = True
+
+cancellationTestGroup :: TestName -> (TextDocumentContentChangeEvent, TextDocumentContentChangeEvent) -> Bool -> Bool -> Bool -> Bool -> TestTree
+cancellationTestGroup name edits dependsOutcome sessionDepsOutcome parseOutcome tcOutcome = testGroup name
+    [ cancellationTemplate edits Nothing
+    , cancellationTemplate edits $ Just ("GetFileContents", True)
+    , cancellationTemplate edits $ Just ("GhcSession", True)
+      -- the outcome for GetModSummary is always True because parseModuleHeader never fails (!)
+    , cancellationTemplate edits $ Just ("GetModSummary", True)
+    , cancellationTemplate edits $ Just ("GetModSummaryWithoutTimestamps", True)
+      -- getLocatedImports never fails
+    , cancellationTemplate edits $ Just ("GetLocatedImports", True)
+    , cancellationTemplate edits $ Just ("GetDependencies", dependsOutcome)
+    , cancellationTemplate edits $ Just ("GhcSessionDeps", sessionDepsOutcome)
+    , cancellationTemplate edits $ Just ("GetParsedModule", parseOutcome)
+    , cancellationTemplate edits $ Just ("TypeCheck", tcOutcome)
+    , cancellationTemplate edits $ Just ("GetHieAst", tcOutcome)
+    ]
+
+cancellationTemplate :: (TextDocumentContentChangeEvent, TextDocumentContentChangeEvent) -> Maybe (String, Bool) -> TestTree
+cancellationTemplate (edit, undoEdit) mbKey = testSessionWait (maybe "-" fst mbKey) $ do
+      let fooContent = T.unlines
+            [ "{-# OPTIONS_GHC -Wall #-}"
+            , "module Foo where"
+            , "import Data.List()"
+            , "f0 x = (x,x)"
+            , "f1 x = f0 (f0 x)"
+            , "f2 x = f1 (f1 x)"
+            , "f3 x = f2 (f2 x)"
+            ]
+      doc@TextDocumentIdentifier{..} <- createDoc "Foo.hs" "haskell" fooContent
+      let docNfp = fromNormalizedFilePath $ fromUri $ toNormalizedUri _uri
+
+      -- for the example above we expect 4 warnings due to missing type sigs
+      let missingSigDiags =
+              [(DsWarning, (3, 0), "Top-level binding")
+              ,(DsWarning, (4, 0), "Top-level binding")
+              ,(DsWarning, (5, 0), "Top-level binding")
+              ,(DsWarning, (6, 0), "Top-level binding")
+              ]
+      expectDiagnostics [("Foo.hs", missingSigDiags)]
+
+      -- Now we edit the document and wait for the given key (if any)
+      changeDoc doc [edit]
+      whenJust mbKey $ \(key, expectedResult) -> do
+        waitId <- sendRequest (CustomClientMethod "test") (WaitForIdeRule key docNfp)
+        ResponseMessage{_result} <- skipManyTill anyMessage $ responseForId waitId
+        liftIO $ _result @?= Right expectedResult
+
+      -- The 2nd edit cancels the active session and unbreaks the file
+      changeDoc doc [undoEdit]
+
+      -- finally, wait for typecheck and check that the current diagnostics are accurate
+      waitId <- sendRequest (CustomClientMethod "test") (WaitForIdeRule "typecheck" docNfp)
+      ResponseMessage{_result} <- skipManyTill anyMessage $ responseForId waitId
+      liftIO $ sleep 0.2
+      liftIO $ _result @?= Right True
+
+      expectCurrentDiagnostics doc missingSigDiags
+
 
 codeActionTests :: TestTree
 codeActionTests = testGroup "code actions"

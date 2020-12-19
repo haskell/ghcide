@@ -94,6 +94,7 @@ mkResponseError msg = ResponseError InvalidRequest msg Nothing
 
 parseAction :: CI String -> NormalizedFilePath -> Action (Either Text Bool)
 parseAction "typecheck" fp = Right . isJust <$> use TypeCheck fp
+parseAction "getLocatedImports" fp = Right . isJust <$> use GetLocatedImports fp
 parseAction "getmodsummary" fp = Right . isJust <$> use GetModSummary fp
 parseAction "getmodsummarywithouttimestamps" fp = Right . isJust <$> use GetModSummaryWithoutTimestamps fp
 parseAction "getparsedmodule" fp = Right . isJust <$> use GetParsedModule fp
