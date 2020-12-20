@@ -38,7 +38,7 @@ module Development.IDE.Core.Shake(
     useWithStale, usesWithStale,
     useWithStale_, usesWithStale_,
     define, defineEarlyCutoff, defineOnDisk, needOnDisk, needOnDisks,
-    getDiagnostics, unsafeClearDiagnostics,
+    getDiagnostics,
     getHiddenDiagnostics,
     IsIdeGlobal, addIdeGlobal, addIdeGlobalExtras, getIdeGlobalState, getIdeGlobalAction,
     getIdeGlobalExtras,
@@ -651,11 +651,6 @@ getHiddenDiagnostics :: IdeState -> IO [FileDiagnostic]
 getHiddenDiagnostics IdeState{shakeExtras = ShakeExtras{hiddenDiagnostics}} = do
     val <- readVar hiddenDiagnostics
     return $ getAllDiagnostics val
-
--- | FIXME: This function is temporary! Only required because the files of interest doesn't work
-unsafeClearDiagnostics :: IdeState -> IO ()
-unsafeClearDiagnostics IdeState{shakeExtras = ShakeExtras{diagnostics}} =
-    writeVar diagnostics mempty
 
 -- | Clear the results for all files that do not match the given predicate.
 garbageCollect :: (NormalizedFilePath -> Bool) -> Action ()
