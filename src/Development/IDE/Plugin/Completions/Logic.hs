@@ -191,7 +191,7 @@ mkNameCompItem origName origMod thingType isInfix docs !imp = CI{..}
     insertText = case isInfix of
             Nothing -> case getArgText <$> thingType of
                             Nothing -> label
-                            Just argText -> label <> " " <> argText
+                            Just argText -> (stripPrefix label) <> " " <> argText
             Just LeftSide -> label <> "`"
 
             Just Surrounded -> label
