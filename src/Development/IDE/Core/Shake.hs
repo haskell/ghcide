@@ -7,7 +7,6 @@
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE ConstraintKinds            #-}
-{-# LANGUAGE PatternSynonyms            #-}
 
 -- | A Shake implementation of the compiler service.
 --
