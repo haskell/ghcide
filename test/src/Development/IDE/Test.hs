@@ -11,9 +11,11 @@ module Development.IDE.Test
   , expectDiagnostics
   , expectDiagnosticsWithTags
   , expectNoMoreDiagnostics
+  , expectCurrentDiagnostics
+  , checkDiagnosticsForDoc
   , canonicalizeUri
   , standardizeQuotes
-  ,expectCurrentDiagnostics) where
+  ,flushMessages) where
 
 import Control.Applicative.Combinators
 import Control.Lens hiding (List)
@@ -78,11 +80,20 @@ expectNoMoreDiagnostics timeout = do
         liftIO $ assertFailure $
             "Got unexpected diagnostics for " <> show fileUri <>
             " got " <> show actual
-    handleCustomMethodResponse =
-        -- the CustomClientMethod triggers a RspCustomServer
-        -- handle that and then exit
-        void (LspTest.message :: Session CustomResponse)
     ignoreOthers = void anyMessage >> handleMessages
+
+handleCustomMethodResponse :: Session ()
+handleCustomMethodResponse =
+    -- the CustomClientMethod triggers a RspCustomServer
+    -- handle that and then exit
+    void (LspTest.message :: Session CustomResponse)
+
+flushMessages :: Session ()
+flushMessages = do
+    void $ sendRequest (CustomClientMethod "non-existent-method") ()
+    handleCustomMethodResponse <|> ignoreOthers
+    where
+        ignoreOthers = void anyMessage >> flushMessages
 
 -- | It is not possible to use 'expectDiagnostics []' to assert the absence of diagnostics,
 --   only that existing diagnostics have been cleared.
@@ -97,7 +108,7 @@ expectDiagnostics
 unwrapDiagnostic :: PublishDiagnosticsNotification -> (Uri, List Diagnostic)
 unwrapDiagnostic diagsNot = (diagsNot^.params.uri, diagsNot^.params.diagnostics)
 
-expectDiagnosticsWithTags :: [([Char], [(DiagnosticSeverity, Cursor, T.Text, Maybe DiagnosticTag)])] -> Session ()
+expectDiagnosticsWithTags :: [(String, [(DiagnosticSeverity, Cursor, T.Text, Maybe DiagnosticTag)])] -> Session ()
 expectDiagnosticsWithTags expected = do
     let f = getDocUri >=> liftIO . canonicalizeUri >=> pure . toNormalizedUri
         next = unwrapDiagnostic <$> skipManyTill anyMessage diagnostic
@@ -146,11 +157,15 @@ expectDiagnosticsWithTags' next expected = go expected
             go $ Map.delete canonUri m
 
 expectCurrentDiagnostics :: TextDocumentIdentifier -> [(DiagnosticSeverity, Cursor, T.Text)] -> Session ()
-expectCurrentDiagnostics doc@TextDocumentIdentifier {_uri} expected = do
+expectCurrentDiagnostics doc expected = do
     diags <- getCurrentDiagnostics doc
+    checkDiagnosticsForDoc doc expected diags
+
+checkDiagnosticsForDoc :: TextDocumentIdentifier -> [(DiagnosticSeverity, Cursor, T.Text)] -> [Diagnostic] -> Session ()
+checkDiagnosticsForDoc TextDocumentIdentifier {_uri} expected obtained = do
     let expected' = Map.fromList [(nuri, map (\(ds, c, t) -> (ds, c, t, Nothing)) expected)]
         nuri = toNormalizedUri _uri
-    expectDiagnosticsWithTags' (return $ (_uri, List diags)) expected'
+    expectDiagnosticsWithTags' (return $ (_uri, List obtained)) expected'
 
 canonicalizeUri :: Uri -> IO Uri
 canonicalizeUri uri = filePathToUri <$> canonicalizePath (fromJust (uriToFilePath uri))
