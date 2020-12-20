@@ -1058,7 +1058,7 @@ setStageDiagnostics uri ver stage diags ds = newDiagsStore where
     -- from other stages when calling updateDiagnostics
     -- But this means that updateDiagnostics cannot be called concurrently
     -- for different stages anymore
-    updatedDiags = Map.singleton (Just stage) (SL.toSortedList diags) <> oldDiags
+    updatedDiags = Map.insert (Just stage) (SL.toSortedList diags) oldDiags
     oldDiags = case HMap.lookup uri ds of
             Just (StoreItem _ byStage) -> byStage
             _ -> Map.empty
