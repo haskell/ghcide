@@ -993,25 +993,19 @@ updateFileDiagnostics :: MonadIO m
 updateFileDiagnostics fp k ShakeExtras{diagnostics, hiddenDiagnostics, publishedDiagnostics, state, debouncer, eventer} current = liftIO $ do
     modTime <- (currentValue =<<) <$> getValues state GetModificationTime fp
     let (currentShown, currentHidden) = partition ((== ShowDiag) . fst) current
+        uri = filePathToUri' fp
+        ver = vfsVersion =<< modTime
+        updateDiagnosticsWithForcing new store = do
+            store' <- evaluate $ setStageDiagnostics uri ver (T.pack $ show k) new store
+            new' <- evaluate $ getUriDiagnostics uri store'
+            return (store', new')
     mask_ $ do
         -- Mask async exceptions to ensure that updated diagnostics are always
         -- published. Otherwise, we might never publish certain diagnostics if
         -- an exception strikes between modifyVar but before
         -- publishDiagnosticsNotification.
-        newDiags <- modifyVar diagnostics $ \old -> do
-            let newDiagsStore = setStageDiagnostics fp (vfsVersion =<< modTime)
-                                  (T.pack $ show k) (map snd currentShown) old
-            let newDiags = getFileDiagnostics fp newDiagsStore
-            _ <- evaluate newDiagsStore
-            _ <- evaluate newDiags
-            pure (newDiagsStore, newDiags)
-        modifyVar_ hiddenDiagnostics $ \old -> do
-            let newDiagsStore = setStageDiagnostics fp (vfsVersion =<< modTime)
-                                  (T.pack $ show k) (map snd currentHidden) old
-            let newDiags = getFileDiagnostics fp newDiagsStore
-            _ <- evaluate newDiagsStore
-            _ <- evaluate newDiags
-            return newDiagsStore
+        newDiags <- modifyVar diagnostics $ updateDiagnosticsWithForcing $ map snd currentShown
+        _ <- modifyVar hiddenDiagnostics $  updateDiagnosticsWithForcing $ map snd currentHidden
         let uri = filePathToUri' fp
         let delay = if null newDiags then 0.1 else 0
         registerEvent debouncer delay uri $ do
@@ -1053,17 +1047,24 @@ getDiagnosticsFromStore (StoreItem _ diags) = concatMap SL.fromSortedList $ Map.
 -- | Sets the diagnostics for a file and compilation step
 --   if you want to clear the diagnostics call this with an empty list
 setStageDiagnostics
-    :: NormalizedFilePath
+    :: NormalizedUri
     -> TextDocumentVersion -- ^ the time that the file these diagnostics originate from was last edited
     -> T.Text
     -> [LSP.Diagnostic]
     -> DiagnosticStore
     -> DiagnosticStore
-setStageDiagnostics fp timeM stage diags ds  =
-    updateDiagnostics ds uri timeM diagsBySource
-    where
-        diagsBySource = Map.singleton (Just stage) (SL.toSortedList diags)
-        uri = filePathToUri' fp
+setStageDiagnostics uri ver stage diags ds = newDiagsStore where
+    -- When 'ver' is a new version, updateDiagnostics throws away diagnostics from all stages
+    -- This interacts bady with early cutoff, so we make sure to preserve diagnostics
+    -- from other stages when calling updateDiagnostics
+    -- But this means that updateDiagnostics cannot be called concurrently
+    -- for different stages anymore
+    updatedDiags = Map.singleton (Just stage) (SL.toSortedList diags) <> oldDiags
+    oldDiags = case HMap.lookup uri ds of
+            Just (StoreItem _ byStage) -> byStage
+            _ -> Map.empty
+    newDiagsStore = updateDiagnostics ds uri ver updatedDiags
+
 
 getAllDiagnostics ::
     DiagnosticStore ->
@@ -1071,13 +1072,13 @@ getAllDiagnostics ::
 getAllDiagnostics =
     concatMap (\(k,v) -> map (fromUri k,ShowDiag,) $ getDiagnosticsFromStore v) . HMap.toList
 
-getFileDiagnostics ::
-    NormalizedFilePath ->
+getUriDiagnostics ::
+    NormalizedUri ->
     DiagnosticStore ->
     [LSP.Diagnostic]
-getFileDiagnostics fp ds =
+getUriDiagnostics uri ds =
     maybe [] getDiagnosticsFromStore $
-    HMap.lookup (filePathToUri' fp) ds
+    HMap.lookup uri ds
 
 filterDiagnostics ::
     (NormalizedFilePath -> Bool) ->
