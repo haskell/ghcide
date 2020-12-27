@@ -648,7 +648,7 @@ suggestExtendImport exportsMap contents Diagnostic{_range=_range,..}
     | Just (binding, mod_srcspan) <-
       matchRegExMultipleImports _message
     , Just c <- contents
-    = mod_srcspan >>= (\(x, y) -> suggestions c binding x y) 
+    = mod_srcspan >>= (\(x, y) -> suggestions c binding x y)
     | otherwise = []
     where
         suggestions c binding mod srcspan
@@ -664,7 +664,7 @@ suggestExtendImport exportsMap contents Diagnostic{_range=_range,..}
         renderImport IdentInfo {parent, rendered}
           | Just p <- parent = p <> "(" <> rendered <> ")"
           | otherwise        = rendered
-        lookupExportMap binding mod 
+        lookupExportMap binding mod
           | Just match <- Map.lookup binding (getExportsMap exportsMap)
           , [(ident, _)] <- filter (\(_,m) -> mod == m) (Set.toList match)
            = Just ident
