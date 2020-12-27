@@ -3,6 +3,7 @@
 
 module Development.IDE.GHC.Warnings(withWarnings) where
 
+import Data.List
 import ErrUtils
 import GhcPlugins as GHC hiding (Var, (<>))
 
@@ -39,82 +40,8 @@ attachReason wr d = d{_code = StringValue <$> showReason wr}
   where
     showReason = \case
         NoReason -> Nothing
-        Reason flag -> Just $ showFlag flag
-        ErrReason flag -> showFlag <$> flag
+        Reason flag -> showFlag flag
+        ErrReason flag -> showFlag =<< flag
 
-showFlag :: WarningFlag -> T.Text
-showFlag f = "-W" <> case f of
-    Opt_WarnAllMissedSpecs -> "all-missed-specialisations"
-    Opt_WarnAlternativeLayoutRuleTransitional -> "alternative-layout-rule-transitional"
-    Opt_WarnAutoOrphans -> "auto-orphans"
-    Opt_WarnCPPUndef -> "cpp-undef"
-    Opt_WarnDeferredOutOfScopeVariables -> "deferred-out-of-scope-variables"
-    Opt_WarnDeferredTypeErrors -> "deferred-type-errors"
-    Opt_WarnDeprecatedFlags -> "deprecated-flags"
-    Opt_WarnDerivingTypeable -> "deriving-typeable"
-    Opt_WarnDodgyExports -> "dodgy-exports"
-    Opt_WarnDodgyForeignImports -> "dodgy-foreign-imports"
-    Opt_WarnDodgyImports -> "dodgy-imports"
-    Opt_WarnDuplicateConstraints -> "duplicate-constraints"
-    Opt_WarnDuplicateExports -> "duplicate-exports"
-    Opt_WarnEmptyEnumerations -> "empty-enumerations"
-    Opt_WarnHiShadows -> "hi-shadowing"
-    Opt_WarnIdentities -> "identities"
-    Opt_WarnImplicitKindVars -> "implicit-kind-vars"
-    Opt_WarnImplicitPrelude -> "implicit-prelude"
-    Opt_WarnInaccessibleCode -> "inaccessible-code"
-    Opt_WarnIncompletePatterns -> "incomplete-patterns"
-    Opt_WarnIncompletePatternsRecUpd -> "incomplete-record-updates"
-    Opt_WarnIncompleteUniPatterns -> "incomplete-uni-patterns"
-    Opt_WarnInlineRuleShadowing -> "inline-rule-shadowing"
-    Opt_WarnMissedExtraSharedLib -> "missed-extra-shared-lib"
-    Opt_WarnMissedSpecs -> "missed-specializations"
-    Opt_WarnMissingDerivingStrategies -> "missing-deriving-strategies"
-    Opt_WarnMissingExportedSignatures -> "missing-export-lists"
-    Opt_WarnMissingExportList -> "missing-exported-signatures"
-    Opt_WarnMissingFields -> "missing-fields"
-    Opt_WarnMissingHomeModules -> "missing-home-modules"
-    Opt_WarnMissingImportList -> "missing-import-lists"
-    Opt_WarnMissingLocalSignatures -> "missing-local-signatures"
-    Opt_WarnMissingMethods -> "missing-methods"
-    Opt_WarnMissingMonadFailInstances -> "missing-monadfail-instances"
-    Opt_WarnMissingPatternSynonymSignatures -> "missing-pattern-synonym-signatures"
-    Opt_WarnMissingSignatures -> "missing-signatures"
-    Opt_WarnMonomorphism -> "monomorphism-restriction"
-    Opt_WarnNameShadowing -> "name-shadowing"
-    Opt_WarnNonCanonicalMonadFailInstances -> "noncanonical-monadfail-instances"
-    Opt_WarnNonCanonicalMonadInstances -> "noncanonical-monad-instances"
-    Opt_WarnNonCanonicalMonoidInstances -> "noncanonical-monoid-instances"
-    Opt_WarnOrphans -> "orphans"
-    Opt_WarnOverflowedLiterals -> "overflowed-literals"
-    Opt_WarnOverlappingPatterns -> "overlapping-patterns"
-    Opt_WarnPartialFields -> "partial-fields"
-    Opt_WarnPartialTypeSignatures -> "partial-type-signatures"
-    Opt_WarnRedundantConstraints -> "redundant-constraints"
-    Opt_WarnSafe -> "safe"
-    Opt_WarnSemigroup -> "semigroup"
-    Opt_WarnSimplifiableClassConstraints -> "simplifiable-class-constraints"
-    Opt_WarnSpaceAfterBang -> "missing-space-after-bang"
-    Opt_WarnStarBinder -> "star-binder"
-    Opt_WarnStarIsType -> "star-is-type"
-    Opt_WarnTabs -> "tabs"
-    Opt_WarnTrustworthySafe -> "trustworthy-safe"
-    Opt_WarnTypeDefaults -> "type-defaults"
-    Opt_WarnTypedHoles -> "typed-holes"
-    Opt_WarnUnbangedStrictPatterns -> "unbanged-strict-patterns"
-    Opt_WarnUnrecognisedPragmas -> "unrecognised-pragmas"
-    Opt_WarnUnrecognisedWarningFlags -> "unrecognisedarning-flags"
-    Opt_WarnUnsafe -> "unsafe"
-    Opt_WarnUnsupportedCallingConventions -> "unsupported-calling-conventions"
-    Opt_WarnUnsupportedLlvmVersion -> "unsupported-llvm-version"
-    Opt_WarnUntickedPromotedConstructors -> "unticked-promoted-constructors"
-    Opt_WarnUnusedDoBind -> "unused-do-bind"
-    Opt_WarnUnusedForalls -> "unused-foralls"
-    Opt_WarnUnusedImports -> "unused-imports"
-    Opt_WarnUnusedLocalBinds -> "unused-local-binds"
-    Opt_WarnUnusedMatches -> "unused-matches"
-    Opt_WarnUnusedPatternBinds -> "unused-pattern-binds"
-    Opt_WarnUnusedTopBinds -> "unused-top-binds"
-    Opt_WarnUnusedTypePatterns -> "unused-type-patterns"
-    Opt_WarnWarningsDeprecations ->  "deprecations"
-    Opt_WarnWrongDoBind -> "wrong-do-bind"
+showFlag :: WarningFlag -> Maybe T.Text
+showFlag flag = ("-W" <>) . T.pack . flagSpecName <$> find ((== flag) . flagSpecFlag) wWarningFlags
