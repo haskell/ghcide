@@ -856,7 +856,7 @@ removeImportTests = testGroup "remove import actions"
             ]
       docB <- createDoc "ModuleB.hs" "haskell" contentB
       _ <- waitForDiagnostics
-      [CACodeAction action@CodeAction { _title = actionTitle }, _]
+      [_, CACodeAction action@CodeAction { _title = actionTitle }, _]
           <- getCodeActions docB (Range (Position 2 0) (Position 2 5))
       liftIO $ "Remove import" @=? actionTitle
       executeCodeAction action
@@ -882,7 +882,7 @@ removeImportTests = testGroup "remove import actions"
             ]
       docB <- createDoc "ModuleB.hs" "haskell" contentB
       _ <- waitForDiagnostics
-      [CACodeAction action@CodeAction { _title = actionTitle }, _]
+      [_, CACodeAction action@CodeAction { _title = actionTitle }, _]
           <- getCodeActions docB (Range (Position 2 0) (Position 2 5))
       liftIO $ "Remove import" @=? actionTitle
       executeCodeAction action
@@ -911,7 +911,7 @@ removeImportTests = testGroup "remove import actions"
             ]
       docB <- createDoc "ModuleB.hs" "haskell" contentB
       _ <- waitForDiagnostics
-      [CACodeAction action@CodeAction { _title = actionTitle }, _]
+      [_, CACodeAction action@CodeAction { _title = actionTitle }, _]
           <- getCodeActions docB (Range (Position 2 0) (Position 2 5))
       liftIO $ "Remove stuffA, stuffC from import" @=? actionTitle
       executeCodeAction action
@@ -940,7 +940,7 @@ removeImportTests = testGroup "remove import actions"
             ]
       docB <- createDoc "ModuleB.hs" "haskell" contentB
       _ <- waitForDiagnostics
-      [CACodeAction action@CodeAction { _title = actionTitle }, _]
+      [_, CACodeAction action@CodeAction { _title = actionTitle }, _]
           <- getCodeActions docB (Range (Position 2 0) (Position 2 5))
       liftIO $ "Remove !!, <?> from import" @=? actionTitle
       executeCodeAction action
@@ -968,7 +968,7 @@ removeImportTests = testGroup "remove import actions"
             ]
       docB <- createDoc "ModuleB.hs" "haskell" contentB
       _ <- waitForDiagnostics
-      [CACodeAction action@CodeAction { _title = actionTitle }, _]
+      [_, CACodeAction action@CodeAction { _title = actionTitle }, _]
           <- getCodeActions docB (Range (Position 2 0) (Position 2 5))
       liftIO $ "Remove A from import" @=? actionTitle
       executeCodeAction action
@@ -995,7 +995,7 @@ removeImportTests = testGroup "remove import actions"
             ]
       docB <- createDoc "ModuleB.hs" "haskell" contentB
       _ <- waitForDiagnostics
-      [CACodeAction action@CodeAction { _title = actionTitle }, _]
+      [_, CACodeAction action@CodeAction { _title = actionTitle }, _]
           <- getCodeActions docB (Range (Position 2 0) (Position 2 5))
       liftIO $ "Remove A, E, F from import" @=? actionTitle
       executeCodeAction action
@@ -1019,7 +1019,7 @@ removeImportTests = testGroup "remove import actions"
             ]
       docB <- createDoc "ModuleB.hs" "haskell" contentB
       _ <- waitForDiagnostics
-      [CACodeAction action@CodeAction { _title = actionTitle }, _]
+      [_, CACodeAction action@CodeAction { _title = actionTitle }, _]
           <- getCodeActions docB (Range (Position 2 0) (Position 2 5))
       liftIO $ "Remove import" @=? actionTitle
       executeCodeAction action
@@ -1044,7 +1044,7 @@ removeImportTests = testGroup "remove import actions"
             ]
       doc <- createDoc "ModuleC.hs" "haskell" content
       _ <- waitForDiagnostics
-      [_, _, _, _, CACodeAction action@CodeAction { _title = actionTitle }]
+      [_, _, _, _, _, _, _, _, CACodeAction action@CodeAction { _title = actionTitle }]
           <- getCodeActions doc (Range (Position 2 0) (Position 2 5))
       liftIO $ "Remove all redundant imports" @=? actionTitle
       executeCodeAction action
@@ -2014,7 +2014,7 @@ removeRedundantConstraintsTests = let
     doc <- createDoc "Testing.hs" "haskell" code
     _ <- waitForDiagnostics
     actionsOrCommands <- getCodeActions doc (Range (Position 4 0) (Position 4 maxBound))
-    liftIO $ assertBool "Found some actions" (null actionsOrCommands)
+    liftIO $ assertBool "Found some actions" $ length actionsOrCommands == 1
 
   in testGroup "remove redundant function constraints"
   [ check
@@ -3808,7 +3808,10 @@ asyncTests = testGroup "async"
               ]
             void waitForDiagnostics
             actions <- getCodeActions doc (Range (Position 1 0) (Position 1 0))
-            liftIO $ [ _title | CACodeAction CodeAction{_title} <- actions] @=? ["add signature: foo :: a -> a"]
+            liftIO $ [ _title | CACodeAction CodeAction{_title} <- actions] @?=
+              [ "add signature: foo :: a -> a"
+              , "Disable \"missing-signatures\" warnings"
+              ]
     , testSession "request" $ do
             -- Execute a custom request that will block for 1000 seconds
             void $ sendRequest (CustomClientMethod "test") $ BlockSeconds 1000
@@ -3819,7 +3822,10 @@ asyncTests = testGroup "async"
               ]
             void waitForDiagnostics
             actions <- getCodeActions doc (Range (Position 0 0) (Position 0 0))
-            liftIO $ [ _title | CACodeAction CodeAction{_title} <- actions] @=? ["add signature: foo :: a -> a"]
+            liftIO $ [ _title | CACodeAction CodeAction{_title} <- actions] @?=
+              ["add signature: foo :: a -> a"
+              , "Disable \"missing-signatures\" warnings"
+              ]
     ]
 
 
