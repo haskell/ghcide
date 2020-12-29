@@ -1,3 +1,10 @@
+# Moved
+
+This project is now a historical artifact. It has been merged and all issues transferred into:
+
+https://github.com/haskell/haskell-language-server
+
+
 # `ghcide` - A library for building Haskell IDE tooling
 
 Our vision is that you should build an IDE by combining:
