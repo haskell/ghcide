@@ -27,6 +27,7 @@ module Development.IDE.Core.Rules(
     highlightAtPoint,
     getDependencies,
     getParsedModule,
+    getParsedModuleWithComments
     ) where
 
 import Fingerprint
@@ -239,9 +240,14 @@ getPackageHieFile ide mod file = do
                 _ -> MaybeT $ return Nothing
         _ -> MaybeT $ return Nothing
 
--- | Parse the contents of a daml file.
+-- | Parse the contents of a haskell file.
 getParsedModule :: NormalizedFilePath -> Action (Maybe ParsedModule)
-getParsedModule file = use GetParsedModule file
+getParsedModule = use GetParsedModule
+
+-- | Parse the contents of a haskell file,
+-- ensuring comments are preserved in annotations
+getParsedModuleWithComments :: NormalizedFilePath -> Action (Maybe ParsedModule)
+getParsedModuleWithComments = use GetParsedModule
 
 ------------------------------------------------------------
 -- Rules
@@ -304,8 +310,10 @@ getParsedModuleRule = defineEarlyCutoff $ \GetParsedModule file -> do
     pure res
 
 withOptHaddock :: ModSummary -> ModSummary
-withOptHaddock ms = ms{ms_hspp_opts= gopt_set (ms_hspp_opts ms) Opt_Haddock}
+withOptHaddock = withOption Opt_Haddock
 
+withOption :: GeneralFlag -> ModSummary -> ModSummary
+withOption opt ms = ms{ms_hspp_opts= gopt_set (ms_hspp_opts ms) opt}
 
 -- | Given some normal parse errors (first) and some from Haddock (second), merge them.
 --   Ignore Haddock errors that are in both. Demote Haddock-only errors to warnings.
@@ -318,6 +326,16 @@ mergeParseErrorsHaddock normal haddock = normal ++
 
     fixMessage x | "parse error " `T.isPrefixOf` x = "Haddock " <> x
                  | otherwise = "Haddock: " <> x
+
+getParsedModuleWithCommentsRule :: Rules ()
+getParsedModuleWithCommentsRule = defineEarlyCutoff $ \GetParsedModuleWithComments file -> do
+    (ms, _) <- use_ GetModSummary file
+    sess <- use_ GhcSession file
+    opt <- getIdeOptions
+
+    let ms' = withOption Opt_KeepRawTokenStream ms
+
+    liftIO $ getParsedModuleDefinition (hscEnv sess) opt file ms'
 
 getParsedModuleDefinition :: HscEnv -> IdeOptions -> NormalizedFilePath -> ModSummary -> IO (Maybe ByteString, ([FileDiagnostic], Maybe ParsedModule))
 getParsedModuleDefinition packageState opt file ms = do
@@ -936,6 +954,7 @@ mainRule = do
     linkables <- liftIO $ newVar emptyModuleEnv
     addIdeGlobal $ CompiledLinkables linkables
     getParsedModuleRule
+    getParsedModuleWithCommentsRule
     getLocatedImportsRule
     getDependencyInformationRule
     reportImportCyclesRule
