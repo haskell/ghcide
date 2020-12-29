@@ -685,6 +685,17 @@ ghcSessionDepsDefinition file = do
         res <- liftIO $ newHscEnvEqWithImportPaths (envImportPaths env) session' []
         return ([], Just res)
 
+
+-- This function is also responsible for ensuring database consistency
+-- Whenever we read a `.hi` file, we must check to ensure we have also
+-- indexed the corresponding `.hie` file. If this is not the case (for example,
+-- `ghcide` could be killed before indexing finishes), we must re-index the
+-- `.hie` file. Most of the time, there should be an up2date `.hi` file on
+-- disk since we are careful to write out the `.hie` file before writing the
+-- `.hi` file
+-- If we don't have a `.hi` file, the `regenerateHiFile` function is responsible
+-- for generating both a fresh `hi` and `hie` file, and queueing up a
+-- index operation for the `.hie` file.
 getModIfaceFromDiskRule :: Rules ()
 getModIfaceFromDiskRule = defineEarlyCutoff $ \GetModIfaceFromDisk f -> do
   (ms,_) <- use_ GetModSummary f
