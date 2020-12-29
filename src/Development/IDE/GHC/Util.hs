@@ -128,7 +128,9 @@ prettyPrint :: Outputable a => a -> String
 prettyPrint = unsafePrintSDoc . ppr
 
 unsafePrintSDoc :: SDoc -> String
-unsafePrintSDoc = showSDoc unsafeGlobalDynFlags
+unsafePrintSDoc = renderWithStyle dflags sdoc (mkUserStyle dflags neverQualify AllTheWay)
+  where
+    dflags = unsafeGlobalDynFlags
 
 -- | Pretty print a 'RdrName' wrapping operators in parens
 printRdrName :: RdrName -> String
