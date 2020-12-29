@@ -79,7 +79,6 @@ import Development.IDE.Core.Shake
 import Development.Shake.Classes hiding (get, put)
 import Control.Monad.Trans.Except (runExceptT)
 import Control.Concurrent.Async (concurrently)
-import Control.Concurrent.Chan
 import Control.Monad.Reader
 import Control.Exception.Safe
 
@@ -96,8 +95,6 @@ import Control.Concurrent.Extra
 import Module
 
 import qualified HieDb
-import System.Directory
-import System.FilePath
 
 -- | This is useful for rules to convert rules that can only produce errors or
 -- a result into the more general IdeResult type that supports producing
@@ -130,32 +127,16 @@ defineEarlyCutOffNoFile f = defineEarlyCutoff $ \k file -> do
 ------------------------------------------------------------
 -- Exposed API
 
-lookupMod :: HieWriterChan -> FilePath -> ModuleName -> UnitId -> Bool -> MaybeT IdeAction Uri
-lookupMod dbchan hie_f mod uid boot
-  | stringToUnitId "fake_uid" ==  uid = MaybeT $ pure Nothing
-  | otherwise = do
-      ide <- ask
-      liftIO $ L.logInfo (logger ide) $ T.pack $ "LookupMod " ++ show hie_f
-      cachedir <- liftIO getCurrentDirectory
-      let dir = cachedir </> "cached-deps" </> unitIdString uid
-          src = dir </> map (\x -> if x == '.' then '-' else x) (moduleNameString mod) <.> ext
-          ext = if boot then "hs-boot" else "hs"
-      hieTimestamp <- MaybeT $ either (\(_ :: IOException) -> Nothing) Just <$> (liftIO $ try $ getModificationTime hie_f)
-      srcTimestamp   <- either (\(_ :: IOException) -> Nothing) Just <$> (liftIO $ try $ getModificationTime src)
-      case srcTimestamp of
-        Just t | t >= hieTimestamp -> do
-          liftIO $ L.logInfo (logger ide) $ T.pack $ "Returning file " ++ show src
-          pure $ fromNormalizedUri $ filePathToUri' $ toNormalizedFilePath' src
-        _ -> do
-          hf <- readHieFileFromDisk hie_f
-          liftIO $ do
-            createDirectoryIfMissing True dir
-            removePathForcibly src
-            BS.writeFile src $ hie_hs_src hf
-            p <- getPermissions src
-            setPermissions src (p {writable = False})
-            writeChan dbchan $ \db -> HieDb.addSrcFile db hie_f src False
-            pure $ fromNormalizedUri $ filePathToUri' $ toNormalizedFilePath' src
+-- | Eventually this will lookup/generate URIs for files in dependencies, but not in the
+-- project. Right now, this is just a stub.
+lookupMod
+  :: HieWriterChan -- ^ access the database
+  -> FilePath -- ^ The `.hie` file we got from the database
+  -> ModuleName
+  -> UnitId
+  -> Bool -- ^ Is this file a boot file?
+  -> MaybeT IdeAction Uri
+lookupMod _dbchan _hie_f _mod _uid _boot = MaybeT $ pure Nothing
 
 -- | Get all transitive file dependencies of a given module.
 -- Does not include the file itself.
@@ -189,10 +170,7 @@ getDefinition file pos = runMaybeT $ do
     !pos' <- MaybeT (return $ fromCurrentPosition mapping pos)
     hiedb <- lift $ asks hiedb
     hiedbChan <- lift $ asks hiedbWriter
-    let origFile
-         | "cached-deps" `isInfixOf` fromNormalizedFilePath file = Just file
-         | otherwise = Nothing
-    toCurrentLocations mapping <$> AtPoint.gotoDefinition hiedb (lookupMod $ channel hiedbChan) opts imports hf origFile pos'
+    toCurrentLocations mapping <$> AtPoint.gotoDefinition hiedb (lookupMod $ channel hiedbChan) opts imports hf pos'
 
 getTypeDefinition :: NormalizedFilePath -> Position -> IdeAction (Maybe [Location])
 getTypeDefinition file pos = runMaybeT $ do
@@ -202,10 +180,7 @@ getTypeDefinition file pos = runMaybeT $ do
     !pos' <- MaybeT (return $ fromCurrentPosition mapping pos)
     hiedb <- lift $ asks hiedb
     hiedbChan <- lift $ asks hiedbWriter
-    let origFile
-         | "cached-deps" `isInfixOf` fromNormalizedFilePath file = Just file
-         | otherwise = Nothing
-    toCurrentLocations mapping <$> AtPoint.gotoTypeDefinition hiedb (lookupMod $ channel hiedbChan) opts hf origFile pos'
+    toCurrentLocations mapping <$> AtPoint.gotoTypeDefinition hiedb (lookupMod $ channel hiedbChan) opts hf pos'
 
 highlightAtPoint :: NormalizedFilePath -> Position -> IdeAction (Maybe [DocumentHighlight])
 highlightAtPoint file pos = runMaybeT $ do
@@ -523,28 +498,18 @@ getHieAstRuleDefinition f hsc tmr = do
   (diags, masts) <- liftIO $ generateHieAsts hsc tmr
   se <- getShakeExtras
 
-  if "cached-deps" `isInfixOf` fromNormalizedFilePath f
-  then liftIO $ do
-    L.logInfo (logger se) $ "Getting HieFile for cached deps: " <> T.pack (show f)
-    mres <- runIdeAction "GetHieFileForDep" se $ runMaybeT $ readHieFileForSrcFromDisk f
-    let res = case mres of
-          Nothing -> Nothing
-          Just res -> let rm = generateReferencesMap . getAsts . hie_asts $ res
-            in Just $ HAR (hie_module res) (hie_asts res) rm (HieFromDisk res)
-    pure ([], res)
-  else do
-    isFoi <- use_ IsFileOfInterest f
-    diagsWrite <- case isFoi of
-      IsFOI Modified -> pure []
-      _ | Just asts <- masts -> do
-            source <- getSourceFileSource f
-            let exports = tcg_exports $ tmrTypechecked tmr
-                msum = tmrModSummary tmr
-            liftIO $ writeAndIndexHieFile hsc (hiedbWriter se) msum f exports asts source
-      _ -> pure []
- 
-    let refmap = generateReferencesMap . getAsts <$> masts
-    pure (diags <> diagsWrite, HAR (ms_mod $ tmrModSummary tmr) <$> masts <*> refmap <*> pure HieFresh)
+  isFoi <- use_ IsFileOfInterest f
+  diagsWrite <- case isFoi of
+    IsFOI Modified -> pure []
+    _ | Just asts <- masts -> do
+          source <- getSourceFileSource f
+          let exports = tcg_exports $ tmrTypechecked tmr
+              msum = tmrModSummary tmr
+          liftIO $ writeAndIndexHieFile hsc (hiedbWriter se) msum f exports asts source
+    _ -> pure []
+
+  let refmap = generateReferencesMap . getAsts <$> masts
+  pure (diags <> diagsWrite, HAR (ms_mod $ tmrModSummary tmr) <$> masts <*> refmap <*> pure HieFresh)
 
 getImportMapRule :: Rules()
 getImportMapRule = define $ \GetImportMap f -> do

@@ -16,17 +16,17 @@ module Development.IDE.Spans.AtPoint (
   , defRowToSymbolInfo
   ) where
 
-import Debug.Trace
-import           Development.IDE.GHC.Error
+import Development.IDE.GHC.Error
 import Development.IDE.GHC.Orphans()
 import Development.IDE.Types.Location
-import           Language.Haskell.LSP.Types
+import Language.Haskell.LSP.Types
 
--- DAML compiler and infrastructure
+-- compiler and infrastructure
 import Development.IDE.GHC.Compat
 import Development.IDE.Types.Options
 import Development.IDE.Spans.Common
 import Development.IDE.Core.RuleTypes
+import Development.IDE.Core.PositionMapping
 
 -- GHC API imports
 import Name
@@ -36,8 +36,8 @@ import TyCoRep
 import TyCon
 import qualified Var
 import NameEnv
-import Module
 import IfaceType
+import FastString (unpackFS)
 
 import Control.Applicative
 import Control.Monad.Extra
@@ -48,13 +48,13 @@ import           Data.Maybe
 import qualified Data.Text as T
 import qualified Data.Map as M
 import qualified Data.HashMap.Strict as HM
-import Development.IDE.Core.PositionMapping
 
+import qualified Data.Array as A
 import Data.Either
 import Data.List.Extra (nubOrd, dropEnd1)
+import Data.List (isSuffixOf)
 
 import HieDb hiding (pointCommand)
-import qualified Data.Array as A
 
 -- | Gives a Uri for the module, given the .hie file location and the the module info
 -- The Bool denotes if it is a boot module
@@ -152,11 +152,10 @@ gotoTypeDefinition
   -> LookupModule m
   -> IdeOptions
   -> HieAstResult
-  -> Maybe NormalizedFilePath
   -> Position
   -> MaybeT m [Location]
-gotoTypeDefinition hiedb lookupModule ideOpts srcSpans mf pos
-  = lift $ typeLocationsAtPoint hiedb lookupModule ideOpts pos srcSpans mf
+gotoTypeDefinition hiedb lookupModule ideOpts srcSpans pos
+  = lift $ typeLocationsAtPoint hiedb lookupModule ideOpts pos srcSpans
 
 -- | Locate the definition of the name at a given position.
 gotoDefinition
@@ -166,11 +165,10 @@ gotoDefinition
   -> IdeOptions
   -> M.Map ModuleName NormalizedFilePath
   -> HieASTs a
-  -> Maybe NormalizedFilePath
   -> Position
   -> MaybeT m [Location]
-gotoDefinition hiedb getHieFile ideOpts imports srcSpans mf pos
-  = lift $ locationsAtPoint hiedb getHieFile ideOpts imports pos srcSpans mf
+gotoDefinition hiedb getHieFile ideOpts imports srcSpans pos
+  = lift $ locationsAtPoint hiedb getHieFile ideOpts imports pos srcSpans
 
 -- | Synopsis for the name at a given position.
 atPoint
@@ -225,9 +223,8 @@ typeLocationsAtPoint
   -> IdeOptions
   -> Position
   -> HieAstResult
-  -> Maybe NormalizedFilePath
   -> m [Location]
-typeLocationsAtPoint hiedb lookupModule _ideOptions pos (HAR _ ast _ hieKind) trustFile =
+typeLocationsAtPoint hiedb lookupModule _ideOptions pos (HAR _ ast _ hieKind) =
   case hieKind of
     HieFromDisk hf ->
       let arr = hie_types hf
@@ -244,7 +241,7 @@ typeLocationsAtPoint hiedb lookupModule _ideOptions pos (HAR _ ast _ hieKind) tr
             HQualTy a b -> getTypes [a,b]
             HCastTy a -> getTypes [a]
             _ -> []
-        in fmap nubOrd $ concatMapM (fmap (maybe [] id) . nameToLocation hiedb lookupModule trustFile) (getTypes ts)
+        in fmap nubOrd $ concatMapM (fmap (maybe [] id) . nameToLocation hiedb lookupModule) (getTypes ts)
     HieFresh ->
       let ts = concat $ pointCommand ast pos getts
           getts x = nodeType ni  ++ (mapMaybe identType $ M.elems $ nodeIdentifiers ni)
@@ -257,7 +254,7 @@ typeLocationsAtPoint hiedb lookupModule _ideOptions pos (HAR _ ast _ hieKind) tr
             FunTy _ a b -> getTypes [a,b]
             CastTy t _ -> getTypes [t]
             _ -> []
-        in fmap nubOrd $ concatMapM (fmap (maybe [] id) . nameToLocation hiedb lookupModule trustFile) (getTypes ts)
+        in fmap nubOrd $ concatMapM (fmap (maybe [] id) . nameToLocation hiedb lookupModule) (getTypes ts)
 
 locationsAtPoint
   :: forall m a
@@ -268,34 +265,21 @@ locationsAtPoint
   -> M.Map ModuleName NormalizedFilePath
   -> Position
   -> HieASTs a
-  -> Maybe NormalizedFilePath
   -> m [Location]
-locationsAtPoint hiedb lookupModule _ideOptions imports pos ast trustFile =
+locationsAtPoint hiedb lookupModule _ideOptions imports pos ast =
   let ns = concat $ pointCommand ast pos (M.keys . nodeIdentifiers . nodeInfo)
       zeroPos = Position 0 0
       zeroRange = Range zeroPos zeroPos
       modToLocation m = fmap (\fs -> pure $ Location (fromNormalizedUri $ filePathToUri' fs) zeroRange) $ M.lookup m imports
-    in fmap concat $ mapMaybeM (either (pure . modToLocation) $ nameToLocation hiedb lookupModule trustFile) ns
+    in fmap concat $ mapMaybeM (either (pure . modToLocation) $ nameToLocation hiedb lookupModule) ns
 
 -- | Given a 'Name' attempt to find the location where it is defined.
-nameToLocation :: MonadIO m => HieDb -> LookupModule m -> Maybe NormalizedFilePath -> Name -> m (Maybe [Location])
-nameToLocation hiedb lookupModule trustFile name = runMaybeT $
+nameToLocation :: MonadIO m => HieDb -> LookupModule m -> Name -> m (Maybe [Location])
+nameToLocation hiedb lookupModule name = runMaybeT $
   case nameSrcSpan name of
     sp@(RealSrcSpan rsp)
-      | Nothing <- trustFile
-      , maybe True (stringToUnitId "fake_uid" ==) (moduleUnitId <$> nameModule_maybe name) ->
-          MaybeT $ pure $ fmap pure $ srcSpanToLocation sp
-      | Just fs <- trustFile
-      , Nothing <- nameModule_maybe name ->
-          MaybeT $ pure $ fmap pure $ Just $ Location (fromNormalizedUri $ filePathToUri' fs) (realSrcSpanToRange rsp)
-      | Just mod <- nameModule_maybe name -> do
-          mrow <- liftIO $ lookupHieFile hiedb (moduleName mod) (moduleUnitId mod)
-          fs <- case mrow of
-            Nothing -> MaybeT $ pure Nothing
-            Just row -> case modInfoSrcFile $ hieModInfo row of
-              Nothing -> lookupModule (hieModuleHieFile row) (moduleName mod) (moduleUnitId mod) False
-              Just fs -> pure $ toUri fs
-          MaybeT $ pure $ fmap pure $ Just  $ Location fs (realSrcSpanToRange rsp)
+      -- Lookup in the db if we got a location in a boot file
+      | not $ "boot" `isSuffixOf` unpackFS (srcSpanFile rsp) -> MaybeT $ pure $ fmap pure $ srcSpanToLocation sp
     sp -> do
       guard (sp /= wiredInSrcSpan)
       -- This case usually arises when the definition is in an external package.
