@@ -87,25 +87,31 @@ foiReferencesAtPoint file pos (FOIReferences asts) =
 referencesAtPoint
   :: MonadIO m
   => HieDb
-  -> NormalizedFilePath
-  -> Position
-  -> FOIReferences
+  -> NormalizedFilePath -- ^ The file the cursor is in
+  -> Position -- ^ position in the file
+  -> FOIReferences -- ^ references data for FOIs
   -> m [Location]
 referencesAtPoint hiedb nfp pos refs = do
-  let (names, foisLocs, exclude) = foiReferencesAtPoint nfp pos refs
-  locs <- forM names $ \name ->
+  -- The database doesn't have up2date references data for the FOIs so we must collect those
+  -- from the Shake graph.
+  let (names, foiRefs, exclude) = foiReferencesAtPoint nfp pos refs
+  nonFOIRefs <- forM names $ \name ->
     case nameModule_maybe name of
       Nothing -> pure []
       Just mod -> do
+         -- Look for references (strictly in project files, not dependencies),
+         -- excluding the files in the FOIs (since those are in foiRefs)
          rows <- liftIO $ search hiedb True (nameOccName name) (Just $ moduleName mod) (Just $ moduleUnitId mod) exclude
          pure $ mapMaybe rowToLoc rows
-  typelocs <- forM names $ \name ->
+  -- Type references are expensive to compute, so we only look for them in the database, not the FOIs
+  -- Some inaccuracy for FOIs can be expected.
+  typeRefs <- forM names $ \name ->
     case nameModule_maybe name of
       Just mod | isTcClsNameSpace (occNameSpace $ nameOccName name) -> do
         refs <- liftIO $ findTypeRefs hiedb (nameOccName name) (moduleName mod) (moduleUnitId mod)
         pure $ mapMaybe typeRowToLoc refs
       _ -> pure []
-  pure $ nubOrd $ foisLocs ++ concat locs ++ concat typelocs
+  pure $ nubOrd $ foiRefs ++ concat nonFOIRefs ++ concat typeRefs
 
 rowToLoc :: Res RefRow -> Maybe Location
 rowToLoc (row:.info) = flip Location range <$> mfile
