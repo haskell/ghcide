@@ -278,6 +278,7 @@ lastValueIO s@ShakeExtras{positionMapping,persistentKeys,state} k file = do
             MaybeT $ pure $ fromDynamic dv
           modifyVar state $ \hm -> case mv of
             Nothing -> pure (HMap.insertWith upd (file,Key k) (Failed True) hm,Nothing)
+            -- TODO, we can do better than zeroMapping here by leveraging a diff
             Just v -> pure (HMap.insertWith upd (file,Key k) (Stale Nothing (toDyn v)) hm, Just (v,zeroMapping))
 
         -- Update preserving 'monotonicity'
